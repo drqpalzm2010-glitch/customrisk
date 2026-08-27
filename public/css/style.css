@@ -839,12 +839,19 @@ body.dark-mode {
   font-weight: 700;
 }
 
-/* Hover highlight style on SVG map */
+/* Hover highlight style on SVG map when hovering continents */
 .territory-poly.highlight-continent {
   stroke: #ffffff !important;
   stroke-width: 4.5px !important;
-  filter: drop-shadow(0 0 8px #ffffff) !important;
-  opacity: 0.95 !important;
+  fill-opacity: 0.88 !important;
+  filter: brightness(1.35) drop-shadow(0 0 10px rgba(255, 255, 255, 0.85)) !important;
+  opacity: 1 !important;
+}
+
+.army-badge-container.highlight-continent-badge .army-badge-bg {
+  stroke: #ffffff !important;
+  stroke-width: 3.5px !important;
+  filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.95)) drop-shadow(0 4px 6px rgba(0,0,0,0.4)) !important;
 }
 
 .active-pacts-list {

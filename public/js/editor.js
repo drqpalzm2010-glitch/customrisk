@@ -828,6 +828,25 @@
           this.deleteContinent(c.id);
         });
 
+        // Highlight territories on map when hovering over continent in editor list
+        item.addEventListener('mouseenter', () => {
+          (c.territoryIds || []).forEach(tid => {
+            const poly = document.getElementById(`poly-${tid}`);
+            if (poly) poly.classList.add('highlight-continent');
+            const badge = document.getElementById(`badge-group-${tid}`);
+            if (badge) badge.classList.add('highlight-continent-badge');
+          });
+        });
+
+        item.addEventListener('mouseleave', () => {
+          (c.territoryIds || []).forEach(tid => {
+            const poly = document.getElementById(`poly-${tid}`);
+            if (poly) poly.classList.remove('highlight-continent');
+            const badge = document.getElementById(`badge-group-${tid}`);
+            if (badge) badge.classList.remove('highlight-continent-badge');
+          });
+        });
+
         container.appendChild(item);
       });
     }
