@@ -3923,7 +3923,7 @@ function makeDraftDecision(room, playerId) {
     if (aiPlayer.cards && aiPlayer.cards.length >= 3) {
       // 30% chance to craft a Tactical Nuke if they hold cards
       if (Math.random() < 0.30) {
-        const setIndices = findValidCardSetIndices(aiPlayer.cards, gameState.cardTradeRule);
+        const setIndices = GameEngine.findValidCardSetIndices(aiPlayer.cards, gameState.cardTradeRule);
         if (setIndices) {
           // If a set exists, craft a Thermonuke!
           GameEngine.craftNuke(room, playerId, setIndices, true);
@@ -4068,7 +4068,7 @@ function getShortestPath(connections, startId, endId) {
   return null;
 }
 
-function makeAttackDecision(room, playerId) {
+function makeAttackDecision(room, playerId, io) {
   const { gameState, mapData } = room;
   const aiPlayer = gameState.players.find(p => p.id === playerId);
   if (!aiPlayer) return null;
@@ -4303,6 +4303,23 @@ function makeAttackDecision(room, playerId) {
         });
       });
 
+      // Global strike fallback: missiles have unlimited range, so if no adjacent
+      // high-value stack exists, strike the biggest enemy stack anywhere on the map
+      if (!bestLaunchTargetId) {
+        Object.keys(gameState.territories).forEach(tid => {
+          const tgt = gameState.territories[tid];
+          if (!tgt || tgt.ownerId === playerId || tgt.ownerId === 'dummy') return;
+          if (gameState.blizzards && gameState.blizzards.includes(tid)) return;
+          if (gameState.radiation && gameState.radiation[tid] > 0) return;
+          const targetArmies = tgt.armies || 1;
+          if (targetArmies >= 12 && targetArmies > maxTargetThreat) {
+            maxTargetThreat = targetArmies;
+            bestLaunchTargetId = tid;
+            bestLaunchSourceId = owned.find(sid => gameState.territories[sid].armies >= 2) || null;
+          }
+        });
+      }
+
       if (bestLaunchTargetId && bestLaunchSourceId) {
         const fireThermo = hasThermo; // Prioritize Thermonuke if available
 
@@ -4311,7 +4328,9 @@ function makeAttackDecision(room, playerId) {
         // Emit launch graphics
         const srcCenter = mapData.territories.find(t => t.id === bestLaunchSourceId)?.center;
         const tgtCenter = mapData.territories.find(t => t.id === bestLaunchTargetId)?.center;
-        if (srcCenter && tgtCenter) {
+        if (srcCenter && tgtCenter && io) {
+          // Lazy require avoids a circular top-level dependency with room-manager
+          const RoomManager = require('./room-manager');
           io.to(room.code).emit('gameStateUpdate', RoomManager.getSanitizedGameState(gameState));
           // Execute ballistic missile visual timeline
           io.emit('fireNuclearMissileEvent', { srcCenter, tgtCenter, isThermo: fireThermo, targetId: bestLaunchTargetId });
@@ -4407,7 +4426,7 @@ function hasAlliedPath(territories, connections, startId, endId, ownerId, pacts 
     const current = queue.shift();
     if (current === endId) return true;
 
-    const adjacent = getAdjacentTerritories(connections, current);
+    const adjacent = GameEngine.getAdjacentTerritories(connections, current);
     for (const adjId of adjacent) {
       const isBlizz = blizzards.includes(adjId);
       const isRad = radiation[adjId] > 0;

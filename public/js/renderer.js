@@ -292,7 +292,7 @@
           polygon.style.fill = '#22c55e'; // Toxic glowing green
           polygon.style.fillOpacity = '0.45';
           polygon.classList.add('pulsing-glow');
-        } else if (gameState && gameState.territories[terr.id] && gameState.territories[terr.id].ownerId === null && gameState.territories[terr.id].armies === 0) {
+        } else if (gameState && gameState.territories[terr.id] && gameState.territories[terr.id].ownerId === null && gameState.territories[terr.id].armies === 0 && gameState.territories[terr.id].nuked) {
           polygon.style.fill = '#475569'; // Ash gray for unclaimed nuke-devastated land
           polygon.style.fillOpacity = '0.8';
         } else {
@@ -521,7 +521,7 @@
             <circle cx="0" cy="0" r="1.5" fill="#1e293b"/>
           `;
           g.appendChild(radGroup);
-        } else if (gameState && gameState.territories[terr.id] && gameState.territories[terr.id].ownerId === null && gameState.territories[terr.id].armies === 0) {
+        } else if (gameState && gameState.territories[terr.id] && gameState.territories[terr.id].ownerId === null && gameState.territories[terr.id].armies === 0 && gameState.territories[terr.id].nuked) {
           // Render Ash Ruins Skull instead of Troop Badge
           const ruinsGroup = document.createElementNS(svgNamespace, "g");
           ruinsGroup.style.pointerEvents = "none";

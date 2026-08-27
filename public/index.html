@@ -548,20 +548,22 @@
 
         <!-- Weapons Arsenal (Nukes) -->
         <div class="game-nukes-section" id="game-nukes-panel" style="display: none; background: rgba(255,255,255,0.02); border: 1px solid var(--border-glass); border-radius: 10px; padding: 12px; margin-top: 10px;">
-          <h3 style="font-size: 11px; text-transform: uppercase; margin-bottom: 8px; color: #22c55e; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;"><i class="fa-solid fa-radiation"></i> Weapons Arsenal</h3>
+          <h3 style="font-size: 11px; text-transform: uppercase; margin-bottom: 8px; color: #22c55e; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;"><i class="fa-solid fa-radiation"></i> Weapons Arsenal<span class="info-tip" data-tip="Your nuclear stockpile. Click a weapon, select one of your territories with 2+ armies as the Launch Pad Silo, then click any territory on the map to detonate. Missiles have unlimited range.">ℹ</span></h3>
           <div class="nukes-status-row" style="display: flex; gap: 8px; margin-bottom: 8px;">
             <div class="nuke-badge" id="btn-action-nuke" style="flex: 1; background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); padding: 6px; border-radius: 8px; text-align: center; cursor: pointer; transition: all 0.2s;" title="Select and Launch Tactical Nuke">
               <span style="font-size: 16px;">☢️</span>
               <div style="font-size: 10px; font-weight: 700; color: #22c55e; margin-top: 2px;">Tactical: <strong id="lbl-nuke-count">0</strong></div>
+              <span class="info-tip" data-tip="Tactical Nuke: wipes ALL armies on the target territory and leaves it radioactive and un-interactable for 1 full turn. Unlimited range.">ℹ</span>
             </div>
             <div class="nuke-badge" id="btn-action-thermonuke" style="flex: 1; background: rgba(168, 85, 247, 0.1); border: 1px solid rgba(168, 85, 247, 0.3); padding: 6px; border-radius: 8px; text-align: center; cursor: pointer; transition: all 0.2s;" title="Select and Launch Thermonuclear Weapon">
               <span style="font-size: 16px;">🚀</span>
               <div style="font-size: 10px; font-weight: 700; color: #a855f7; margin-top: 2px;">Thermo: <strong id="lbl-thermonuke-count">0</strong></div>
+              <span class="info-tip" data-tip="Thermonuclear Weapon: wipes the target AND halves armies on all adjacent territories. Radioactive for 2 full turns. Unlimited range.">ℹ</span>
             </div>
           </div>
           <div style="display: flex; gap: 4px;" id="nuke-craft-buttons-row">
-            <button id="btn-craft-nuke" class="btn outline-btn btn-sm w-full" style="font-size: 11px; padding: 4px; border-color: #22c55e; color: #22c55e;" disabled><i class="fa-solid fa-hammer"></i> Craft Nuke</button>
-            <button id="btn-craft-thermonuke" class="btn outline-btn btn-sm w-full" style="font-size: 11px; padding: 4px; border-color: #a855f7; color: #a855f7;" disabled><i class="fa-solid fa-atom"></i> Craft Thermo</button>
+            <button id="btn-craft-nuke" class="btn outline-btn btn-sm w-full" style="font-size: 11px; padding: 4px; border-color: #22c55e; color: #22c55e;" disabled><i class="fa-solid fa-hammer"></i> Craft Nuke<span class="info-tip" data-tip="Sacrifice any 3 Risk Cards to forge a Tactical Nuke. Crafting is only possible during your DRAFT phase and only if the host enabled nuclear crafting.">ℹ</span></button>
+            <button id="btn-craft-thermonuke" class="btn outline-btn btn-sm w-full" style="font-size: 11px; padding: 4px; border-color: #a855f7; color: #a855f7;" disabled><i class="fa-solid fa-atom"></i> Craft Thermo<span class="info-tip" data-tip="Sacrifice a valid 3-card set to forge a Thermonuclear Weapon. Crafting is only possible during your DRAFT phase and only if the host enabled nuclear crafting.">ℹ</span></button>
           </div>
         </div>
 

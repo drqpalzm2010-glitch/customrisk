@@ -519,6 +519,7 @@ function claimTerritory(room, playerId, territoryId) {
   // Set owner and add 1 army
   territory.ownerId = playerId;
   territory.armies = 1;
+  delete territory.nuked; // Cleanse Ash Ruins marker once reclaimed
   currentPlayer.startingArmiesPool--;
 
   addLog(gameState, `${currentPlayer.name} claimed ${getTerritoryName(room.mapData, territoryId)}.`);
@@ -692,14 +693,29 @@ function executeAttack(room, playerId, sourceId, targetId, diceCount) {
     if (source.armies < 2) {
       return { error: 'Must have at least 2 armies to move forward and claim this un-owned land.' };
     }
-    // Claim territory instantly
+    // Claim territory instantly (1 army garrison), then let the player choose
+    // how many additional troops to march in via the Post-Attack Move slider
     target.ownerId = playerId;
+    delete target.nuked;
     target.armies = 1;
     source.armies -= 1;
     
     addLog(gameState, `🚀 ${currentPlayer.name} marched into un-owned ruins to claim ${getTerritoryName(room.mapData, targetId)}!`);
     gameState.conqueredThisTurn = true;
     checkWinCondition(room);
+
+    // Enter POST_ATTACK_MOVE so the player can pick how many extra troops
+    // to move into the freshly claimed ruins
+    const additionalMax = Math.max(0, source.armies - 1);
+    if (additionalMax > 0) {
+      gameState.turnStage = 'POST_ATTACK_MOVE';
+      gameState.postAttackContext = {
+        sourceId,
+        targetId,
+        minMove: 1,
+        additionalMax
+      };
+    }
     return { success: true };
   }
 
@@ -1233,8 +1249,18 @@ function endTurn(room) {
   // Reset turn-based AI message tracking counters
   gameState.aiMessagesSentThisTurn = {};
 
-  // Ticks down Radioactive turns
-  if (gameState.radiation) {
+  // Detect whether this endTurn completes a FULL round (every active player has played)
+  const numPlayersForRadiation = gameState.players.length;
+  let radPeek = gameState.turnIndex;
+  let radAttempts = 0;
+  do {
+    radPeek = (radPeek + 1) % numPlayersForRadiation;
+    radAttempts++;
+  } while (gameState.players[radPeek].eliminated && radAttempts < numPlayersForRadiation);
+  const radiationRoundWrapped = radPeek <= gameState.turnIndex;
+
+  // Ticks down Radioactive decay ONCE PER FULL ROUND (tactical = 1 round, thermonuclear = 2 rounds)
+  if (gameState.radiation && radiationRoundWrapped) {
     Object.keys(gameState.radiation).forEach(tid => {
       gameState.radiation[tid]--;
       if (gameState.radiation[tid] <= 0) {
@@ -1630,10 +1656,7 @@ function fireNuke(room, playerId, sourceId, targetId, isThermo) {
     player.nukes--;
   }
 
-  // Adjacency pathing verification
-  const adjacent = getAdjacentTerritories(room.mapData.connections, sourceId);
-  if (!adjacent.includes(targetId)) return { error: 'Launch pads must be adjacent to the target territory.' };
-
+  // Missiles have unlimited range — the Launch Pad Silo is purely for launch cosmetics
   const source = gameState.territories[sourceId];
   if (!source || source.ownerId !== playerId || source.armies < 2) {
     return { error: 'Must hold at least 2 armies on launch pad territory.' };
@@ -1668,9 +1691,10 @@ function fireNuke(room, playerId, sourceId, targetId, isThermo) {
   // Execute Detonation
   target.armies = 0;
   target.ownerId = null; // Unclaimed
+  target.nuked = true; // Persistent Ash Ruins marker: skull shows until this land is reclaimed
 
   if (isThermo) {
-    gameState.radiation[targetId] = 2; // Radioactive for 2 turns
+    gameState.radiation[targetId] = 2; // Radioactive for 2 FULL turns (rounds)
 
     // Splash damage to adjacent territories
     const splashTargets = getAdjacentTerritories(room.mapData.connections, targetId);
@@ -1683,10 +1707,10 @@ function fireNuke(room, playerId, sourceId, targetId, isThermo) {
       }
     });
 
-    addLog(gameState, `🚀 THERMONUCLEAR DETONATION! ${player.name} detonated a thermonuclear weapon on ${getTerritoryName(room.mapData, targetId)}! Splash damage applied to adjacent borders. Radioactive for 2 turns.`);
+    addLog(gameState, `🚀 THERMONUCLEAR DETONATION! ${player.name} fired a thermonuclear missile from ${getTerritoryName(room.mapData, sourceId)} onto ${getTerritoryName(room.mapData, targetId)}! Splash damage applied to adjacent borders. Radioactive for 2 full turns.`);
   } else {
-    gameState.radiation[targetId] = 1; // Radioactive for 1 turn
-    addLog(gameState, `☢️ DETONATION: ${player.name} detonated a tactical nuke on ${getTerritoryName(room.mapData, targetId)}! Radioactive for 1 turn.`);
+    gameState.radiation[targetId] = 1; // Radioactive for 1 FULL turn (round)
+    addLog(gameState, `☢️ DETONATION: ${player.name} fired a tactical nuke from ${getTerritoryName(room.mapData, sourceId)} onto ${getTerritoryName(room.mapData, targetId)}! Radioactive for 1 full turn.`);
   }
 
   // Force sync
@@ -1714,6 +1738,7 @@ module.exports = {
   calculateFixedTradeBonus,
   endTurn,
   calculateReinforcements,
+  findValidCardSetIndices,
   getAdjacentTerritories,
   hasAlliedPath,
   checkWinCondition

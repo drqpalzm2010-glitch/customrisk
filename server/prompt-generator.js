@@ -159,9 +159,11 @@ const PERSONALITY_DESCRIPTIONS = {
   if (mapData.continents) {
     mapData.continents.forEach(c => {
       if (!c.territoryIds || c.territoryIds.length === 0) return;
-      const owners = c.territoryIds.map(tid => gameState.territories[tid] ? gameState.territories[tid].ownerId : null);
+      const pgBlizzardSet = new Set(gameState.blizzards || []);
+      const activeTids = c.territoryIds.filter(tid => !pgBlizzardSet.has(tid));
+      const owners = activeTids.map(tid => gameState.territories[tid] ? gameState.territories[tid].ownerId : null);
       const firstOwner = owners[0];
-      const isFullyControlled = firstOwner && firstOwner !== 'dummy' && owners.every(o => o === firstOwner);
+      const isFullyControlled = activeTids.length > 0 && firstOwner && firstOwner !== 'dummy' && owners.every(o => o === firstOwner);
 
       if (isFullyControlled) {
         const ownerName = getPlayerName(gameState.players, firstOwner);

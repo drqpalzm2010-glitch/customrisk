@@ -1172,7 +1172,7 @@ function runAITurn(room, io) {
       }, 50);
     } else if (gameState.turnStage === 'ATTACK') {
       // 4. Attack phase
-      const decision = AIEngine.makeAttackDecision(room, currentPlayer.id);
+      const decision = AIEngine.makeAttackDecision(room, currentPlayer.id, io);
       if (decision) {
         let res;
         if (room.aiBlitz) {

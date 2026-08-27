@@ -153,15 +153,17 @@
       const mapData = window.SocketClient.mapData || this.gameState.mapData;
       if (!mapData) return 3;
 
+      const blizzardSet = new Set(this.gameState.blizzards || []);
       const ownedTerritories = Object.keys(this.gameState.territories).filter(
-        tid => this.gameState.territories[tid].ownerId === playerId
+        tid => this.gameState.territories[tid].ownerId === playerId && !blizzardSet.has(tid)
       );
       let baseIncome = Math.max(3, Math.floor(ownedTerritories.length / 3));
 
       let continentBonus = 0;
       if (mapData.continents) {
         mapData.continents.forEach(cont => {
-          const allOwned = cont.territoryIds.every(
+          const activeTids = cont.territoryIds.filter(tid => !blizzardSet.has(tid));
+          const allOwned = activeTids.length > 0 && activeTids.every(
             tid => this.gameState.territories[tid] && this.gameState.territories[tid].ownerId === playerId
           );
           if (allOwned) {
@@ -509,7 +511,7 @@
             const btnThermo = document.getElementById('btn-action-thermonuke');
             if (btnThermo) btnThermo.classList.remove('active-pulsing');
             this.selectedLaunchPadId = null;
-            this.lblInstructions.innerHTML = `⚠️ **LAUNCH SEQUENCING**: Select one of your adjacent territories (with >= 2 armies) to act as the Launch Pad Silo.`;
+            this.lblInstructions.innerHTML = `⚠️ **LAUNCH SEQUENCING**: Select one of your territories (with >= 2 armies) to act as the Launch Pad Silo.`;
           }
         });
       }
@@ -827,18 +829,21 @@
 
       const isGenerative = !!this.gameState.generativeAIMode || !!window.SocketClient.spectatorMode;
 
-      if (nukesPanel && this.gameState.allowCrafting && !isGenerative) {
+      const mePlayer = this.gameState.players.find(p => p.id === window.SocketClient.socket.id);
+      const hasWeapons = !!(mePlayer && ((mePlayer.nukes || 0) > 0 || (mePlayer.thermonukes || 0) > 0));
+
+      // Show the Arsenal on the left sidebar whenever crafting is enabled OR the player holds any weapons
+      if (nukesPanel && ((this.gameState.allowCrafting && !isGenerative) || hasWeapons)) {
         nukesPanel.style.display = 'block';
         
-        const me = this.gameState.players.find(p => p.id === window.SocketClient.socket.id);
-        if (lblTactCount && me) lblTactCount.textContent = me.nukes || 0;
-        if (lblTherCount && me) lblTherCount.textContent = me.thermonukes || 0;
+        if (lblTactCount && mePlayer) lblTactCount.textContent = mePlayer.nukes || 0;
+        if (lblTherCount && mePlayer) lblTherCount.textContent = mePlayer.thermonukes || 0;
 
-        if (isMyTurn && stage === 'DRAFT') {
+        if (isMyTurn && stage === 'DRAFT' && this.gameState.allowCrafting && !isGenerative) {
           document.getElementById('nuke-craft-buttons-row').style.display = 'flex';
           
           // Crafting validation: 3 cards of any type for Tactical Nuke
-          if (btnCraftTact) btnCraftTact.disabled = !(me && me.cards && me.cards.length >= 3);
+          if (btnCraftTact) btnCraftTact.disabled = !(mePlayer && mePlayer.cards && mePlayer.cards.length >= 3);
           // Crafting validation: 3 cards forming a valid set for Thermonuke
           if (btnCraftTher) btnCraftTher.disabled = !this.isValidCardSetSelected();
         } else {
@@ -1500,13 +1505,8 @@
               return;
             }
             this.selectedLaunchPadId = territoryId;
-            this.lblInstructions.innerHTML = `⚠️ **LAUNCH SEQUENCING**: Launch pad Silo locked on ${this.getTerritoryName(territoryId)}. Select an adjacent territory (self, ally, or opponent) to detonate!`;
+            this.lblInstructions.innerHTML = `⚠️ **LAUNCH SEQUENCING**: Launch pad Silo locked on ${this.getTerritoryName(territoryId)}. Select any territory on the map (self, ally, or opponent) to detonate!`;
           } else {
-            const adjacents = this.getAdjacentTerritories(this.selectedLaunchPadId);
-            if (!adjacents.includes(territoryId)) {
-              alert('Launch target must be adjacent to your locked Launch Pad Silo.');
-              return;
-            }
 
             if (confirm(`🚨 DETONATION WARNING: Fire Nuclear missile from ${this.getTerritoryName(this.selectedLaunchPadId)} and detonate on ${this.getTerritoryName(territoryId)}? This action is irreversible.`)) {
               const srcId = this.selectedLaunchPadId;
@@ -1736,6 +1736,11 @@
           selectHtml = p.isAI ? `<span class="personality-badge ${p.isLLM ? 'llm' : (p.personality || 'normal')}">${p.isLLM ? 'LLM' : (p.personality || 'normal').toUpperCase()}</span>` : '';
         }
 
+        // Show every player's nuke stockpile when crafting is enabled or anyone holds weapons
+        const arsenalVisible = this.gameState.allowCrafting || this.gameState.players.some(pl => (pl.nukes || 0) > 0 || (pl.thermonukes || 0) > 0);
+        const nukeCountsHtml = arsenalVisible
+          ? '<span style="font-size: 10px; font-weight: 700; margin-top: 1px;"><span style="color: #22c55e;"><i class="fa-solid fa-radiation"></i> ' + (p.nukes || 0) + '</span> <span style="color: #a855f7;"><i class="fa-solid fa-rocket"></i> ' + (p.thermonukes || 0) + '</span></span>'
+          : '';
         const income = this.calculatePlayerIncome(p.id);
         item.innerHTML = `
           <div class="player-color-dot" style="background-color: ${p.color};"></div>
@@ -1744,6 +1749,7 @@
           <span class="game-player-stats" style="display: flex; flex-direction: column; align-items: flex-end; line-height: 1.25;">
             <span><i class="fa-solid fa-earth-americas"></i> ${owned.length} | <i class="fa-solid fa-person-military-pointing"></i> ${totalArmies}</span>
             <span style="color: var(--warning); font-weight: 700; font-size: 10px; margin-top: 1px;"><i class="fa-solid fa-circle-plus"></i> +${income}/turn</span>
+            ${nukeCountsHtml}
           </span>
         `;
 
@@ -1869,9 +1875,11 @@
         let controllerName = null;
         let controllerColor = '#ffffff';
         if (this.gameState) {
-          const owners = c.territoryIds.map(tid => this.gameState.territories[tid]?.ownerId);
+          const legendBlizzardSet = new Set(this.gameState.blizzards || []);
+          const activeTerrs = c.territoryIds.filter(tid => !legendBlizzardSet.has(tid));
+          const owners = activeTerrs.map(tid => this.gameState.territories[tid] ? this.gameState.territories[tid].ownerId : null);
           const firstOwner = owners[0];
-          if (firstOwner && owners.every(o => o === firstOwner)) {
+          if (activeTerrs.length > 0 && firstOwner && firstOwner !== 'dummy' && owners.every(o => o === firstOwner)) {
             const player = this.gameState.players.find(p => p.id === firstOwner);
             if (player) {
               controllerName = player.name;
@@ -1887,7 +1895,7 @@
             <div class="continent-color-indicator" style="background-color: ${c.color || '#a855f7'}"></div>
             <span class="continent-legend-name" style="${controllerName ? `color: ${controllerColor}; text-shadow: 0 0 4px ${controllerColor}66` : ''}">${c.name}${controlText}</span>
           </div>
-          <span class="continent-legend-bonus">+${c.bonus}</span>
+          <span class="continent-legend-bonus" style="${controllerName ? 'background: rgba(34,197,94,0.18); border-color: #22c55e; color: #22c55e;' : ''}">+${c.bonus}${controllerName ? ' *' : ''}</span>
         `;
 
         // Highlight territories on map when hovering over the continent legend item
@@ -4032,9 +4040,11 @@
 
       mapData.continents.forEach(c => {
         if (!c.territoryIds || c.territoryIds.length === 0) return;
-        const owners = c.territoryIds.map(tid => this.gameState.territories[tid] ? this.gameState.territories[tid].ownerId : null);
+        const advBlizzardSet = new Set(this.gameState.blizzards || []);
+        const activeTids = c.territoryIds.filter(tid => !advBlizzardSet.has(tid));
+        const owners = activeTids.map(tid => this.gameState.territories[tid] ? this.gameState.territories[tid].ownerId : null);
         const firstOwner = owners[0];
-        const isFullyControlled = firstOwner && firstOwner !== 'dummy' && owners.every(o => o === firstOwner);
+        const isFullyControlled = activeTids.length > 0 && firstOwner && firstOwner !== 'dummy' && owners.every(o => o === firstOwner);
 
         if (isFullyControlled) {
           const ownerName = this.getPlayerName(firstOwner);
