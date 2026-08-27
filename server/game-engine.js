@@ -919,19 +919,52 @@ function resolveCombatRolls(room, sourceId, targetId, attackerDiceCount, defende
     addLog(gameState, `${currentPlayer.name} attacked ${getTerritoryName(room.mapData, targetId)}. Rolls — Attacker: [${attackerRolls.join(', ')}], Defender: [${defenderRolls.join(', ')}]. Attacker lost ${attackerLosses}, Defender lost ${defenderLosses}.`);
   }
 
+  // Track territory casualties
+  gameState.territoryCasualties = gameState.territoryCasualties || {};
+  gameState.territoryCasualties[targetId] = (gameState.territoryCasualties[targetId] || 0) + defenderLosses;
+  gameState.territoryCasualties[sourceId] = (gameState.territoryCasualties[sourceId] || 0) + attackerLosses;
+  if (gameState.territories[targetId]) {
+    gameState.territories[targetId].casualties = (gameState.territories[targetId].casualties || 0) + defenderLosses;
+  }
+  if (gameState.territories[sourceId]) {
+    gameState.territories[sourceId].casualties = (gameState.territories[sourceId].casualties || 0) + attackerLosses;
+  }
+
   // Update stats
   if (attackerPlayer) {
     attackerPlayer.stats = attackerPlayer.stats || { drafted: 0, killed: 0, lost: 0, territoriesConquered: 0 };
     attackerPlayer.stats.killed += defenderLosses;
     attackerPlayer.stats.lost += attackerLosses;
+    attackerPlayer.stats.diceRollsCount = (attackerPlayer.stats.diceRollsCount || 0) + attackerRolls.length;
+    attackerPlayer.stats.diceRollsSum = (attackerPlayer.stats.diceRollsSum || 0) + attackerRolls.reduce((a, b) => a + b, 0);
+    attackerPlayer.stats.diceRollComparisons = (attackerPlayer.stats.diceRollComparisons || 0) + comparisons;
+    attackerPlayer.stats.diceRollWins = (attackerPlayer.stats.diceRollWins || 0) + defenderLosses;
+    if (betrayed) {
+      attackerPlayer.stats.betrayals = (attackerPlayer.stats.betrayals || 0) + 1;
+    }
     if (captured) {
-      attackerPlayer.stats.territoriesConquered++;
+      attackerPlayer.stats.territoriesConquered = (attackerPlayer.stats.territoriesConquered || 0) + 1;
+      attackerPlayer.stats.currentTurnConquests = (attackerPlayer.stats.currentTurnConquests || 0) + 1;
+      if (attackerPlayer.stats.currentTurnConquests > (attackerPlayer.stats.maxConquestsInTurn || 0)) {
+        attackerPlayer.stats.maxConquestsInTurn = attackerPlayer.stats.currentTurnConquests;
+      }
     }
   }
   if (defenderPlayer) {
     defenderPlayer.stats = defenderPlayer.stats || { drafted: 0, killed: 0, lost: 0, territoriesConquered: 0 };
     defenderPlayer.stats.killed += attackerLosses;
     defenderPlayer.stats.lost += defenderLosses;
+    defenderPlayer.stats.defendedKills = (defenderPlayer.stats.defendedKills || 0) + attackerLosses;
+    defenderPlayer.stats.diceRollsCount = (defenderPlayer.stats.diceRollsCount || 0) + defenderRolls.length;
+    defenderPlayer.stats.diceRollsSum = (defenderPlayer.stats.diceRollsSum || 0) + defenderRolls.reduce((a, b) => a + b, 0);
+    defenderPlayer.stats.diceRollComparisons = (defenderPlayer.stats.diceRollComparisons || 0) + comparisons;
+    defenderPlayer.stats.diceRollWins = (defenderPlayer.stats.diceRollWins || 0) + attackerLosses;
+    if (captured) {
+      defenderPlayer.stats.currentTurnLost = (defenderPlayer.stats.currentTurnLost || 0) + 1;
+      if (defenderPlayer.stats.currentTurnLost > (defenderPlayer.stats.maxTerritoriesLostInTurn || 0)) {
+        defenderPlayer.stats.maxTerritoriesLostInTurn = defenderPlayer.stats.currentTurnLost;
+      }
+    }
   }
 
   gameState.lastDiceRolls = {
@@ -1061,6 +1094,14 @@ function endTurn(room) {
   // Reset turn flags
   gameState.conqueredThisTurn = false;
   gameState.lastDiceRolls = null;
+  if (gameState.players) {
+    gameState.players.forEach(p => {
+      if (p.stats) {
+        p.stats.currentTurnConquests = 0;
+        p.stats.currentTurnLost = 0;
+      }
+    });
+  }
 
   // Advance turn to next active player
   const numPlayers = gameState.players.length;

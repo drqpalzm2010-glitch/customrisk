@@ -25,6 +25,7 @@
       this.panY = 0;
       this.isPanning = false;
       this.hasDragged = false;
+      this.activeProjectileCount = 0;
     }
 
     render(mapData, gameState = null) {
@@ -185,6 +186,27 @@
         });
       }
 
+      // Compute total global armies across map for dynamic fortress & battlescarred threshold
+      let globalArmyCount = 0;
+      if (gameState && gameState.territories) {
+        Object.values(gameState.territories).forEach(t => {
+          globalArmyCount += (t.armies || 0);
+        });
+      } else if (mapData && mapData.territories) {
+        mapData.territories.forEach(t => {
+          globalArmyCount += (t.startingArmies || 1);
+        });
+      }
+
+      let fortressThreshold = 20;
+      if (globalArmyCount <= 100) {
+        fortressThreshold = 10;
+      } else if (globalArmyCount <= 200) {
+        fortressThreshold = 15;
+      } else {
+        fortressThreshold = 20;
+      }
+
       // 3. Draw Territory Polygons
       mapData.territories.forEach(terr => {
         if (!terr.points || terr.points.length === 0) return;
@@ -246,6 +268,12 @@
         // Fill color combining owner color and transparency
         polygon.style.fill = ownerColor;
         polygon.style.fillOpacity = '0.55';
+
+        // Check if territory is Battlescarred (cumulative casualties meet/exceed fortressThreshold)
+        const territoryCasualties = (gameState && gameState.territoryCasualties && gameState.territoryCasualties[terr.id]) || (gameState && gameState.territories && gameState.territories[terr.id] && gameState.territories[terr.id].casualties) || 0;
+        if (territoryCasualties >= fortressThreshold && !this.options.isEditor) {
+          polygon.classList.add('battlescarred-poly');
+        }
 
         // Mouse Events
         polygon.addEventListener('click', (e) => {
@@ -364,6 +392,39 @@
           glowRing.style.filter = "drop-shadow(0 0 6px rgba(251,191,36,0.9))";
           glowRing.style.pointerEvents = "none";
           g.appendChild(glowRing);
+        }
+
+        // Draw Fortress Citadel icon if troops >= fortress threshold
+        if (troopCount >= fortressThreshold && !this.options.isEditor) {
+          const fortressGroup = document.createElementNS(svgNamespace, "g");
+          fortressGroup.setAttribute("class", "fortress-citadel-badge");
+          fortressGroup.setAttribute("transform", `translate(${terr.center[0] + 13}, ${terr.center[1] - 14}) scale(0.85)`);
+          fortressGroup.style.pointerEvents = "none";
+          fortressGroup.innerHTML = `
+            <rect x="-8" y="-4" width="16" height="12" rx="1.5" fill="#334155" stroke="#f1f5f9" stroke-width="1.5"/>
+            <rect x="-8" y="-8" width="4" height="4" rx="0.5" fill="#475569" stroke="#f1f5f9" stroke-width="1"/>
+            <rect x="-2" y="-8" width="4" height="4" rx="0.5" fill="#475569" stroke="#f1f5f9" stroke-width="1"/>
+            <rect x="4" y="-8" width="4" height="4" rx="0.5" fill="#475569" stroke="#f1f5f9" stroke-width="1"/>
+            <path d="M -3 8 L -3 3 A 3 3 0 0 1 3 3 L 3 8 Z" fill="#0f172a"/>
+            <line x1="0" y1="-8" x2="0" y2="-13" stroke="#f59e0b" stroke-width="1.5"/>
+            <polygon points="0,-13 6,-11 0,-9" fill="#f59e0b"/>
+          `;
+          g.appendChild(fortressGroup);
+        }
+
+        // Draw Battlescarred Crossed Swords Marker if cumulative casualties >= fortressThreshold
+        const territoryCasualties = (gameState && gameState.territoryCasualties && gameState.territoryCasualties[terr.id]) || (gameState && gameState.territories && gameState.territories[terr.id] && gameState.territories[terr.id].casualties) || 0;
+        if (territoryCasualties >= fortressThreshold && !this.options.isEditor) {
+          const scarGroup = document.createElementNS(svgNamespace, "g");
+          scarGroup.setAttribute("class", "battlescarred-marker");
+          scarGroup.setAttribute("transform", `translate(${terr.center[0] - 13}, ${terr.center[1] - 14}) scale(0.8)`);
+          scarGroup.style.pointerEvents = "none";
+          scarGroup.innerHTML = `
+            <circle cx="0" cy="0" r="8" fill="#1c1917" stroke="#78716c" stroke-dasharray="3 2" stroke-width="1.2" opacity="0.9"/>
+            <path d="M -5 -5 L 5 5 M -3 -6 L -6 -3 M 3 6 L 6 3" stroke="#ef4444" stroke-width="1.6" stroke-linecap="round"/>
+            <path d="M 5 -5 L -5 5 M 3 -6 L 6 -3 M -3 6 L -6 3" stroke="#ef4444" stroke-width="1.6" stroke-linecap="round"/>
+          `;
+          g.appendChild(scarGroup);
         }
 
         // Army Badge text (friendly troop numbers)
@@ -578,82 +639,327 @@
       }
     }
 
-    // Artillery / Cannon Shelling Visual Effect on Target
-    triggerCombatArtillery(sourceCenter, targetCenter, isConquest = false) {
+    // Ballistic Artillery Cannon & Projectile Arc Animation
+    fireBallisticArtillery(sourceCenter, targetCenter, options = {}) {
+      if (!this.transformGroup || !sourceCenter || !targetCenter) return;
+      
+      const { shooterColor = '#ff4400', isConquest = false, onImpact = null } = options;
+      const [x1, y1] = sourceCenter;
+      let [x2, y2] = targetCenter;
+
+      const mapWidth = (this.mapData && this.mapData.width) || 1200;
+      const dx = x2 - x1;
+      const isWrapAround = Math.abs(dx) > (mapWidth * 0.65);
+      if (isWrapAround) {
+        if (dx > 0) x2 -= mapWidth;
+        else x2 += mapWidth;
+      }
+
+      // Blitz / Performance Limiter: if over 10 active projectiles, trigger impact immediately without lag
+      if (this.activeProjectileCount >= 10) {
+        this.triggerExplosionEffect([x2, y2], isConquest, onImpact);
+        return;
+      }
+
+      this.activeProjectileCount++;
+
+      // 1. Render Cannon on firing territory
+      const cannonAngle = Math.atan2(y2 - y1, x2 - x1) * (180 / Math.PI);
+      const cannonGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      cannonGroup.style.pointerEvents = "none";
+      cannonGroup.setAttribute("transform", `translate(${x1}, ${y1}) rotate(${cannonAngle})`);
+
+      // Cannon Carriage, Wheels & Barrel
+      cannonGroup.innerHTML = `
+        <circle cx="-4" cy="-6" r="3.5" fill="#1e293b" stroke="#0f172a" stroke-width="1"/>
+        <circle cx="-4" cy="6" r="3.5" fill="#1e293b" stroke="#0f172a" stroke-width="1"/>
+        <rect x="-8" y="-4" width="11" height="8" rx="2" fill="#334155" stroke="#0f172a" stroke-width="1"/>
+        <rect x="-2" y="-3" width="16" height="6" rx="1.5" fill="${shooterColor}" stroke="#0f172a" stroke-width="1.2"/>
+        <circle cx="16" cy="0" r="7" fill="#ffeedd" stroke="#ff6600" stroke-width="2" class="cannon-muzzle-flare"/>
+      `;
+      this.transformGroup.appendChild(cannonGroup);
+
+      // Fade out cannon after shot
+      setTimeout(() => {
+        cannonGroup.style.transition = "opacity 0.4s ease-out";
+        cannonGroup.style.opacity = "0";
+        setTimeout(() => cannonGroup.remove(), 450);
+      }, 350);
+
+      // 2. Compute Ballistic Arc Trajectory
+      const dist = Math.hypot(x2 - x1, y2 - y1) || 1;
+      const arcHeight = Math.min(130, Math.max(35, dist * 0.28));
+      const mx = (x1 + x2) / 2;
+      const my = (y1 + y2) / 2;
+      // Perpendicular normal elevated for high parabolic arc
+      const nx = -(y2 - y1) / dist;
+      const ny = (x2 - x1) / dist;
+      const cx = mx + nx * (arcHeight * 0.35);
+      const cy = my + ny * (arcHeight * 0.35) - arcHeight;
+
+      // Projectile Shell element
+      const projectileGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      projectileGroup.style.pointerEvents = "none";
+
+      const projectileGlow = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      projectileGlow.setAttribute("r", "6");
+      projectileGlow.setAttribute("fill", "#ff4400");
+      projectileGlow.setAttribute("fill-opacity", "0.7");
+      projectileGlow.setAttribute("filter", "drop-shadow(0 0 6px #ffcc00)");
+      projectileGroup.appendChild(projectileGlow);
+
+      const projectileCore = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      projectileCore.setAttribute("r", "3.5");
+      projectileCore.setAttribute("fill", "#ffeedd");
+      projectileCore.setAttribute("stroke", "#ffffff");
+      projectileCore.setAttribute("stroke-width", "1");
+      projectileGroup.appendChild(projectileCore);
+
+      this.transformGroup.appendChild(projectileGroup);
+
+      // Flight Animation
+      const flightDuration = Math.min(480, Math.max(300, dist * 1.1));
+      const startTime = performance.now();
+
+      const animateFlight = (now) => {
+        const elapsed = now - startTime;
+        const t = Math.min(1, elapsed / flightDuration);
+
+        // Quadratic Bezier interpolation
+        const invT = 1 - t;
+        const curX = invT * invT * x1 + 2 * invT * t * cx + t * t * x2;
+        const curY = invT * invT * y1 + 2 * invT * t * cy + t * t * y2;
+
+        projectileGroup.setAttribute("transform", `translate(${curX}, ${curY})`);
+
+        if (t < 1) {
+          requestAnimationFrame(animateFlight);
+        } else {
+          projectileGroup.remove();
+          this.activeProjectileCount = Math.max(0, this.activeProjectileCount - 1);
+          // 3. Impact & Explosion on landing
+          this.triggerExplosionEffect([x2, y2], isConquest, onImpact);
+        }
+      };
+
+      requestAnimationFrame(animateFlight);
+    }
+
+    // Impact Explosion Effect
+    triggerExplosionEffect(targetCenter, isConquest = false, onImpact = null) {
       if (!this.transformGroup || !targetCenter) return;
       const [tx, ty] = targetCenter;
 
-      const burstGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
-      burstGroup.style.pointerEvents = "none";
+      const expGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      expGroup.style.pointerEvents = "none";
+      expGroup.setAttribute("transform", `translate(${tx}, ${ty})`);
 
-      const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      circle.setAttribute("cx", tx);
-      circle.setAttribute("cy", ty);
-      circle.setAttribute("r", "5");
-      circle.setAttribute("fill", isConquest ? "#00ffcc" : "#ff3300");
-      circle.setAttribute("fill-opacity", "0.7");
-      circle.setAttribute("stroke", "#ffffff");
-      circle.setAttribute("stroke-width", "3");
-      burstGroup.appendChild(circle);
+      // Fireball Flash
+      const flash = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      flash.setAttribute("r", "5");
+      flash.setAttribute("fill", isConquest ? "#00ffcc" : "#ff3322");
+      flash.setAttribute("fill-opacity", "0.9");
+      flash.setAttribute("stroke", "#ffffff");
+      flash.setAttribute("stroke-width", "3");
+      expGroup.appendChild(flash);
 
-      this.transformGroup.appendChild(burstGroup);
+      // Expanding Shockwave Ring
+      const shockwave = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      shockwave.setAttribute("r", "8");
+      shockwave.setAttribute("fill", "none");
+      shockwave.setAttribute("stroke", isConquest ? "#00ffcc" : "#ff3322");
+      shockwave.setAttribute("stroke-width", "3.5");
+      expGroup.appendChild(shockwave);
 
+      // Spark debris lines
+      const sparkCount = 7;
+      const sparks = [];
+      for (let i = 0; i < sparkCount; i++) {
+        const spark = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        const angle = (i / sparkCount) * Math.PI * 2 + (Math.random() * 0.4);
+        const dist = 18 + Math.random() * 16;
+        spark.setAttribute("x1", "0");
+        spark.setAttribute("y1", "0");
+        spark.setAttribute("x2", (Math.cos(angle) * dist).toFixed(1));
+        spark.setAttribute("y2", (Math.sin(angle) * dist).toFixed(1));
+        spark.setAttribute("stroke", i % 2 === 0 ? "#ffcc00" : "#ffffff");
+        spark.setAttribute("stroke-width", "2");
+        spark.setAttribute("stroke-linecap", "round");
+        expGroup.appendChild(spark);
+        sparks.push(spark);
+      }
+
+      this.transformGroup.appendChild(expGroup);
+
+      if (typeof onImpact === 'function') {
+        onImpact();
+      }
+
+      // Animate explosion
       const startTime = performance.now();
-      const duration = 750;
-      const maxR = isConquest ? 50 : 35;
+      const expDuration = 650;
+      const maxFlashR = isConquest ? 36 : 26;
+      const maxWaveR = isConquest ? 52 : 42;
 
-      const animate = (time) => {
-        const elapsed = time - startTime;
-        const progress = Math.min(1, elapsed / duration);
-        const currentR = 5 + (maxR - 5) * Math.sin((progress * Math.PI) / 2);
-        const opacity = 1 - progress;
+      const animateExp = (now) => {
+        const elapsed = now - startTime;
+        const p = Math.min(1, elapsed / expDuration);
+        const invP = 1 - p;
 
-        circle.setAttribute("r", currentR.toString());
-        circle.setAttribute("fill-opacity", (0.7 * opacity).toString());
-        circle.setAttribute("stroke-opacity", opacity.toString());
+        // Flash expands then contracts
+        const flashR = p < 0.3 ? 5 + (maxFlashR - 5) * (p / 0.3) : maxFlashR * (1 - (p - 0.3) / 0.7);
+        flash.setAttribute("r", Math.max(1, flashR).toString());
+        flash.setAttribute("fill-opacity", (0.9 * invP).toString());
+        flash.setAttribute("stroke-opacity", invP.toString());
 
-        if (progress < 1) {
-          requestAnimationFrame(animate);
+        // Shockwave expands outwards
+        const waveR = 8 + (maxWaveR - 8) * Math.sin((p * Math.PI) / 2);
+        shockwave.setAttribute("r", waveR.toString());
+        shockwave.setAttribute("stroke-opacity", (invP * 0.9).toString());
+
+        // Sparks fade
+        sparks.forEach(s => s.setAttribute("stroke-opacity", (invP * 0.85).toString()));
+
+        if (p < 1) {
+          requestAnimationFrame(animateExp);
         } else {
-          burstGroup.remove();
+          expGroup.remove();
         }
       };
-      requestAnimationFrame(animate);
+      requestAnimationFrame(animateExp);
     }
 
-    // Brief Conquest Flash Ripple
+    // Alias for legacy triggerCombatArtillery
+    triggerCombatArtillery(sourceCenter, targetCenter, isConquest = false) {
+      this.fireBallisticArtillery(sourceCenter, targetCenter, {
+        isConquest,
+        onImpact: () => {
+          if (isConquest) {
+            this.triggerConquestShockwave(targetCenter);
+          }
+        }
+      });
+    }
+
+    // Tanks Advance on Territory Conquest
+    animateConquestTanks(sourceCenter, targetCenter, conquerorColor = '#00e5ff', onComplete = null) {
+      if (!this.transformGroup || !sourceCenter || !targetCenter) {
+        if (typeof onComplete === 'function') onComplete();
+        return;
+      }
+
+      const [x1, y1] = sourceCenter;
+      let [x2, y2] = targetCenter;
+
+      const mapWidth = (this.mapData && this.mapData.width) || 1200;
+      const dx = x2 - x1;
+      const isWrapAround = Math.abs(dx) > (mapWidth * 0.65);
+      if (isWrapAround) {
+        if (dx > 0) x2 -= mapWidth;
+        else x2 += mapWidth;
+      }
+
+      const angle = Math.atan2(y2 - y1, x2 - x1) * (180 / Math.PI);
+      const perpAngle = angle + 90;
+      const perpRad = perpAngle * (Math.PI / 180);
+
+      // Create 2 mini tanks in formation
+      const tankOffsets = [
+        { perp: 7, delay: 0 },
+        { perp: -7, delay: 50 }
+      ];
+
+      const tankElements = tankOffsets.map((cfg) => {
+        const tg = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        tg.style.pointerEvents = "none";
+        tg.innerHTML = `
+          <rect x="-10" y="-7" width="20" height="3" rx="1" fill="#0f172a"/>
+          <rect x="-10" y="4" width="20" height="3" rx="1" fill="#0f172a"/>
+          <rect x="-9" y="-5" width="18" height="10" rx="2" fill="${conquerorColor}" stroke="#0f172a" stroke-width="1.2"/>
+          <circle cx="-1" cy="0" r="3.5" fill="#0f172a" stroke="${conquerorColor}" stroke-width="1"/>
+          <line x1="0" y1="0" x2="11" y2="0" stroke="#0f172a" stroke-width="2.5" stroke-linecap="round"/>
+        `;
+        this.transformGroup.appendChild(tg);
+        return { el: tg, cfg };
+      });
+
+      const moveDuration = 480;
+      const startTime = performance.now();
+
+      const animateTanks = (now) => {
+        const elapsed = now - startTime;
+        let allDone = true;
+
+        tankElements.forEach(({ el, cfg }) => {
+          const tElapsed = Math.max(0, elapsed - cfg.delay);
+          const p = Math.min(1, tElapsed / moveDuration);
+
+          if (p < 1) allDone = false;
+
+          // Position along path with lateral formation offset
+          const curX = x1 + (x2 - x1) * p + Math.cos(perpRad) * cfg.perp;
+          const curY = y1 + (y2 - y1) * p + Math.sin(perpRad) * cfg.perp;
+          const opacity = p > 0.85 ? (1 - (p - 0.85) / 0.15) : 1;
+
+          el.setAttribute("transform", `translate(${curX}, ${curY}) rotate(${angle})`);
+          el.style.opacity = opacity.toString();
+        });
+
+        if (!allDone) {
+          requestAnimationFrame(animateTanks);
+        } else {
+          tankElements.forEach(({ el }) => el.remove());
+          this.triggerConquestShockwave([x2, y2], conquerorColor);
+          if (typeof onComplete === 'function') onComplete();
+        }
+      };
+
+      requestAnimationFrame(animateTanks);
+    }
+
+    // Brief Conquest Flash Ripple with celebratory particles
     triggerConquestShockwave(targetCenter, conquerorColor = '#00e5ff') {
       if (!this.transformGroup || !targetCenter) return;
       const [tx, ty] = targetCenter;
 
       const conquestGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
       conquestGroup.style.pointerEvents = "none";
+      conquestGroup.setAttribute("transform", `translate(${tx}, ${ty})`);
 
-      const ripple = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      ripple.setAttribute("cx", tx);
-      ripple.setAttribute("cy", ty);
-      ripple.setAttribute("r", "10");
-      ripple.setAttribute("fill", conquerorColor);
-      ripple.setAttribute("fill-opacity", "0.4");
-      ripple.setAttribute("stroke", "#ffffff");
-      ripple.setAttribute("stroke-width", "4");
-      conquestGroup.appendChild(ripple);
+      const ripple1 = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      ripple1.setAttribute("r", "12");
+      ripple1.setAttribute("fill", conquerorColor);
+      ripple1.setAttribute("fill-opacity", "0.4");
+      ripple1.setAttribute("stroke", "#ffffff");
+      ripple1.setAttribute("stroke-width", "4");
+      conquestGroup.appendChild(ripple1);
+
+      const ripple2 = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      ripple2.setAttribute("r", "6");
+      ripple2.setAttribute("fill", "none");
+      ripple2.setAttribute("stroke", conquerorColor);
+      ripple2.setAttribute("stroke-width", "3");
+      conquestGroup.appendChild(ripple2);
 
       this.transformGroup.appendChild(conquestGroup);
 
       const startTime = performance.now();
       const duration = 1100;
-      const maxR = 75;
+      const maxR = 80;
 
       const animate = (time) => {
         const elapsed = time - startTime;
         const progress = Math.min(1, elapsed / duration);
-        const currentR = 10 + (maxR - 10) * (1 - Math.pow(1 - progress, 3));
+        const currentR1 = 12 + (maxR - 12) * (1 - Math.pow(1 - progress, 3));
+        const currentR2 = 6 + (maxR * 0.7 - 6) * (1 - Math.pow(1 - progress, 2.5));
         const opacity = 1 - progress;
 
-        ripple.setAttribute("r", currentR.toString());
-        ripple.setAttribute("fill-opacity", (0.45 * opacity).toString());
-        ripple.setAttribute("stroke-opacity", opacity.toString());
+        ripple1.setAttribute("r", currentR1.toString());
+        ripple1.setAttribute("fill-opacity", (0.45 * opacity).toString());
+        ripple1.setAttribute("stroke-opacity", opacity.toString());
+
+        ripple2.setAttribute("r", currentR2.toString());
+        ripple2.setAttribute("stroke-opacity", (opacity * 0.8).toString());
 
         if (progress < 1) {
           requestAnimationFrame(animate);
@@ -662,6 +968,88 @@
         }
       };
       requestAnimationFrame(animate);
+    }
+
+    // Floating Casualty Damage Popup (with Blitz batch aggregation)
+    showFloatingCasualty(territoryId, amount) {
+      if (!this.transformGroup || !amount || amount <= 0) return;
+      const mapData = this.mapData || (window.SocketClient && window.SocketClient.mapData);
+      const terr = (mapData && mapData.territories) ? mapData.territories.find(t => t.id === territoryId) : null;
+      if (!terr || !terr.center) return;
+
+      this.activeDamageFloats = this.activeDamageFloats || {};
+
+      // If already active on this territory within rapid blitz window, aggregate numbers!
+      if (this.activeDamageFloats[territoryId]) {
+        const item = this.activeDamageFloats[territoryId];
+        item.totalAmount += amount;
+        item.textEl.textContent = `-${item.totalAmount}`;
+        item.startTime = performance.now(); // reset timer for aggregated burst
+        
+        // Punch scale bounce
+        item.textEl.setAttribute("font-size", item.totalAmount >= 10 ? "17px" : "15px");
+        item.textEl.style.transform = `scale(1.25)`;
+        setTimeout(() => {
+          if (item.textEl) item.textEl.style.transform = `scale(1)`;
+        }, 120);
+        return;
+      }
+
+      const svgNamespace = "http://www.w3.org/2000/svg";
+      const textEl = document.createElementNS(svgNamespace, "text");
+      textEl.setAttribute("class", "floating-damage-number");
+      textEl.setAttribute("text-anchor", "middle");
+      textEl.setAttribute("fill", "#ff3344");
+      textEl.setAttribute("stroke", "#000000");
+      textEl.setAttribute("stroke-width", "3");
+      textEl.setAttribute("paint-order", "stroke fill");
+      textEl.setAttribute("font-family", "Outfit, sans-serif");
+      textEl.setAttribute("font-size", amount >= 10 ? "17px" : "15px");
+      textEl.setAttribute("font-weight", "900");
+      textEl.style.pointerEvents = "none";
+      textEl.style.filter = "drop-shadow(0 2px 5px rgba(0,0,0,0.9))";
+      textEl.style.transition = "transform 0.12s ease-out";
+      textEl.textContent = `-${amount}`;
+
+      const [cx, cy] = terr.center;
+      const startY = cy - 8;
+      const endY = cy - 42;
+      textEl.setAttribute("transform", `translate(${cx}, ${startY})`);
+      this.transformGroup.appendChild(textEl);
+
+      const record = {
+        territoryId,
+        totalAmount: amount,
+        textEl,
+        curY: startY,
+        startTime: performance.now()
+      };
+      this.activeDamageFloats[territoryId] = record;
+
+      const duration = 1100;
+
+      const animateDamage = (now) => {
+        const elapsed = now - record.startTime;
+        const p = Math.min(1, elapsed / duration);
+
+        const curY = startY + (endY - startY) * Math.sin((p * Math.PI) / 2);
+        record.curY = curY;
+        const opacity = p > 0.65 ? (1 - (p - 0.65) / 0.35) : 1;
+
+        textEl.setAttribute("transform", `translate(${cx}, ${curY})`);
+        textEl.style.opacity = opacity.toString();
+
+        if (p < 1) {
+          requestAnimationFrame(animateDamage);
+        } else {
+          textEl.remove();
+          if (this.activeDamageFloats[territoryId] === record) {
+            delete this.activeDamageFloats[territoryId];
+          }
+        }
+      };
+
+      requestAnimationFrame(animateDamage);
     }
 
     // Continent Spotlight Highlight

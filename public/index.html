@@ -1103,10 +1103,20 @@
       <h2 id="victory-title" style="font-family: var(--font-display); font-weight: 800; font-size: 32px; letter-spacing: 2px; color: var(--primary);">CAMPAIGN WON!</h2>
       <p class="modal-subtitle" id="victory-subtitle" style="margin-bottom: 20px; font-size: 15px;">Commander has achieved total victory!</p>
       
-      <div class="victory-stats" style="background: rgba(0,0,0,0.3); border: 1px solid var(--border-glass); border-radius: 12px; padding: 15px; margin-bottom: 25px; text-align: left; font-size: 13px; display: flex; flex-direction: column; gap: 8px;">
+      <div class="victory-stats" style="background: rgba(0,0,0,0.3); border: 1px solid var(--border-glass); border-radius: 12px; padding: 15px; margin-bottom: 15px; text-align: left; font-size: 13px; display: flex; flex-direction: column; gap: 8px;">
         <div>🎮 Mode: <strong id="victory-stat-mode" style="color: var(--warning);">Conquest</strong></div>
         <div>🌍 Territories Controlled: <strong id="victory-stat-territories" style="color: var(--secondary);">0%</strong></div>
         <div>🎖️ Final Standing Armies: <strong id="victory-stat-armies" style="color: var(--primary);">0</strong></div>
+      </div>
+
+      <!-- Match MVP & Accolades -->
+      <div id="victory-accolades-section" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-glass); border-radius: 12px; padding: 12px 14px; margin-bottom: 20px; text-align: left;">
+        <h3 style="font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--primary); margin-bottom: 8px; font-weight: 700; display: flex; align-items: center; gap: 6px;">
+          <i class="fa-solid fa-medal"></i> Match Accolades & Records
+        </h3>
+        <div id="victory-accolades-list" style="display: flex; flex-direction: column; gap: 6px;">
+          <!-- Dynamic accolade cards -->
+        </div>
       </div>
 
       <div style="display: flex; gap: 10px; flex-direction: column;">

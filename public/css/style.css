@@ -1497,19 +1497,29 @@ svg.editor-canvas {
   stroke-linejoin: round;
 }
 
-.territory-poly.danger-frontline {
-  stroke: #ff3344 !important;
-  stroke-width: 2.5px !important;
-  stroke-dasharray: 6 3;
-  animation: dangerPulse 2.5s ease-in-out infinite;
+.territory-poly.battlescarred-poly {
+  filter: contrast(1.15) brightness(0.88);
 }
 
-@keyframes dangerPulse {
-  0%, 100% { stroke-opacity: 0.6; }
-  50% { stroke-opacity: 1; }
+.battlescarred-marker {
+  transition: transform 0.2s ease;
+}
+
+.army-badge-container:hover .battlescarred-marker {
+  transform: scale(1.1);
 }
 
 /* Artillery & Conquest Map Animations */
+.cannon-muzzle-flare {
+  animation: muzzleFlareAnim 0.22s ease-out forwards;
+}
+
+@keyframes muzzleFlareAnim {
+  0% { transform: scale(0.3); opacity: 1; }
+  40% { transform: scale(1.4); opacity: 0.9; }
+  100% { transform: scale(2.0); opacity: 0; }
+}
+
 .cannon-shockwave {
   animation: shockwaveExpand 0.7s cubic-bezier(0.1, 0.8, 0.3, 1) forwards;
 }

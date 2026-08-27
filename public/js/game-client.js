@@ -629,7 +629,13 @@
 
       const btnAdvisor = document.getElementById('btn-ask-ai-advisor');
       if (btnAdvisor) {
-        btnAdvisor.style.display = isMyTurn ? 'block' : 'none';
+        const hasKey = !!(
+          (document.getElementById('input-llm-api-key') && document.getElementById('input-llm-api-key').value.trim()) ||
+          (document.getElementById('input-watch-ai-llm-api-key') && document.getElementById('input-watch-ai-llm-api-key').value.trim()) ||
+          localStorage.getItem('llm_api_key') ||
+          (this.gameState && this.gameState.llmConfig && this.gameState.llmConfig.apiKey)
+        );
+        btnAdvisor.style.display = (isMyTurn && hasKey) ? 'block' : 'none';
       }
 
       // 3. Draft/Reinforcements count badge & Draft batch toolbar
@@ -769,6 +775,157 @@
               .filter(t => t.ownerId === winnerId)
               .reduce((sum, t) => sum + t.armies, 0);
             armyVal.textContent = totalArmiesLeft;
+          }
+
+          // Populate Post-Match Accolades & Records
+          const accoladesListEl = document.getElementById('victory-accolades-list');
+          if (accoladesListEl && this.gameState.players) {
+            accoladesListEl.innerHTML = '';
+            const players = this.gameState.players;
+            const accolades = [];
+
+            // 1. 🎯 Lucky Gambler (Highest dice duel win rate)
+            let bestGambler = null;
+            let bestGamblerRate = -1;
+            let bestGamblerWins = 0;
+            let bestGamblerTotal = 0;
+            players.forEach(p => {
+              const s = p.stats || {};
+              const comps = s.diceRollComparisons || 0;
+              if (comps >= 2) {
+                const rate = (s.diceRollWins || 0) / comps;
+                if (rate > bestGamblerRate) {
+                  bestGamblerRate = rate;
+                  bestGambler = p;
+                  bestGamblerWins = s.diceRollWins || 0;
+                  bestGamblerTotal = comps;
+                }
+              }
+            });
+            if (bestGambler && bestGamblerRate > 0) {
+              accolades.push({
+                icon: '🎯',
+                title: 'Lucky Gambler',
+                player: bestGambler,
+                desc: `${Math.round(bestGamblerRate * 100)}% Dice Duel Win Rate (${bestGamblerWins}/${bestGamblerTotal})`
+              });
+            }
+
+            // 2. 🛡️ Iron Fortress (Most casualties defended)
+            let ironFortress = null;
+            let maxDefended = 0;
+            players.forEach(p => {
+              const s = p.stats || {};
+              const defKills = s.defendedKills || 0;
+              if (defKills > maxDefended) {
+                maxDefended = defKills;
+                ironFortress = p;
+              }
+            });
+            if (ironFortress && maxDefended > 0) {
+              accolades.push({
+                icon: '🛡️',
+                title: 'Iron Fortress',
+                player: ironFortress,
+                desc: `${maxDefended} Enemy Armies Repelled on Defense`
+              });
+            }
+
+            // 3. ⚡ Blitz King (Most conquests in a single turn)
+            let blitzKing = null;
+            let maxBlitz = 0;
+            players.forEach(p => {
+              const s = p.stats || {};
+              const conquests = s.maxConquestsInTurn || s.territoriesConquered || 0;
+              if (conquests > maxBlitz) {
+                maxBlitz = conquests;
+                blitzKing = p;
+              }
+            });
+            if (blitzKing && maxBlitz > 0) {
+              accolades.push({
+                icon: '⚡',
+                title: 'Blitz King',
+                player: blitzKing,
+                desc: `${maxBlitz} Territories Conquered in 1 Turn`
+              });
+            }
+
+            // 4. 🐍 Backstabber of the Match (Most treaties broken)
+            let backstabber = null;
+            let maxBetrayals = 0;
+            players.forEach(p => {
+              const s = p.stats || {};
+              const betrayals = s.betrayals || 0;
+              if (betrayals > maxBetrayals) {
+                maxBetrayals = betrayals;
+                backstabber = p;
+              }
+            });
+            if (backstabber && maxBetrayals > 0) {
+              accolades.push({
+                icon: '🐍',
+                title: 'Backstabber of the Match',
+                player: backstabber,
+                desc: `${maxBetrayals} Non-Aggression Treaties Broken`
+              });
+            }
+
+            // 5. 📉 Tragic Fall (Most territories lost in a single turn)
+            let tragicFall = null;
+            let maxLost = 0;
+            players.forEach(p => {
+              const s = p.stats || {};
+              const lost = s.maxTerritoriesLostInTurn || 0;
+              if (lost > maxLost) {
+                maxLost = lost;
+                tragicFall = p;
+              }
+            });
+            if (tragicFall && maxLost > 0) {
+              accolades.push({
+                icon: '📉',
+                title: 'Tragic Fall',
+                player: tragicFall,
+                desc: `${maxLost} Territories Lost in 1 Turn`
+              });
+            }
+
+            // Render accolade cards
+            if (accolades.length > 0) {
+              accolades.forEach(acc => {
+                const item = document.createElement('div');
+                item.style.cssText = `
+                  display: flex;
+                  align-items: center;
+                  justify-content: space-between;
+                  padding: 6px 10px;
+                  background: rgba(0, 0, 0, 0.4);
+                  border-left: 3px solid ${acc.player.color};
+                  border-radius: 6px;
+                  font-size: 12px;
+                `;
+                item.innerHTML = `
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 16px;">${acc.icon}</span>
+                    <div>
+                      <strong style="color: #fff; display: block; font-size: 12px;">${acc.title}</strong>
+                      <span style="color: #94a3b8; font-size: 11px;">${acc.desc}</span>
+                    </div>
+                  </div>
+                  <span style="font-weight: 700; color: ${acc.player.color}; font-size: 12px; white-space: nowrap; margin-left: 8px;">
+                    ${acc.player.name}
+                  </span>
+                `;
+                accoladesListEl.appendChild(item);
+              });
+            } else {
+              const emptyItem = document.createElement('div');
+              emptyItem.style.color = '#94a3b8';
+              emptyItem.style.fontSize = '12px';
+              emptyItem.textContent = 'Standard match recorded without notable outlier records.';
+              accoladesListEl.appendChild(emptyItem);
+            }
           }
           
           this.victoryModal.classList.add('active');
@@ -2254,13 +2411,38 @@
             outcome.textContent = 'Casualties Decided!';
           }
 
-          // Trigger cannon shelling animation directly on the map viewport for all players
-          if (this.renderer && targetTerr && targetTerr.center) {
-            this.renderer.triggerCombatArtillery(sourceTerr ? sourceTerr.center : null, targetTerr.center, roll.captured);
-            if (roll.captured) {
-              this.renderer.triggerConquestShockwave(targetTerr.center, attacker.color);
+          // Helper to trigger realistic combat visuals based on casualties
+          const playCombatVisuals = () => {
+            if (!this.renderer || !sourceTerr || !targetTerr || !sourceTerr.center || !targetTerr.center) return;
+
+            // 1. If Defender took losses, show floating damage and Attacker fires artillery at Defender!
+            if (roll.defenderLosses > 0) {
+              this.renderer.showFloatingCasualty(roll.targetId, roll.defenderLosses);
+              this.renderer.fireBallisticArtillery(sourceTerr.center, targetTerr.center, {
+                shooterColor: attacker.color,
+                isConquest: !!roll.captured,
+                onImpact: () => {
+                  if (roll.captured) {
+                    // Send advancing tanks into the captured territory!
+                    this.renderer.animateConquestTanks(sourceTerr.center, targetTerr.center, attacker.color);
+                  }
+                }
+              });
+            } else if (roll.captured) {
+              this.renderer.animateConquestTanks(sourceTerr.center, targetTerr.center, attacker.color);
             }
-          }
+
+            // 2. If Attacker took losses, show floating damage and Defender retaliates!
+            if (roll.attackerLosses > 0) {
+              this.renderer.showFloatingCasualty(roll.sourceId, roll.attackerLosses);
+              this.renderer.fireBallisticArtillery(targetTerr.center, sourceTerr.center, {
+                shooterColor: defender.color,
+                isConquest: false
+              });
+            }
+          };
+
+          playCombatVisuals();
 
           // Show close button
           btnClose.style.display = 'inline-flex';
@@ -2272,11 +2454,29 @@
 
         }, 1000);
       } else {
-        // If overlay was skipped for spectators, still show the visual artillery battle clash on the map!
-        if (this.renderer && targetTerr && targetTerr.center) {
-          this.renderer.triggerCombatArtillery(sourceTerr ? sourceTerr.center : null, targetTerr.center, roll.captured);
-          if (roll.captured) {
-            this.renderer.triggerConquestShockwave(targetTerr.center, attacker.color);
+        // If overlay was skipped for spectators or fast turns, still play the full combat visuals on the map!
+        if (this.renderer && sourceTerr && targetTerr && sourceTerr.center && targetTerr.center) {
+          if (roll.defenderLosses > 0) {
+            this.renderer.showFloatingCasualty(roll.targetId, roll.defenderLosses);
+            this.renderer.fireBallisticArtillery(sourceTerr.center, targetTerr.center, {
+              shooterColor: attacker.color,
+              isConquest: !!roll.captured,
+              onImpact: () => {
+                if (roll.captured) {
+                  this.renderer.animateConquestTanks(sourceTerr.center, targetTerr.center, attacker.color);
+                }
+              }
+            });
+          } else if (roll.captured) {
+            this.renderer.animateConquestTanks(sourceTerr.center, targetTerr.center, attacker.color);
+          }
+
+          if (roll.attackerLosses > 0) {
+            this.renderer.showFloatingCasualty(roll.sourceId, roll.attackerLosses);
+            this.renderer.fireBallisticArtillery(targetTerr.center, sourceTerr.center, {
+              shooterColor: defender.color,
+              isConquest: false
+            });
           }
         }
       }

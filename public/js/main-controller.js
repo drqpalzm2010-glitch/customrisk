@@ -183,6 +183,10 @@
       const selectLlmProvider = document.getElementById('select-llm-provider');
       const llmApiKeyBox = document.getElementById('llm-api-key-box');
       const inputLlmApiKey = document.getElementById('input-llm-api-key');
+      const savedApiKey = localStorage.getItem('llm_api_key') || '';
+      if (inputLlmApiKey && savedApiKey) {
+        inputLlmApiKey.value = savedApiKey;
+      }
 
       const syncLLMProviderConfig = () => {
         if (!selectLlmProvider) return;
@@ -191,6 +195,9 @@
           llmApiKeyBox.style.display = provider === 'clipboard' ? 'none' : 'block';
         }
         const apiKey = inputLlmApiKey ? inputLlmApiKey.value.trim() : '';
+        if (apiKey) {
+          localStorage.setItem('llm_api_key', apiKey);
+        }
         if (window.SocketClient.roomCode) {
           window.SocketClient.configureLLMProvider(provider, '', apiKey, '', () => {});
         }
@@ -297,6 +304,17 @@
       const watchAiLlmContainer = document.getElementById('watch-ai-llm-api-container');
       const watchAiLlmProvider = document.getElementById('select-watch-ai-llm-provider');
       const watchAiLlmKeyBox = document.getElementById('watch-ai-llm-api-key-box');
+      const watchAiLlmKeyInput = document.getElementById('input-watch-ai-llm-api-key');
+
+      if (watchAiLlmKeyInput && savedApiKey) {
+        watchAiLlmKeyInput.value = savedApiKey;
+      }
+      if (watchAiLlmKeyInput) {
+        watchAiLlmKeyInput.addEventListener('input', () => {
+          const val = watchAiLlmKeyInput.value.trim();
+          if (val) localStorage.setItem('llm_api_key', val);
+        });
+      }
 
       if (watchAiGenerativeChk) {
         watchAiGenerativeChk.addEventListener('change', (e) => {
