@@ -784,6 +784,47 @@ function executeBlitzAttack(room, playerId, sourceId, targetId) {
 
   if (source.armies < 2) return { error: 'Attacking territory must have at least 2 armies' };
 
+  // Unclaimed Nuke-Devastated Claiming Block (mirror of executeAttack) for Blitz mode
+  if (target.ownerId === null && target.armies === 0) {
+    if (source.armies < 2) {
+      return { error: 'Must have at least 2 armies to move forward and claim this un-owned land.' };
+    }
+    target.ownerId = playerId;
+    delete target.nuked;
+    target.armies = 1;
+    source.armies -= 1;
+    addLog(gameState, `🚀 ${currentPlayer.name} marched into un-owned ruins to claim ${getTerritoryName(room.mapData, targetId)}!`);
+    gameState.conqueredThisTurn = true;
+    checkWinCondition(room);
+
+    const reclaimAdditionalMax = Math.max(0, source.armies - 1);
+    if (reclaimAdditionalMax > 0) {
+      gameState.turnStage = 'POST_ATTACK_MOVE';
+      gameState.postAttackContext = {
+        sourceId,
+        targetId,
+        minMove: 1,
+        additionalMax: reclaimAdditionalMax
+      };
+    }
+    return {
+      success: true,
+      blitzResult: {
+        sourceId,
+        targetId,
+        sourceName: getTerritoryName(room.mapData, sourceId),
+        targetName: getTerritoryName(room.mapData, targetId),
+        roundsFought: 0,
+        totalAttackerLosses: 0,
+        totalDefenderLosses: 0,
+        conquered: true,
+        sourceArmiesRemaining: source.armies,
+        targetArmies: 1,
+        lastDiceResult: null
+      }
+    };
+  }
+
   let roundsFought = 0;
   let totalAttackerLosses = 0;
   let totalDefenderLosses = 0;
@@ -1713,6 +1754,23 @@ function fireNuke(room, playerId, sourceId, targetId, isThermo) {
     addLog(gameState, `☢️ DETONATION: ${player.name} fired a tactical nuke from ${getTerritoryName(room.mapData, sourceId)} onto ${getTerritoryName(room.mapData, targetId)}! Radioactive for 1 full turn.`);
   }
 
+  // Eliminate the defender if this nuke wiped out their very last territory (mirror of attack conquest rule)
+  if (defenderPlayer && target.ownerId === null && defenderId !== 'dummy' && defenderId !== playerId) {
+    const defenderTerritories = Object.keys(gameState.territories).filter(
+      tid => gameState.territories[tid].ownerId === defenderId
+    );
+    if (defenderTerritories.length === 0) {
+      defenderPlayer.eliminated = true;
+      addLog(gameState, `💀 ${defenderPlayer.name} has been eliminated by a nuclear strike from ${player.name}!`);
+      if (gameState.pacts) {
+        gameState.pacts = gameState.pacts.filter(p => p.playerA !== defenderId && p.playerB !== defenderId);
+      }
+      const transferredCardsCount = defenderPlayer.cards.length;
+      player.cards.push(...defenderPlayer.cards);
+      defenderPlayer.cards = [];
+      addLog(gameState, `${player.name} received ${transferredCardsCount > 0 ? transferredCardsCount : 'all'} cards from eliminated ${defenderPlayer.name}!`);
+    }
+  }
   // Force sync
   checkWinCondition(room);
 

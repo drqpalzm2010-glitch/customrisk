@@ -4090,6 +4090,8 @@ function makeAttackDecision(room, playerId, io) {
     GameEngine.getAdjacentTerritories(mapData.connections, sourceId).forEach(targetId => {
       const target = gameState.territories[targetId];
       if (!target || target.ownerId === playerId) return;
+      if (gameState.blizzards && gameState.blizzards.includes(targetId)) return;
+      if (gameState.radiation && gameState.radiation[targetId] > 0) return;
 
       const isTargetFinalTerritory = (isFinalEnemyTerritoryInWorld && enemyTerritoryIds[0] === targetId);
 
@@ -4145,6 +4147,8 @@ function makeAttackDecision(room, playerId, io) {
       }
       
       const winProb = Math.min(0.95, baseWinProb + (effectiveRatio - 1) * 0.35);
+      const isFreeReclaim = target.ownerId === null && target.armies === 0;
+      const finalAttackProb = isFreeReclaim ? 0.95 : winProb;
 
       // Restless Stack Modifier: Giant stacks and surrounding forces get restless to prevent stasis
       let restlessBonus = 0;
@@ -4177,9 +4181,9 @@ function makeAttackDecision(room, playerId, io) {
         threshold = 0.85; // Requires near-guaranteed win probability (2.5x to 3x superiority)
       }
 
-      if (winProb < threshold) return;
+      if (finalAttackProb < threshold) return;
 
-      let priority = winProb * 10;
+      let priority = finalAttackProb * 10;
 
       // End-Game World Conquest priority surge
       if (isTargetFinalTerritory) {
@@ -4255,6 +4259,7 @@ function makeAttackDecision(room, playerId, io) {
       if (defTerrs <= 2) priority += 8;
 
       if (target.armies === 1) priority += 3;
+      if (isFreeReclaim && target.armies <= 1) priority += 15; // eagerly reclaim dead land
 
       const diceCount = Math.min(3, Math.max(1, source.armies - 1));
       attacks.push({ sourceId, targetId, priority, diceCount });
@@ -4333,7 +4338,7 @@ function makeAttackDecision(room, playerId, io) {
           const RoomManager = require('./room-manager');
           io.to(room.code).emit('gameStateUpdate', RoomManager.getSanitizedGameState(gameState));
           // Execute ballistic missile visual timeline
-          io.emit('fireNuclearMissileEvent', { srcCenter, tgtCenter, isThermo: fireThermo, targetId: bestLaunchTargetId });
+          io.to(room.code).emit('fireNuclearMissileEvent', { srcCenter, tgtCenter, isThermo: fireThermo, targetId: bestLaunchTargetId });
         }
       }
     }

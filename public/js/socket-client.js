@@ -74,7 +74,7 @@
       });
     },
 
-    watchAIBattle: (mapData, aiCount, gameMode, asNormalMap, disableNations, honorPremadeAlliances, disabledNationIds, cardTradeRule, generativeAIMode, llmProviderConfig, callback) => {
+    watchAIBattle: (mapData, aiCount, gameMode, asNormalMap, disableNations, honorPremadeAlliances, disabledNationIds, cardTradeRule, generativeAIMode, llmProviderConfig, reqBlizzardCount, reqStartingNukes, reqStartingThermonukes, reqAllowCrafting, callback) => {
       if (typeof gameMode === 'function') {
         callback = gameMode;
         gameMode = 'conquest';
@@ -128,12 +128,12 @@
         callback = llmProviderConfig;
         llmProviderConfig = null;
       }
-      socket.emit('watchAIBattle', { mapData, aiCount, gameMode, asNormalMap, disableNations, honorPremadeAlliances, disabledNationIds, cardTradeRule, generativeAIMode, llmProviderConfig }, (response) => {
+      socket.emit('watchAIBattle', { mapData, aiCount, gameMode, asNormalMap, disableNations, honorPremadeAlliances, disabledNationIds, cardTradeRule, generativeAIMode, llmProviderConfig, reqBlizzardCount, reqStartingNukes, reqStartingThermonukes, reqAllowCrafting }, (response) => {
         if (response.success) {
           window.SocketClient.roomCode = response.roomCode;
           window.SocketClient.spectatorMode = true;
         }
-        callback(response);
+        if (typeof callback === 'function') callback(response);
       });
     },
 
@@ -370,6 +370,10 @@ changePlayerColor: (targetPlayerId, newColor, callback) => {
         }
         callback(data);
       });
+    },
+
+    onFireNuclearMissileEvent: (callback) => {
+      socket.on('fireNuclearMissileEvent', (data) => callback(data));
     },
 
     onGameStateUpdate: (callback) => {

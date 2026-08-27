@@ -670,6 +670,15 @@
         this.appendChatMessage(msg);
       });
 
+      // Nuclear missile flight + mushroom cloud explosion for AI launches and other players launches
+      window.SocketClient.onFireNuclearMissileEvent((data) => {
+        if (this.renderer && data && data.srcCenter && data.tgtCenter) {
+          this.renderer.fireNuclearMissile(data.srcCenter, data.tgtCenter, data.isThermo, () => {
+            showToast('NUCLEAR DETONATION COMPLETE!', 'warning');
+          });
+        }
+      });
+
       // Listen for tab switching / focus restoration to clear throttled timeouts and resync state
       document.addEventListener('visibilitychange', () => {
         if (!document.hidden && this.gameState) {
@@ -741,6 +750,13 @@
       }
 
       this.gameState = state;
+      if (!this.renderer) {
+        // Late state-update race (Watch AI / rejoin): initialize the map renderer on demand
+        this.renderer = new window.SVGRenderer('game-map-container', {
+          isEditor: false,
+          onTerritoryClick: (tid, e) => this.handleTerritoryClick(tid, e)
+        });
+      }
       this.renderer.render(window.SocketClient.mapData || state.mapData, state);
       
       // Check for new dice rolls to play combat animation

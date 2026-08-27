@@ -913,7 +913,7 @@
 
         // Shockwave expands outwards
         const waveR = 8 + (maxWaveR - 8) * Math.sin((p * Math.PI) / 2);
-        shockwave.setAttribute("r", waveR.toString());
+        shockwave.setAttribute("r", Math.max(1, waveR).toString());
         shockwave.setAttribute("stroke-opacity", (invP * 0.9).toString());
 
         // Sparks fade
@@ -1085,11 +1085,11 @@
         const currentR2 = 6 + (maxR * 0.7 - 6) * (1 - Math.pow(1 - progress, 2.5));
         const opacity = 1 - progress;
 
-        ripple1.setAttribute("r", currentR1.toString());
+        ripple1.setAttribute("r", Math.max(1, currentR1).toString());
         ripple1.setAttribute("fill-opacity", (0.45 * opacity).toString());
         ripple1.setAttribute("stroke-opacity", opacity.toString());
 
-        ripple2.setAttribute("r", currentR2.toString());
+        ripple2.setAttribute("r", Math.max(1, currentR2).toString());
         ripple2.setAttribute("stroke-opacity", (opacity * 0.8).toString());
 
         if (progress < 1) {
@@ -1708,12 +1708,12 @@
 
       // Expanding shockwave tethers
       const r1 = 10 + (maxWave1 - 10) * Math.sin((p * Math.PI) / 2);
-      wave1.setAttribute("r", r1.toString());
+      wave1.setAttribute("r", Math.max(1, r1).toString());
       wave1.setAttribute("stroke-opacity", (invP * 0.95).toString());
       wave1.setAttribute("stroke-width", (5 * invP).toString());
 
       const r2 = 5 + (maxWave2 - 5) * (1 - Math.pow(invP, 3));
-      wave2.setAttribute("r", r2.toString());
+      wave2.setAttribute("r", Math.max(1, r2).toString());
       wave2.setAttribute("stroke-opacity", (invP * 0.85).toString());
       wave2.setAttribute("stroke-width", (3 * invP).toString());
 

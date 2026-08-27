@@ -342,6 +342,15 @@ io.on('connection', (socket) => {
       if (res.error) return callback && callback({ error: res.error });
 
       io.to(roomCode).emit('gameStateUpdate', RoomManager.getSanitizedGameState(room.gameState));
+
+      // Broadcast the missile flight to everyone except the launcher (they animate locally in their own ack)
+      const nukeMap = room.mapData;
+      const nukeSrc = nukeMap && nukeMap.territories ? nukeMap.territories.find(t => t.id === sourceId) : null;
+      const nukeTgt = nukeMap && nukeMap.territories ? nukeMap.territories.find(t => t.id === targetId) : null;
+      if (nukeSrc && nukeTgt && nukeSrc.center && nukeTgt.center) {
+        socket.broadcast.to(roomCode).emit('fireNuclearMissileEvent', { srcCenter: nukeSrc.center, tgtCenter: nukeTgt.center, isThermo: isThermo, targetId: targetId });
+      }
+
       callback({ success: true, result: res.result });
     } catch (err) {
       console.error(err);
