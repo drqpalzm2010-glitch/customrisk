@@ -775,6 +775,16 @@ const actType = (actionStr || typeStr || '').toUpperCase();
       room.cardTradeRule = saveData.cardTradeRule || saveData.gameState.cardTradeRule || 'progressive';
       room.generativeAIMode = saveData.generativeAIMode !== undefined ? saveData.generativeAIMode : true;
       room.gameState.generativeAIMode = room.generativeAIMode;
+      
+      // Restore nuke, craft, and radiation metrics
+      room.allowCrafting = saveData.allowCrafting !== undefined ? saveData.allowCrafting : (saveData.gameState.allowCrafting !== undefined ? saveData.gameState.allowCrafting : true);
+      room.blizzardCount = saveData.blizzardCount !== undefined ? saveData.blizzardCount : (saveData.gameState.blizzards ? saveData.gameState.blizzards.length : 0);
+      room.startingNukes = saveData.startingNukes !== undefined ? saveData.startingNukes : 0;
+      room.startingThermonukes = saveData.startingThermonukes !== undefined ? saveData.startingThermonukes : 0;
+      
+      room.gameState.allowCrafting = room.allowCrafting;
+      room.gameState.radiation = saveData.gameState.radiation || {};
+
       room.status = 'PLAYING';
       room.hostId = socket.id;
 

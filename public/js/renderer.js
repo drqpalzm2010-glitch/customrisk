@@ -1619,7 +1619,7 @@
 
     // Play explosion audio sfx
     if (window.MainController) {
-      window.MainController.playSFX('imagesandsounds/conflict2.mp3');
+      window.MainController.playSFX('imagesandsounds/nuke.mp3');
     }
 
     const nukeGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");

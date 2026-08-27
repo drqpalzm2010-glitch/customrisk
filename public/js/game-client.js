@@ -3985,6 +3985,10 @@
         cardTradeRule: this.gameState.cardTradeRule || 'progressive',
         generativeAIMode: !!this.gameState.generativeAIMode,
         spectatorMode: !!window.SocketClient.spectatorMode,
+        allowCrafting: this.gameState.allowCrafting !== undefined ? this.gameState.allowCrafting : true,
+        blizzardCount: this.gameState.blizzards ? this.gameState.blizzards.length : 0,
+        startingNukes: this.gameState.startingNukes || 0,
+        startingThermonukes: this.gameState.startingThermonukes || 0,
         mapData: mapData,
         gameState: cleanState
       };
