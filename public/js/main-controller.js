@@ -218,6 +218,16 @@
       // Watch AI Battle controls
       let watchAiMap = null; // null = use DEFAULT_MAP
 
+      const syncWatchAILobbyUI = () => {
+        const disableNations = document.getElementById('chk-watch-ai-disable-nations')?.checked;
+        const asNormal = document.getElementById('chk-watch-ai-as-normal')?.checked;
+        const disableOptions = disableNations || asNormal;
+        
+        // Hide Blizzard options if blizzards are incompatible (e.g. if map rules are disabled, etc.)
+        const blizzardBox = document.getElementById('watch-ai-nations-container');
+        // Any custom sync can go here
+      };
+
       const aiCountSlider = document.getElementById('input-ai-count');
       const aiCountLabel = document.getElementById('lbl-ai-count');
       if (aiCountSlider && aiCountLabel) {
@@ -358,7 +368,12 @@
         };
 
         const map = this.watchAiMap || this.selectedMap || window.SocketClient.mapData;
-        window.SocketClient.watchAIBattle(map, aiCount, selectedMode, asNormal, disableNations, honorPremadeAlliances, disabledNationIds, cardTradeRule, generativeAIMode, llmProviderConfig, (res) => {
+        const reqBlizzardCount = parseInt(document.getElementById('input-watch-ai-blizzard-count')?.value) || 0;
+        const reqStartingNukes = parseInt(document.getElementById('input-watch-ai-starting-nukes')?.value) || 0;
+        const reqStartingThermonukes = parseInt(document.getElementById('input-watch-ai-starting-thermonukes')?.value) || 0;
+        const reqAllowCrafting = !!document.getElementById('chk-watch-ai-allow-crafting')?.checked;
+
+        window.SocketClient.watchAIBattle(map, aiCount, selectedMode, asNormal, disableNations, honorPremadeAlliances, disabledNationIds, cardTradeRule, generativeAIMode, llmProviderConfig, reqBlizzardCount, reqStartingNukes, reqStartingThermonukes, reqAllowCrafting, (res) => {
           if (res.error) { alert(res.error); return; }
 
           window.SocketClient.mapData = res.mapData;
@@ -615,6 +630,23 @@
       });
 
       window.SocketClient.onRoomStateUpdate((data) => {
+        if (data.blizzardCount !== undefined) {
+          const selectBlizz = document.getElementById('select-lobby-blizzard-count');
+          if (selectBlizz) selectBlizz.value = data.blizzardCount;
+        }
+        if (data.startingNukes !== undefined) {
+          const selectTact = document.getElementById('select-lobby-starting-nukes');
+          if (selectTact) selectTact.value = data.startingNukes;
+        }
+        if (data.startingThermonukes !== undefined) {
+          const selectTher = document.getElementById('select-lobby-starting-thermonukes');
+          if (selectTher) selectTher.value = data.startingThermonukes;
+        }
+        if (data.allowCrafting !== undefined) {
+          const chkCraft = document.getElementById('chk-lobby-allow-crafting');
+          if (chkCraft) chkCraft.checked = !!data.allowCrafting;
+        }
+
         if (data.cardTradeRule) {
           const ruleSelect = document.getElementById('lobby-card-rule');
           if (ruleSelect) ruleSelect.value = data.cardTradeRule;
@@ -956,7 +988,29 @@
             const isScenario = !!(this.selectedMap && this.selectedMap.isScenario && !playAsNormal && !disableNations);
             const hasScenarioNations = !!(this.selectedMap && this.selectedMap.nations && this.selectedMap.nations.length >= 2);
 
-            // Enable start button if there are multiple humans/AIs, or if it's a multi-nation scenario
+            // Bind update listeners for lobby Blizzard and Nuke inputs
+          const selectBlizz = document.getElementById('select-lobby-blizzard-count');
+          const selectTact = document.getElementById('select-lobby-starting-nukes');
+          const selectTher = document.getElementById('select-lobby-starting-thermonukes');
+          const chkCraft = document.getElementById('chk-lobby-allow-crafting');
+
+          const updateLobbyNuclearConfig = () => {
+            if (!isHost) return;
+            window.SocketClient.updateNuclearSettings(
+              selectBlizz ? selectBlizz.value : 0,
+              selectTact ? selectTact.value : 0,
+              selectTher ? selectTher.value : 0,
+              chkCraft ? chkCraft.checked : false,
+              () => {}
+            );
+          };
+
+          if (selectBlizz) selectBlizz.onchange = updateLobbyNuclearConfig;
+          if (selectTact) selectTact.onchange = updateLobbyNuclearConfig;
+          if (selectTher) selectTher.onchange = updateLobbyNuclearConfig;
+          if (chkCraft) chkCraft.onchange = updateLobbyNuclearConfig;
+
+          // Enable start button if there are multiple humans/AIs, or if it's a multi-nation scenario
             if (players.length >= 2 || (isScenario && hasScenarioNations)) {
               btnStart.disabled = false;
             } else {

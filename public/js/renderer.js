@@ -207,6 +207,20 @@
         fortressThreshold = 20;
       }
 
+      // 2.5. Draw Cosmetic Polygons
+      if (mapData.cosmeticPolygons) {
+        mapData.cosmeticPolygons.forEach(cp => {
+          if (!cp.points || cp.points.length === 0) return;
+          const polygon = document.createElementNS(svgNamespace, "polygon");
+          polygon.setAttribute("points", cp.points.map(p => p.join(',')).join(' '));
+          polygon.setAttribute("fill", cp.color || '#ff00ff');
+          polygon.setAttribute("fill-opacity", cp.opacity !== undefined ? cp.opacity : '0.4');
+          polygon.setAttribute("stroke", "none");
+          polygon.style.pointerEvents = "none";
+          this.transformGroup.appendChild(polygon);
+        });
+      }
+
       // 3. Draw Territory Polygons
       mapData.territories.forEach(terr => {
         if (!terr.points || terr.points.length === 0) return;
@@ -265,9 +279,26 @@
           }
         }
 
-        // Fill color combining owner color and transparency
-        polygon.style.fill = ownerColor;
-        polygon.style.fillOpacity = '0.55';
+        // Blizzard and Radiation modifications
+        const isBlizzard = gameState && gameState.blizzards && gameState.blizzards.includes(terr.id);
+        const isRadioactive = gameState && gameState.radiation && gameState.radiation[terr.id] > 0;
+
+        if (isBlizzard) {
+          polygon.style.fill = '#cbd5e1'; // Frozen white/light gray
+          polygon.style.fillOpacity = '0.9';
+          polygon.style.stroke = '#94a3b8';
+          polygon.style.strokeWidth = '2px';
+        } else if (isRadioactive) {
+          polygon.style.fill = '#22c55e'; // Toxic glowing green
+          polygon.style.fillOpacity = '0.45';
+          polygon.classList.add('pulsing-glow');
+        } else if (gameState && gameState.territories[terr.id] && gameState.territories[terr.id].ownerId === null && gameState.territories[terr.id].armies === 0) {
+          polygon.style.fill = '#475569'; // Ash gray for unclaimed nuke-devastated land
+          polygon.style.fillOpacity = '0.8';
+        } else {
+          polygon.style.fill = ownerColor;
+          polygon.style.fillOpacity = '0.55';
+        }
 
         // Check if territory is Battlescarred (SINGLE-TURN casualties >= fortressThreshold, within 2 turns)
         const polyRecentCas = (gameState && gameState.territories && gameState.territories[terr.id] && gameState.territories[terr.id].recentBattleCasualties) || 0;
@@ -462,7 +493,52 @@
         text.textContent = this.options.isEditor ? '•' : troopCount;
         g.appendChild(text);
 
-        // Name text label above badge
+        const isBlizzard = gameState && gameState.blizzards && gameState.blizzards.includes(terr.id);
+        const isRadioactive = gameState && gameState.radiation && gameState.radiation[terr.id] > 0;
+
+        if (isBlizzard) {
+          // Render Snowflake SVG icon instead of Troop Badge
+          const sfGroup = document.createElementNS(svgNamespace, "g");
+          sfGroup.style.pointerEvents = "none";
+          sfGroup.style.filter = "drop-shadow(0 2px 4px rgba(15,23,42,0.15))";
+          sfGroup.setAttribute("transform", `translate(${terr.center[0]}, ${terr.center[1]}) scale(1.1)`);
+          sfGroup.innerHTML = `
+            <circle cx="0" cy="0" r="14" fill="#cbd5e1" stroke="#94a3b8" stroke-width="1.5"/>
+            <path d="M0,-8 L0,8 M-8,0 L8,0 M-5,-5 L5,5 M-5,5 L5,-5" stroke="#38bdf8" stroke-width="1.8" stroke-linecap="round"/>
+            <circle cx="0" cy="0" r="3" fill="#e2e8f0" stroke="#38bdf8" stroke-width="1.2"/>
+          `;
+          g.appendChild(sfGroup);
+        } else if (isRadioactive) {
+          // Render Radiation Hazard Symbol instead of Troop Badge
+          const radGroup = document.createElementNS(svgNamespace, "g");
+          radGroup.style.pointerEvents = "none";
+          radGroup.setAttribute("transform", `translate(${terr.center[0]}, ${terr.center[1]}) scale(1.1)`);
+          radGroup.innerHTML = `
+            <circle cx="0" cy="0" r="14" fill="#facc15" stroke="#1e293b" stroke-width="1.5"/>
+            <circle cx="0" cy="0" r="12" fill="none" stroke="#1e293b" stroke-width="0.8" stroke-dasharray="2 2"/>
+            <path d="M0,0 L0,-10 A10,10 0 0,1 8.66,-5 Z M0,0 L8.66,5 A10,10 0 0,1 -8.66,5 Z M0,0 L-8.66,-5 A10,10 0 0,1 0,-10 Z" fill="#1e293b"/>
+            <circle cx="0" cy="0" r="4.5" fill="#facc15" stroke="#1e293b" stroke-width="1.5"/>
+            <circle cx="0" cy="0" r="1.5" fill="#1e293b"/>
+          `;
+          g.appendChild(radGroup);
+        } else if (gameState && gameState.territories[terr.id] && gameState.territories[terr.id].ownerId === null && gameState.territories[terr.id].armies === 0) {
+          // Render Ash Ruins Skull instead of Troop Badge
+          const ruinsGroup = document.createElementNS(svgNamespace, "g");
+          ruinsGroup.style.pointerEvents = "none";
+          ruinsGroup.setAttribute("transform", `translate(${terr.center[0]}, ${terr.center[1]}) scale(1.1)`);
+          ruinsGroup.innerHTML = `
+            <circle cx="0" cy="0" r="14" fill="#475569" stroke="#1e293b" stroke-width="1.5"/>
+            <path d="M-5,-4 C-5,-9 5,-9 5,-4 C5,-1 3,1 3,3 L-3,3 C-3,1 -5,-1 -5,-4 Z" fill="#e2e8f0" stroke="#1e293b" stroke-width="1"/>
+            <rect x="-3" y="3" width="6" height="3" rx="1" fill="#e2e8f0" stroke="#1e293b" stroke-width="1"/>
+            <circle cx="-2" cy="-4" r="1.5" fill="#000"/>
+            <circle cx="2" cy="-4" r="1.5" fill="#000"/>
+            <line x1="-1.5" y1="4" x2="-1.5" y2="6" stroke="#000" stroke-width="0.8"/>
+            <line x1="0" y1="4" x2="0" y2="6" stroke="#000" stroke-width="0.8"/>
+            <line x1="1.5" y1="4" x2="1.5" y2="6" stroke="#000" stroke-width="0.8"/>
+          `;
+          g.appendChild(ruinsGroup);
+        }
+
         const nameText = document.createElementNS(svgNamespace, "text");
         nameText.setAttribute("x", terr.center[0]);
         nameText.setAttribute("y", terr.center[1] - 22);
@@ -864,7 +940,7 @@
       });
     }
 
-    // Tanks Advance on Territory Conquest
+    // Vehicles Advance on Territory Conquest (Tanks for Land, Warships for Sea)
     animateConquestTanks(sourceCenter, targetCenter, conquerorColor = '#00e5ff', onComplete = null) {
       if (!this.transformGroup || !sourceCenter || !targetCenter) {
         if (typeof onComplete === 'function') onComplete();
@@ -882,26 +958,58 @@
         else x2 += mapWidth;
       }
 
+      // Check if the conquest was executed over a Sea connection
+      let isSea = false;
+      if (this.mapData && this.mapData.territories && this.mapData.connections) {
+        const sourceTerr = this.mapData.territories.find(t => t.center && t.center[0] === sourceCenter[0] && t.center[1] === sourceCenter[1]);
+        const targetTerr = this.mapData.territories.find(t => t.center && t.center[0] === targetCenter[0] && t.center[1] === targetCenter[1]);
+
+        if (sourceTerr && targetTerr) {
+          isSea = this.mapData.connections.some(conn => {
+            if (conn && typeof conn === 'object' && !Array.isArray(conn)) {
+              return conn.type === 'sea' && 
+                     ((conn.from === sourceTerr.id && conn.to === targetTerr.id) || 
+                      (conn.from === targetTerr.id && conn.to === sourceTerr.id));
+            }
+            return false;
+          });
+        }
+      }
+
       const angle = Math.atan2(y2 - y1, x2 - x1) * (180 / Math.PI);
       const perpAngle = angle + 90;
       const perpRad = perpAngle * (Math.PI / 180);
 
-      // Create 2 mini tanks in formation
-      const tankOffsets = [
+      // Create 2 mini vehicles in formation
+      const vehicleOffsets = [
         { perp: 7, delay: 0 },
         { perp: -7, delay: 50 }
       ];
 
-      const tankElements = tankOffsets.map((cfg) => {
+      const vehicleElements = vehicleOffsets.map((cfg) => {
         const tg = document.createElementNS("http://www.w3.org/2000/svg", "g");
         tg.style.pointerEvents = "none";
-        tg.innerHTML = `
-          <rect x="-10" y="-7" width="20" height="3" rx="1" fill="#0f172a"/>
-          <rect x="-10" y="4" width="20" height="3" rx="1" fill="#0f172a"/>
-          <rect x="-9" y="-5" width="18" height="10" rx="2" fill="${conquerorColor}" stroke="#0f172a" stroke-width="1.2"/>
-          <circle cx="-1" cy="0" r="3.5" fill="#0f172a" stroke="${conquerorColor}" stroke-width="1"/>
-          <line x1="0" y1="0" x2="11" y2="0" stroke="#0f172a" stroke-width="2.5" stroke-linecap="round"/>
-        `;
+        
+        if (isSea) {
+          // Render military warships / naval boats
+          tg.innerHTML = `
+            <polygon points="-12,0 -4,-4 10,-3 14,0 10,3 -4,4" fill="#0f172a" opacity="0.6"/>
+            <polygon points="-11,0 -3,-3 9,-2 13,0 9,2 -3,3" fill="${conquerorColor}" stroke="#0f172a" stroke-width="1"/>
+            <rect x="-4" y="-2" width="8" height="4" rx="1" fill="#1e293b" stroke="#0f172a" stroke-width="0.8"/>
+            <circle cx="4" cy="0" r="2" fill="#0f172a"/>
+            <line x1="4" y1="0" x2="10" y2="0" stroke="#0f172a" stroke-width="1.5" stroke-linecap="round"/>
+          `;
+        } else {
+          // Render land tanks
+          tg.innerHTML = `
+            <rect x="-10" y="-7" width="20" height="3" rx="1" fill="#0f172a"/>
+            <rect x="-10" y="4" width="20" height="3" rx="1" fill="#0f172a"/>
+            <rect x="-9" y="-5" width="18" height="10" rx="2" fill="${conquerorColor}" stroke="#0f172a" stroke-width="1.2"/>
+            <circle cx="-1" cy="0" r="3.5" fill="#0f172a" stroke="${conquerorColor}" stroke-width="1"/>
+            <line x1="0" y1="0" x2="11" y2="0" stroke="#0f172a" stroke-width="2.5" stroke-linecap="round"/>
+          `;
+        }
+
         this.transformGroup.appendChild(tg);
         return { el: tg, cfg };
       });
@@ -909,11 +1017,11 @@
       const moveDuration = 480;
       const startTime = performance.now();
 
-      const animateTanks = (now) => {
+      const animateVehicles = (now) => {
         const elapsed = now - startTime;
         let allDone = true;
 
-        tankElements.forEach(({ el, cfg }) => {
+        vehicleElements.forEach(({ el, cfg }) => {
           const tElapsed = Math.max(0, elapsed - cfg.delay);
           const p = Math.min(1, tElapsed / moveDuration);
 
@@ -929,15 +1037,15 @@
         });
 
         if (!allDone) {
-          requestAnimationFrame(animateTanks);
+          requestAnimationFrame(animateVehicles);
         } else {
-          tankElements.forEach(({ el }) => el.remove());
+          vehicleElements.forEach(({ el }) => el.remove());
           this.triggerConquestShockwave([x2, y2], conquerorColor);
           if (typeof onComplete === 'function') onComplete();
         }
       };
 
-      requestAnimationFrame(animateTanks);
+      requestAnimationFrame(animateVehicles);
     }
 
     // Brief Conquest Flash Ripple with celebratory particles
@@ -1413,6 +1521,205 @@
           this.applyTransform();
         };
       }
+    }
+
+  // Ballistic High-Tech Missile Launch & Mushroom Cloud Impact Animation
+    fireNuclearMissile(sourceCenter, targetCenter, isThermo, onImpact) {
+      if (!this.transformGroup || !sourceCenter || !targetCenter) return;
+
+      const [x1, y1] = sourceCenter;
+      let [x2, y2] = targetCenter;
+
+      const mapWidth = (this.mapData && this.mapData.width) || 1200;
+      const dx = x2 - x1;
+      const isWrapAround = Math.abs(dx) > (mapWidth * 0.65);
+      if (isWrapAround) {
+        if (dx > 0) x2 -= mapWidth;
+        else x2 += mapWidth;
+      }
+
+      // 1. Create Launch Pad Silo
+      const silo = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      silo.style.pointerEvents = "none";
+      silo.setAttribute("transform", `translate(${x1}, ${y1})`);
+      silo.innerHTML = `
+        <rect x="-8" y="-4" width="16" height="8" rx="2" fill="#1e293b" stroke="#e2e8f0" stroke-width="1.2"/>
+        <line x1="-8" y1="-4" x2="8" y2="4" stroke="#ff3333" stroke-width="0.8"/>
+        <line x1="8" y1="-4" x2="-8" y2="4" stroke="#ff3333" stroke-width="0.8"/>
+        <circle cx="0" cy="0" r="3" fill="#ff3333"/>
+      `;
+      this.transformGroup.appendChild(silo);
+
+      // Play launch alarm sound
+      if (window.MainController) {
+        window.MainController.playSFX('imagesandsounds/conflict1.mp3');
+      }
+
+      // 2. Render Missile Object
+      const missile = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      missile.style.pointerEvents = "none";
+      missile.innerHTML = `
+        <!-- High-tech payload fins and rocket fuselage -->
+        <path d="M-3,5 L3,5 L2,-12 L0,-20 L-2,-12 Z" fill="#94a3b8" stroke="#0f172a" stroke-width="1.2"/>
+        <polygon points="-5,5 -3,5 -3,1 L-5,1" fill="#ef4444"/>
+        <polygon points="5,5 3,5 3,1 5,1" fill="#ef4444"/>
+        <polygon points="-2,-12 2,-12 0,-20" fill="${isThermo ? '#a855f7' : '#22c55e'}"/>
+        <!-- Jet Engine Fire particle thrust -->
+        <circle cx="0" cy="8" r="4.5" fill="#f97316" opacity="0.8" style="animation: pulse 0.1s infinite alternate;"/>
+        <circle cx="0" cy="11" r="3" fill="#eab308" opacity="0.9" style="animation: pulse 0.08s infinite alternate;"/>
+      `;
+      this.transformGroup.appendChild(missile);
+
+      // Compute Parabolic Flight Coordinates
+      const dist = Math.hypot(x2 - x1, y2 - y1) || 1;
+      const arcHeight = Math.min(260, Math.max(90, dist * 0.42));
+      const mx = (x1 + x2) / 2;
+      const my = (y1 + y2) / 2;
+      const cx = mx;
+      const cy = my - arcHeight;
+
+      const flightDuration = Math.min(1800, Math.max(1100, dist * 2.2));
+      const startTime = performance.now();
+
+      const animateMissile = (now) => {
+        const elapsed = now - startTime;
+        const t = Math.min(1, elapsed / flightDuration);
+
+        // Quadratic Bezier Flight Path
+        const invT = 1 - t;
+        const curX = invT * invT * x1 + 2 * invT * t * cx + t * t * x2;
+        const curY = invT * invT * y1 + 2 * invT * t * cy + t * t * y2;
+
+        // Calculate pitch angle to rotate missile nosecone toward vector direction
+        const nextT = Math.min(1, t + 0.01);
+        const invNextT = 1 - nextT;
+        const nextX = invNextT * invNextT * x1 + 2 * invNextT * nextT * cx + nextT * nextT * x2;
+        const nextY = invNextT * invNextT * y1 + 2 * invNextT * nextT * cy + nextT * nextT * y2;
+        const angle = Math.atan2(nextY - curY, nextX - curX) * (180 / Math.PI) + 90; // offset 90 so nose points up originally
+
+        missile.setAttribute("transform", `translate(${curX}, ${curY}) rotate(${angle})`);
+
+        if (t < 1) {
+          requestAnimationFrame(animateMissile);
+        } else {
+          missile.remove();
+          silo.remove();
+          // Execute Detonation
+          this.triggerNuclearExplosion([x2, y2], isThermo, onImpact);
+        }
+      };
+
+      requestAnimationFrame(animateMissile);
+    }
+
+    // Atomic / Toxic Mushroom Cloud Impact Explosion
+    triggerNuclearExplosion(targetCenter, isThermo, onImpact) {
+      if (!this.transformGroup || !targetCenter) return;
+      const [tx, ty] = targetCenter;
+
+      // Play explosion audio sfx
+      if (window.MainController) {
+        window.MainController.playSFX('imagesandsounds/conflict2.mp3');
+      }
+
+      const nukeGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      nukeGroup.style.pointerEvents = "none";
+      nukeGroup.setAttribute("transform", `translate(${tx}, ${ty})`);
+
+      const atomicBlastColor = isThermo ? '#a855f7' : '#22c55e'; // Purple for Thermo splash, Green for Tactical nuke
+
+      // 1. Initial blinding flash ring
+      const flash = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      flash.setAttribute("r", "5");
+      flash.setAttribute("fill", "#ffffff");
+      flash.setAttribute("stroke", atomicBlastColor);
+      flash.setAttribute("stroke-width", "6");
+      nukeGroup.appendChild(flash);
+
+      // 2. High-Tech expanding atomic rings
+      const wave1 = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      wave1.setAttribute("r", "10");
+      wave1.setAttribute("fill", "none");
+      wave1.setAttribute("stroke", atomicBlastColor);
+      wave1.setAttribute("stroke-width", "4");
+      nukeGroup.appendChild(wave1);
+
+      const wave2 = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      wave2.setAttribute("r", "5");
+      wave2.setAttribute("fill", "none");
+      wave2.setAttribute("stroke", "#ffffff");
+      wave2.setAttribute("stroke-width", "2");
+      nukeGroup.appendChild(wave2);
+
+      // 3. Radioactive mushroom cloud bubbles
+      const bubbleCount = 8;
+      const bubbles = [];
+      for (let i = 0; i < bubbleCount; i++) {
+        const bubble = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        const angle = (i / bubbleCount) * Math.PI * 2;
+        bubble.setAttribute("fill", atomicBlastColor);
+        bubble.setAttribute("fill-opacity", "0.75");
+        bubble.setAttribute("stroke", "#ffffff");
+        bubble.setAttribute("stroke-width", "1");
+        nukeGroup.appendChild(bubble);
+        bubbles.push({ el: bubble, angle, radius: 15 + Math.random() * 12 });
+      }
+
+      this.transformGroup.appendChild(nukeGroup);
+
+      if (typeof onImpact === 'function') {
+        onImpact();
+      }
+
+      // Explosion Expansion timeline
+      const startTime = performance.now();
+      const duration = 1600;
+      const maxWave1 = isThermo ? 110 : 70;
+      const maxWave2 = isThermo ? 135 : 90;
+
+      const animateNukeExplosion = (now) => {
+        const elapsed = now - startTime;
+        const p = Math.min(1, elapsed / duration);
+        const invP = 1 - p;
+
+        // Blinding flash expands and fades
+        const flashR = p < 0.2 ? 5 + 40 * (p / 0.2) : 45 * invP;
+        flash.setAttribute("r", Math.max(1, flashR).toString());
+        flash.setAttribute("fill-opacity", invP.toString());
+        flash.setAttribute("stroke-opacity", invP.toString());
+
+        // Expanding shockwave tethers
+        const r1 = 10 + (maxWave1 - 10) * Math.sin((p * Math.PI) / 2);
+        wave1.setAttribute("r", r1.toString());
+        wave1.setAttribute("stroke-opacity", (invP * 0.9).toString());
+
+        const r2 = 5 + (maxWave2 - 5) * (1 - Math.pow(invP, 3));
+        wave2.setAttribute("r", r2.toString());
+        wave2.setAttribute("stroke-opacity", (invP * 0.8).toString());
+
+        // Mushroom Cloud Billowing Expansion
+        bubbles.forEach(b => {
+          const bp = Math.min(1, p / 0.7); // Expand quickly
+          const curDist = b.radius * Math.sin((bp * Math.PI) / 2);
+          const cx = Math.cos(b.angle) * curDist;
+          const cy = Math.sin(b.angle) * curDist - (bp * 15); // float upward like a mushroom stem
+          const bR = (10 + b.radius * 0.4) * (1 - p); // shrink and fade at the end
+
+          b.el.setAttribute("cx", cx.toFixed(1));
+          b.el.setAttribute("cy", cy.toFixed(1));
+          b.el.setAttribute("r", Math.max(1, bR).toFixed(1));
+          b.el.setAttribute("fill-opacity", (0.75 * invP).toString());
+          b.el.setAttribute("stroke-opacity", invP.toString());
+        });
+
+        if (p < 1) {
+          requestAnimationFrame(animateNukeExplosion);
+        } else {
+          nukeGroup.remove();
+        }
+      };
+
+      requestAnimationFrame(animateNukeExplosion);
     }
   }
 

@@ -2069,6 +2069,19 @@ svg.editor-canvas {
   border-radius: 50%;
 }
 
+/* Active Armed Launcher Badge pulsing style */
+.active-pulsing {
+  border-color: #ef4444 !important;
+  background: rgba(239, 68, 68, 0.3) !important;
+  box-shadow: 0 0 15px rgba(239, 68, 68, 0.6) !important;
+  animation: armedPulse 1s infinite alternate;
+}
+
+@keyframes armedPulse {
+  0%   { transform: scale(1); }
+  100% { transform: scale(1.08); }
+}
+
 /* ==================== VIEWPORT ZOOM CONTROLS ==================== */
 .zoom-controls {
   position: absolute;

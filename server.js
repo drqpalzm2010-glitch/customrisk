@@ -55,7 +55,7 @@ io.on('connection', (socket) => {
   });
 
   // 1b. Watch AI Battle — create an all-AI game the requester spectates
-  socket.on('watchAIBattle', ({ mapData, aiCount, gameMode, asNormalMap, disableNations, honorPremadeAlliances, disabledNationIds, cardTradeRule, generativeAIMode, llmProviderConfig }, callback) => {
+  socket.on('watchAIBattle', ({ mapData, aiCount, gameMode, asNormalMap, disableNations, honorPremadeAlliances, disabledNationIds, cardTradeRule, generativeAIMode, llmProviderConfig, reqBlizzardCount, reqStartingNukes, reqStartingThermonukes, reqAllowCrafting }, callback) => {
     try {
       if (!mapData) return callback({ error: 'Invalid map data' });
 
@@ -99,6 +99,12 @@ io.on('connection', (socket) => {
       room.disabledNationIds = Array.isArray(disabledNationIds) ? disabledNationIds : [];
       room.cardTradeRule = cardTradeRule === 'fixed' ? 'fixed' : 'progressive';
       room.generativeAIMode = !!generativeAIMode;
+
+      // Bind Blizzard & Nuke options
+      room.blizzardCount = parseInt(reqBlizzardCount) || 0;
+      room.startingNukes = parseInt(reqStartingNukes) || 0;
+      room.startingThermonukes = parseInt(reqStartingThermonukes) || 0;
+      room.allowCrafting = reqAllowCrafting !== false;
       if (llmProviderConfig) {
         room.llmProviderConfig = {
           provider: llmProviderConfig.provider || 'clipboard',
@@ -281,6 +287,65 @@ io.on('connection', (socket) => {
     } catch (err) {
       console.error(err);
       if (callback) callback({ error: 'Failed to toggle premade alliances' });
+    }
+  });
+
+  // Update Blizzard & Nuke Lobby settings
+  socket.on('updateNuclearSettings', ({ roomCode, blizzardCount, startingNukes, startingThermonukes, allowCrafting }, callback) => {
+    try {
+      const room = RoomManager.getRoom(roomCode);
+      if (!room) return callback && callback({ error: 'Room not found' });
+      if (room.hostId !== socket.id) return callback && callback({ error: 'Only host can change nuclear settings' });
+
+      room.blizzardCount = parseInt(blizzardCount) || 0;
+      room.startingNukes = parseInt(startingNukes) || 0;
+      room.startingThermonukes = parseInt(startingThermonukes) || 0;
+      room.allowCrafting = !!allowCrafting;
+
+      io.to(room.code).emit('roomStateUpdate', {
+        blizzardCount: room.blizzardCount,
+        startingNukes: room.startingNukes,
+        startingThermonukes: room.startingThermonukes,
+        allowCrafting: room.allowCrafting
+      });
+      if (callback) callback({ success: true });
+    } catch (err) {
+      console.error(err);
+      if (callback) callback({ error: 'Failed to update nuclear settings' });
+    }
+  });
+
+  // Craft Nuke Weapon
+  socket.on('craftNuke', ({ roomCode, cardIndices, isThermo }, callback) => {
+    try {
+      const room = RoomManager.getRoom(roomCode);
+      if (!room || !room.gameState) return callback && callback({ error: 'Game not active' });
+
+      const res = GameEngine.craftNuke(room, socket.id, cardIndices, isThermo);
+      if (res.error) return callback && callback({ error: res.error });
+
+      io.to(roomCode).emit('gameStateUpdate', RoomManager.getSanitizedGameState(room.gameState));
+      callback({ success: true });
+    } catch (err) {
+      console.error(err);
+      callback({ error: 'Failed to craft weapon' });
+    }
+  });
+
+  // Fire Nuke Weapon
+  socket.on('fireNuke', ({ roomCode, sourceId, targetId, isThermo }, callback) => {
+    try {
+      const room = RoomManager.getRoom(roomCode);
+      if (!room || !room.gameState) return callback && callback({ error: 'Game not active' });
+
+      const res = GameEngine.fireNuke(room, socket.id, sourceId, targetId, isThermo);
+      if (res.error) return callback && callback({ error: res.error });
+
+      io.to(roomCode).emit('gameStateUpdate', RoomManager.getSanitizedGameState(room.gameState));
+      callback({ success: true, result: res.result });
+    } catch (err) {
+      console.error(err);
+      callback({ error: 'Failed to detonate weapon' });
     }
   });
 

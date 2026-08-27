@@ -32,6 +32,51 @@ function sendAIChatMessage(room, io, aiPlayer, text, prefixSymbol = '💬', igno
   gameState.chatArchive.push(chatMsg);
   io.to(room.code).emit('chatMessage', chatMsg);
 }
+// Key Minification Map for Network Compression
+const KEY_MAP = {
+  'territories': 't',
+  'players': 'p',
+  'blizzards': 'bl',
+  'radiation': 'ra',
+  'nukes': 'nu',
+  'thermonukes': 'tn',
+  'turnIndex': 'ti',
+  'turnStage': 'ts',
+  'turnIndex': 'ti',
+  'turnStage': 'ts',
+  'draftPool': 'dp',
+  'pacts': 'pa',
+  'capitals': 'ca',
+  'conqueredThisTurn': 'ct',
+  'tradeInCount': 'tc',
+  'gameMode': 'gm',
+  'cardTradeRule': 'cr',
+  'isPaused': 'ip',
+  'historyLength': 'hl',
+  'ownerId': 'o',
+  'armies': 'a',
+  'id': 'i',
+  'name': 'n',
+  'color': 'c',
+  'nationId': 'nid',
+  'nationName': 'nn',
+  'eliminated': 'e',
+  'cards': 'ca_hand'
+};
+
+function compressState(state) {
+  if (!state || typeof state !== 'object') return state;
+  if (Array.isArray(state)) {
+    return state.map(compressState);
+  }
+  const compressed = {};
+  for (const [key, val] of Object.entries(state)) {
+    const shortKey = KEY_MAP[key] || key;
+    compressed[shortKey] = compressState(val);
+  }
+  return compressed;
+}
+
 // Helper to sanitize gameState for live socket broadcasts (omits heavy history array to prevent memory & network bloat in long games)
 function getSanitizedGameState(gameState) {
   if (!gameState) return null;
@@ -49,16 +94,27 @@ function getSanitizedGameState(gameState) {
 
   const { history, ...sanitized } = gameState;
 
-  let chatArchive = sanitized.chatArchive;
-  if (chatArchive && chatArchive.length > 200) {
-    chatArchive = chatArchive.slice(-200);
+  // Bandwidth Optimization: Slice logs to only send the last 5 entries
+  let logs = sanitized.logs;
+  if (logs && logs.length > 5) {
+    logs = logs.slice(-5);
   }
 
-  return {
+  // Bandwidth Optimization: Slice chatArchive to only send the last 5 entries
+  let chatArchive = sanitized.chatArchive;
+  if (chatArchive && chatArchive.length > 5) {
+    chatArchive = chatArchive.slice(-5);
+  }
+
+  const cleanState = {
     ...sanitized,
+    logs,
     chatArchive,
     historyLength: history ? history.length : 0
   };
+
+  // Minify the payload keys transparently before broadcasting over the wire
+  return compressState(cleanState);
 }
 
 // Generate random room code

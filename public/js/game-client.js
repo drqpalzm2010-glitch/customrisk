@@ -142,6 +142,36 @@
       this.initTimelapseConverterUI();
     }
 
+    initLLMControlsUI() {
+      // Weapons Launch targeting states
+      this.selectedLaunchPadId = null;
+      this.activeFiringWeaponType = null; // 'nuke' | 'thermonuke'
+    }
+
+    calculatePlayerIncome(playerId) {
+      if (!this.gameState) return 3;
+      const mapData = window.SocketClient.mapData || this.gameState.mapData;
+      if (!mapData) return 3;
+
+      const ownedTerritories = Object.keys(this.gameState.territories).filter(
+        tid => this.gameState.territories[tid].ownerId === playerId
+      );
+      let baseIncome = Math.max(3, Math.floor(ownedTerritories.length / 3));
+
+      let continentBonus = 0;
+      if (mapData.continents) {
+        mapData.continents.forEach(cont => {
+          const allOwned = cont.territoryIds.every(
+            tid => this.gameState.territories[tid] && this.gameState.territories[tid].ownerId === playerId
+          );
+          if (allOwned) {
+            continentBonus += cont.bonus;
+          }
+        });
+      }
+      return baseIncome + continentBonus;
+    }
+
     initUI() {
       // End Phase button
       this.btnEndPhase.addEventListener('click', () => {
@@ -423,6 +453,91 @@
         });
       }
 
+      // Craft normal Tactical Nuke
+      const btnCraftNuke = document.getElementById('btn-craft-nuke');
+      if (btnCraftNuke) {
+        btnCraftNuke.addEventListener('click', () => {
+          if (this.selectedCardIndices.length === 3) {
+            window.SocketClient.craftNuke(this.selectedCardIndices, false, (res) => {
+              if (res.error) {
+                alert(res.error);
+              } else {
+                showToast(`☢️ Tactical Nuke crafted successfully!`, 'success');
+                this.selectedCardIndices = [];
+                this.renderCards();
+              }
+            });
+          }
+        });
+      }
+
+      // Craft Thermonuclear weapon
+      const btnCraftThermo = document.getElementById('btn-craft-thermonuke');
+      if (btnCraftThermo) {
+        btnCraftThermo.addEventListener('click', () => {
+          if (this.selectedCardIndices.length === 3) {
+            window.SocketClient.craftNuke(this.selectedCardIndices, true, (res) => {
+              if (res.error) {
+                alert(res.error);
+              } else {
+                showToast(`🚀 Thermonuclear weapon assembled!`, 'success');
+                this.selectedCardIndices = [];
+                this.renderCards();
+              }
+            });
+          }
+        });
+      }
+
+      // Tactical Nuke Launch Selector
+      const btnActionNuke = document.getElementById('btn-action-nuke');
+      if (btnActionNuke) {
+        btnActionNuke.addEventListener('click', () => {
+          if (this.gameState.turnStage !== 'ATTACK') {
+            alert('Weapons can only be launched during your Attack phase.');
+            return;
+          }
+          if (this.activeFiringWeaponType === 'nuke') {
+            // Deselect
+            this.activeFiringWeaponType = null;
+            this.selectedLaunchPadId = null;
+            btnActionNuke.classList.remove('active-pulsing');
+            this.lblInstructions.innerHTML = this.getInstructionText(true, 'ATTACK');
+          } else {
+            this.activeFiringWeaponType = 'nuke';
+            btnActionNuke.classList.add('active-pulsing');
+            const btnThermo = document.getElementById('btn-action-thermonuke');
+            if (btnThermo) btnThermo.classList.remove('active-pulsing');
+            this.selectedLaunchPadId = null;
+            this.lblInstructions.innerHTML = `⚠️ **LAUNCH SEQUENCING**: Select one of your adjacent territories (with >= 2 armies) to act as the Launch Pad Silo.`;
+          }
+        });
+      }
+
+      // Thermonuclear Launch Selector
+      const btnActionThermo = document.getElementById('btn-action-thermonuke');
+      if (btnActionThermo) {
+        btnActionThermo.addEventListener('click', () => {
+          if (this.gameState.turnStage !== 'ATTACK') {
+            alert('Weapons can only be launched during your Attack phase.');
+            return;
+          }
+          if (this.activeFiringWeaponType === 'thermonuke') {
+            this.activeFiringWeaponType = null;
+            this.selectedLaunchPadId = null;
+            btnActionThermo.classList.remove('active-pulsing');
+            this.lblInstructions.innerHTML = this.getInstructionText(true, 'ATTACK');
+          } else {
+            this.activeFiringWeaponType = 'thermonuke';
+            btnActionThermo.classList.add('active-pulsing');
+            const btnTact = document.getElementById('btn-action-nuke');
+            if (btnTact) btnTact.classList.remove('active-pulsing');
+            this.selectedLaunchPadId = null;
+            this.lblInstructions.innerHTML = `⚠️ **LAUNCH SEQUENCING**: Select one of your adjacent territories (with >= 2 armies) to act as the Launch Pad Silo.`;
+          }
+        });
+      }
+
       // Quit Game
       document.getElementById('btn-quit-game').addEventListener('click', () => {
         if (confirm('Are you sure you want to quit the campaign?')) {
@@ -586,11 +701,40 @@
       // Clear any visual attack arrows
       document.querySelectorAll('.attack-arrow-segment, #attack-arrow-line').forEach(el => el.remove());
 
+      // Bandwidth Optimization Merge: Reconstruct historical log feed on client
+      if (this.gameState && this.gameState.logs && state.logs) {
+        const localLogs = this.gameState.logs;
+        state.logs.forEach(newLog => {
+          const exists = localLogs.some(l => l.timestamp === newLog.timestamp && l.message === newLog.message);
+          if (!exists) {
+            localLogs.push(newLog);
+          }
+        });
+        if (localLogs.length > 100) localLogs.shift();
+        state.logs = localLogs;
+      }
+
+      // Bandwidth Optimization Merge: Reconstruct historical chat feed on client
+      if (this.gameState && this.gameState.chatArchive && state.chatArchive) {
+        const localChats = this.gameState.chatArchive;
+        state.chatArchive.forEach(newChat => {
+          const exists = localChats.some(c => c.timestamp === newChat.timestamp && c.text === newChat.text && c.senderName === newChat.senderName);
+          if (!exists) {
+            localChats.push(newChat);
+          }
+        });
+        if (localChats.length > 200) localChats.shift();
+        state.chatArchive = localChats;
+      }
+
       // Reset selections if turn or stage changed
       if (this.gameState) {
         if (this.gameState.turnIndex !== state.turnIndex || this.gameState.turnStage !== state.turnStage) {
           this.selectedSourceId = null;
           this.selectedTargetId = null;
+          this.selectedLaunchPadId = null;
+          this.activeFiringWeaponType = null;
+          document.querySelectorAll('.nuke-badge').forEach(b => b.classList.remove('active-pulsing'));
         }
       }
 
@@ -673,6 +817,36 @@
       this.renderCards();
       this.renderLogs();
       this.renderDominanceMeter();
+
+      // Weapons Arsenal UI Handler
+      const nukesPanel = document.getElementById('game-nukes-panel');
+      const btnCraftTact = document.getElementById('btn-craft-nuke');
+      const btnCraftTher = document.getElementById('btn-craft-thermonuke');
+      const lblTactCount = document.getElementById('lbl-nuke-count');
+      const lblTherCount = document.getElementById('lbl-thermonuke-count');
+
+      const isGenerative = !!this.gameState.generativeAIMode || !!window.SocketClient.spectatorMode;
+
+      if (nukesPanel && this.gameState.allowCrafting && !isGenerative) {
+        nukesPanel.style.display = 'block';
+        
+        const me = this.gameState.players.find(p => p.id === window.SocketClient.socket.id);
+        if (lblTactCount && me) lblTactCount.textContent = me.nukes || 0;
+        if (lblTherCount && me) lblTherCount.textContent = me.thermonukes || 0;
+
+        if (isMyTurn && stage === 'DRAFT') {
+          document.getElementById('nuke-craft-buttons-row').style.display = 'flex';
+          
+          // Crafting validation: 3 cards of any type for Tactical Nuke
+          if (btnCraftTact) btnCraftTact.disabled = !(me && me.cards && me.cards.length >= 3);
+          // Crafting validation: 3 cards forming a valid set for Thermonuke
+          if (btnCraftTher) btnCraftTher.disabled = !this.isValidCardSetSelected();
+        } else {
+          document.getElementById('nuke-craft-buttons-row').style.display = 'none';
+        }
+      } else if (nukesPanel) {
+        nukesPanel.style.display = 'none';
+      }
 
       // Update Diplomacy Badge
       const myId = window.SocketClient.socket ? window.SocketClient.socket.id : null;
@@ -1301,6 +1475,70 @@
         });
 
       } else if (stage === 'ATTACK') {
+        // Intercept standard click sequence if a Nuke launcher is armed
+        if (this.activeFiringWeaponType) {
+          const me = this.gameState.players.find(p => p.id === window.SocketClient.socket.id);
+          const isThermo = this.activeFiringWeaponType === 'thermonuke';
+          const weaponStock = isThermo ? (me ? me.thermonukes : 0) : (me ? me.nukes : 0);
+
+          if (!weaponStock || weaponStock <= 0) {
+            alert('You do not hold this weapon type in your inventory.');
+            this.activeFiringWeaponType = null;
+            this.selectedLaunchPadId = null;
+            document.querySelectorAll('.nuke-badge').forEach(b => b.classList.remove('active-pulsing'));
+            this.lblInstructions.innerHTML = this.getInstructionText(true, 'ATTACK');
+            return;
+          }
+
+          if (!this.selectedLaunchPadId) {
+            if (!isOwnedByMe) {
+              alert('You must select one of your own territories to act as the Launch Pad Silo.');
+              return;
+            }
+            if (territory.armies < 2) {
+              alert('Launch Pad Silos must have at least 2 armies stationed.');
+              return;
+            }
+            this.selectedLaunchPadId = territoryId;
+            this.lblInstructions.innerHTML = `⚠️ **LAUNCH SEQUENCING**: Launch pad Silo locked on ${this.getTerritoryName(territoryId)}. Select an adjacent territory (self, ally, or opponent) to detonate!`;
+          } else {
+            const adjacents = this.getAdjacentTerritories(this.selectedLaunchPadId);
+            if (!adjacents.includes(territoryId)) {
+              alert('Launch target must be adjacent to your locked Launch Pad Silo.');
+              return;
+            }
+
+            if (confirm(`🚨 DETONATION WARNING: Fire Nuclear missile from ${this.getTerritoryName(this.selectedLaunchPadId)} and detonate on ${this.getTerritoryName(territoryId)}? This action is irreversible.`)) {
+              const srcId = this.selectedLaunchPadId;
+              const tgtId = territoryId;
+              const thermoFlag = isThermo;
+
+              // De-select armed state immediately
+              this.activeFiringWeaponType = null;
+              this.selectedLaunchPadId = null;
+              document.querySelectorAll('.nuke-badge').forEach(b => b.classList.remove('active-pulsing'));
+              this.lblInstructions.innerHTML = this.getInstructionText(true, 'ATTACK');
+
+              window.SocketClient.fireNuke(srcId, tgtId, thermoFlag, (res) => {
+                if (res.error) {
+                  alert(res.error);
+                } else {
+                  // Trigger gorgeous ballistic missile launching animation
+                  const mapData = window.SocketClient.mapData || this.gameState.mapData;
+                  const srcCenter = mapData.territories.find(t => t.id === srcId)?.center;
+                  const tgtCenter = mapData.territories.find(t => t.id === tgtId)?.center;
+                  if (srcCenter && tgtCenter && this.renderer) {
+                    this.renderer.fireNuclearMissile(srcCenter, tgtCenter, thermoFlag, () => {
+                      showToast(`💥 NUCLEAR DETONATION COMPLETE!`, 'warning');
+                    });
+                  }
+                }
+              });
+            }
+          }
+          return;
+        }
+
         if (isOwnedByMe) {
           // Select source
           if (territory.armies < 2) {
@@ -1498,12 +1736,14 @@
           selectHtml = p.isAI ? `<span class="personality-badge ${p.isLLM ? 'llm' : (p.personality || 'normal')}">${p.isLLM ? 'LLM' : (p.personality || 'normal').toUpperCase()}</span>` : '';
         }
 
+        const income = this.calculatePlayerIncome(p.id);
         item.innerHTML = `
           <div class="player-color-dot" style="background-color: ${p.color};"></div>
           <span class="game-player-name">${p.name} ${p.isAI ? '(AI)' : ''}${pBadgeHtml}</span>
           ${selectHtml}
-          <span class="game-player-stats">
-            <i class="fa-solid fa-earth-americas"></i> ${owned.length} | <i class="fa-solid fa-person-military-pointing"></i> ${totalArmies}
+          <span class="game-player-stats" style="display: flex; flex-direction: column; align-items: flex-end; line-height: 1.25;">
+            <span><i class="fa-solid fa-earth-americas"></i> ${owned.length} | <i class="fa-solid fa-person-military-pointing"></i> ${totalArmies}</span>
+            <span style="color: var(--warning); font-weight: 700; font-size: 10px; margin-top: 1px;"><i class="fa-solid fa-circle-plus"></i> +${income}/turn</span>
           </span>
         `;
 

@@ -25,9 +25,11 @@
       this.selectedTerritoryId = null;
       this.selectedFirstConnectionId = null;
       this.snapEnabled = true;
+      this.undoStack = [];
 
-      // Label dragging states
+      // Dragging states
       this.draggedLabelTerritoryId = null;
+      this.draggedVertex = null; // { territoryId, vertexIndex }
 
       // DOM Elements
       this.canvasContainer = document.getElementById('editor-canvas-container');
@@ -135,8 +137,20 @@
         this.snapEnabled = e.target.checked;
       });
 
+      // Undo Controls
+      const btnUndo = document.getElementById('btn-editor-undo');
+      if (btnUndo) {
+        btnUndo.addEventListener('click', () => this.undo());
+      }
+      window.addEventListener('keydown', (e) => {
+        if (e.ctrlKey && e.key.toLowerCase() === 'z') {
+          e.preventDefault();
+          this.undo();
+        }
+      });
+
       // Tool selection
-      const tools = ['draw-territory', 'draw-connection', 'draw-sea', 'edit-nodes'];
+      const tools = ['draw-territory', 'draw-connection', 'draw-sea', 'edit-nodes', 'move-vertex', 'draw-cosmetic'];
       tools.forEach(tool => {
         const btn = document.getElementById(`tool-${tool}`);
         if (btn) {
@@ -468,6 +482,74 @@
         svgElement.addEventListener('mouseup', () => this.handleLabelDragEnd());
         svgElement.addEventListener('mouseleave', () => this.handleLabelDragEnd());
       }
+
+      if (this.activeTool === 'move-vertex') {
+        this.mapData.territories.forEach(terr => {
+          terr.points.forEach((p, vIdx) => {
+            const circle = document.createElementNS(svgNamespace, "circle");
+            circle.setAttribute("cx", p[0]);
+            circle.setAttribute("cy", p[1]);
+            circle.setAttribute("r", "5");
+            circle.setAttribute("fill", "#ffff00");
+            circle.setAttribute("stroke", "#000");
+            circle.setAttribute("stroke-width", "1");
+            circle.style.cursor = 'move';
+            circle.addEventListener('mousedown', (e) => {
+              e.stopPropagation();
+              this.draggedVertex = { territoryId: terr.id, vertexIndex: vIdx };
+            });
+            groupElement.appendChild(circle);
+          });
+        });
+
+        // Wire dragging events
+        svgElement.addEventListener('mousemove', (e) => this.handleVertexDragMove(e, svgElement));
+        svgElement.addEventListener('mouseup', () => this.handleVertexDragEnd());
+        svgElement.addEventListener('mouseleave', () => this.handleVertexDragEnd());
+      }
+    }
+
+    handleVertexDragMove(event, svgElement) {
+      if (!this.draggedVertex) return;
+      const groupElement = svgElement.querySelector('#map-transform-group') || svgElement;
+      const pt = svgElement.createSVGPoint();
+      pt.x = event.clientX;
+      pt.y = event.clientY;
+      const localPt = pt.matrixTransform(groupElement.getScreenCTM().inverse());
+      let x = localPt.x;
+      let y = localPt.y;
+
+      if (this.snapEnabled) {
+        const snapped = this.getSnappedCoordinate(x, y);
+        x = snapped.x;
+        y = snapped.y;
+      }
+
+      const { territoryId, vertexIndex } = this.draggedVertex;
+      const terr = this.mapData.territories.find(t => t.id === territoryId);
+      if (terr) {
+        terr.points[vertexIndex] = [Math.round(x), Math.round(y)];
+        
+        // Dynamic center point updates
+        let sumX = 0, sumY = 0;
+        terr.points.forEach(p => {
+          sumX += p[0];
+          sumY += p[1];
+        });
+        terr.center = [
+          Math.round(sumX / terr.points.length),
+          Math.round(sumY / terr.points.length)
+        ];
+
+        this.redraw();
+      }
+    }
+
+    handleVertexDragEnd() {
+      if (this.draggedVertex) {
+        this.draggedVertex = null;
+        this.redraw();
+      }
     }
 
     getSnappedCoordinate(x, y) {
@@ -545,15 +627,76 @@
       this.redraw();
     }
 
+    pushToUndo(actionType, data) {
+      this.undoStack.push({ type: actionType, data });
+      if (this.undoStack.length > 50) this.undoStack.shift();
+    }
+
+    undo() {
+      // Actively drawing: undo the last point
+      if (this.currentPolygonPoints.length > 0) {
+        this.currentPolygonPoints.pop();
+        this.redraw();
+        return;
+      }
+
+      if (this.undoStack.length === 0) {
+        alert('Nothing left to undo.');
+        return;
+      }
+
+      const { type, data } = this.undoStack.pop();
+
+      if (type === 'add-territory') {
+        this.mapData.territories = this.mapData.territories.filter(t => t.id !== data.id);
+      } else if (type === 'add-cosmetic') {
+        this.mapData.cosmeticPolygons = (this.mapData.cosmeticPolygons || []).filter(p => p.id !== data.id);
+      } else if (type === 'delete-territory') {
+        this.mapData.territories.push(data.territory);
+        if (data.connections) {
+          this.mapData.connections.push(...data.connections);
+        }
+        if (data.continentId) {
+          const cont = this.mapData.continents.find(c => c.id === data.continentId);
+          if (cont) {
+            cont.territoryIds.push(data.territory.id);
+          }
+        }
+      }
+
+      this.redraw();
+      this.renderContinentsList();
+      this.renderNationsList();
+    }
+
     closePolygon() {
       if (this.currentPolygonPoints.length < 3) {
         alert('Polygons must have at least 3 vertices.');
         return;
       }
 
+      if (this.activeTool === 'draw-cosmetic') {
+        const color = prompt("Enter shape color fill (Hex, RGB, or Name, e.g. #ff0055 or blue):", "#ff0055") || "#ff0055";
+        const opacityInput = prompt("Enter shape transparency (0.0 to 1.0, e.g. 0.3):", "0.4");
+        const opacity = !isNaN(parseFloat(opacityInput)) ? parseFloat(opacityInput) : 0.4;
+
+        this.mapData.cosmeticPolygons = this.mapData.cosmeticPolygons || [];
+        const id = `cosmetic_${Math.random().toString(36).substr(2, 9)}`;
+        this.mapData.cosmeticPolygons.push({
+          id,
+          points: [...this.currentPolygonPoints],
+          color,
+          opacity
+        });
+
+        this.pushToUndo('add-cosmetic', { id });
+        this.currentPolygonPoints = [];
+        this.redraw();
+        return;
+      }
+
       const id = `terr_${Math.random().toString(36).substr(2, 9)}`;
       
-      // Calculate visual center of polygon (average coordinates)
       let sumX = 0, sumY = 0;
       this.currentPolygonPoints.forEach(p => {
         sumX += p[0];
@@ -572,6 +715,7 @@
       };
 
       this.mapData.territories.push(newTerritory);
+      this.pushToUndo('add-territory', { id });
       this.currentPolygonPoints = [];
       this.redraw();
     }
@@ -749,6 +893,26 @@
     }
 
     deleteTerritory(territoryId) {
+      const terr = this.mapData.territories.find(t => t.id === territoryId);
+      if (!terr) return;
+
+      const conns = this.mapData.connections.filter(conn => {
+        if (Array.isArray(conn)) {
+          return conn[0] === territoryId || conn[1] === territoryId;
+        } else if (conn && typeof conn === 'object') {
+          return conn.from === territoryId || conn.to === territoryId;
+        }
+        return false;
+      });
+
+      const cont = this.mapData.continents.find(c => c.territoryIds.includes(territoryId));
+
+      this.pushToUndo('delete-territory', {
+        territory: JSON.parse(JSON.stringify(terr)),
+        connections: JSON.parse(JSON.stringify(conns)),
+        continentId: cont ? cont.id : null
+      });
+
       // Remove territory
       this.mapData.territories = this.mapData.territories.filter(t => t.id !== territoryId);
 
@@ -1135,6 +1299,10 @@
       const helper = document.getElementById('editor-helper-text');
       if (this.activeTool === 'draw-territory') {
         helper.textContent = 'Click to place vertices. Double-click or click first point to close polygon.';
+      } else if (this.activeTool === 'draw-cosmetic') {
+        helper.textContent = 'Click to draw non-interactive cosmetic shapes with custom fill styles.';
+      } else if (this.activeTool === 'move-vertex') {
+        helper.textContent = 'Click and drag the yellow handles to reposition individual territory boundaries.';
       } else if (this.activeTool === 'draw-connection') {
         helper.textContent = 'Click first territory, then click second territory to create/remove land link.';
       } else if (this.activeTool === 'draw-sea') {
@@ -1158,6 +1326,7 @@
         height: this.mapData.height || 800,
         referenceImage: this.mapData.referenceImage,
         imageOpacity: this.mapData.imageOpacity,
+        cosmeticPolygons: this.mapData.cosmeticPolygons || [],
         isScenario: !!this.mapData.isScenario,
         scenarioSettings: this.mapData.scenarioSettings || { capitalRush: false, defaultDummyArmies: 1 },
         nations: (this.mapData.nations || []).map((n, idx) => ({
@@ -1371,6 +1540,7 @@
         height: data.height || 800,
         referenceImage: data.referenceImage || '',
         imageOpacity: data.imageOpacity !== undefined ? data.imageOpacity : 0.5,
+        cosmeticPolygons: data.cosmeticPolygons || [],
         territories: data.territories,
         connections: data.connections || [],
         continents: data.continents || [],

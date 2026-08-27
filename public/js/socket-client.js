@@ -1,6 +1,55 @@
 (function() {
   const socket = io();
 
+  const KEY_MAP = {
+    'territories': 't',
+    'players': 'p',
+    'blizzards': 'bl',
+    'radiation': 'ra',
+    'nukes': 'nu',
+    'thermonukes': 'tn',
+    'turnIndex': 'ti',
+    'turnStage': 'ts',
+    'turnIndex': 'ti',
+    'turnStage': 'ts',
+    'draftPool': 'dp',
+    'pacts': 'pa',
+    'capitals': 'ca',
+    'conqueredThisTurn': 'ct',
+    'tradeInCount': 'tc',
+    'gameMode': 'gm',
+    'cardTradeRule': 'cr',
+    'isPaused': 'ip',
+    'historyLength': 'hl',
+    'ownerId': 'o',
+    'armies': 'a',
+    'id': 'i',
+    'name': 'n',
+    'color': 'c',
+    'nationId': 'nid',
+    'nationName': 'nn',
+    'eliminated': 'e',
+    'cards': 'ca_hand'
+  };
+
+  const REVERSE_KEY_MAP = {};
+  for (const [key, value] of Object.entries(KEY_MAP)) {
+    REVERSE_KEY_MAP[value] = key;
+  }
+
+  function decompressState(state) {
+    if (!state || typeof state !== 'object') return state;
+    if (Array.isArray(state)) {
+      return state.map(decompressState);
+    }
+    const decompressed = {};
+    for (const [key, val] of Object.entries(state)) {
+      const longKey = REVERSE_KEY_MAP[key] || key;
+      decompressed[longKey] = decompressState(val);
+    }
+    return decompressed;
+  }
+
   // Expose socket and wrapper functions to the window
   window.SocketClient = {
     socket,
@@ -157,6 +206,21 @@
       if (!window.SocketClient.roomCode) return callback && callback({ error: 'No room context' });
       socket.emit('toggleSpecificNation', { roomCode: window.SocketClient.roomCode, nationId, disable }, callback);
     },
+
+    updateNuclearSettings: (blizzardCount, startingNukes, startingThermonukes, allowCrafting, callback) => {
+      if (!window.SocketClient.roomCode) return callback && callback({ error: 'No room context' });
+      socket.emit('updateNuclearSettings', { roomCode: window.SocketClient.roomCode, blizzardCount, startingNukes, startingThermonukes, allowCrafting }, callback);
+    },
+
+    craftNuke: (cardIndices, isThermo, callback) => {
+      if (!window.SocketClient.roomCode) return callback && callback({ error: 'No room context' });
+      socket.emit('craftNuke', { roomCode: window.SocketClient.roomCode, cardIndices, isThermo }, callback);
+    },
+
+    fireNuke: (sourceId, targetId, isThermo, callback) => {
+      if (!window.SocketClient.roomCode) return callback && callback({ error: 'No room context' });
+      socket.emit('fireNuke', { roomCode: window.SocketClient.roomCode, sourceId, targetId, isThermo }, callback);
+    },
 changePlayerColor: (targetPlayerId, newColor, callback) => {
       if (!window.SocketClient.roomCode) return callback({ error: 'No room context' });
       socket.emit('changePlayerColor', { roomCode: window.SocketClient.roomCode, targetPlayerId, newColor }, callback);
@@ -300,11 +364,18 @@ changePlayerColor: (targetPlayerId, newColor, callback) => {
     },
 
     onGameStarted: (callback) => {
-      socket.on('gameStarted', callback);
+      socket.on('gameStarted', (data) => {
+        if (data && data.gameState) {
+          data.gameState = decompressState(data.gameState);
+        }
+        callback(data);
+      });
     },
 
     onGameStateUpdate: (callback) => {
-      socket.on('gameStateUpdate', callback);
+      socket.on('gameStateUpdate', (compressedState) => {
+        callback(decompressState(compressedState));
+      });
     },
 
     onDiplomacyReceived: (callback) => {

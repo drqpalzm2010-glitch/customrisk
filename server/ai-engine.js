@@ -3918,6 +3918,23 @@ function makeDraftDecision(room, playerId) {
   const pressures = evaluateBorders(gameState, mapData, playerId);
   const profile = getAIProfile(aiPlayer);
 
+  // Crafting Decisions: If AI holds duplicate/craftable cards, trade them for Nukes!
+  if (gameState.allowCrafting && currentPlayerIsHeuristic(aiPlayer, room)) {
+    if (aiPlayer.cards && aiPlayer.cards.length >= 3) {
+      // 30% chance to craft a Tactical Nuke if they hold cards
+      if (Math.random() < 0.30) {
+        const setIndices = findValidCardSetIndices(aiPlayer.cards, gameState.cardTradeRule);
+        if (setIndices) {
+          // If a set exists, craft a Thermonuke!
+          GameEngine.craftNuke(room, playerId, setIndices, true);
+        } else {
+          // Otherwise craft a Tactical Nuke using any 3 cards
+          GameEngine.craftNuke(room, playerId, [0, 1, 2], false);
+        }
+      }
+    }
+  }
+
   // Calculate AI Empire Troop Density: total armies / total owned territories
   const totalArmies = owned.reduce((sum, tid) => sum + gameState.territories[tid].armies, 0);
   const empireTroopDensity = totalArmies / Math.max(1, owned.length);
@@ -4244,6 +4261,65 @@ function makeAttackDecision(room, playerId) {
     });
   });
 
+  // Weapon Launch Decisions: If AI holds tactical payloads, evaluate launch coordinates
+  if (currentPlayerIsHeuristic(aiPlayer, room) && attacks.length > 0) {
+    const hasNuke = aiPlayer.nukes && aiPlayer.nukes > 0;
+    const hasThermo = aiPlayer.thermonukes && aiPlayer.thermonukes > 0;
+
+    if (hasNuke || hasThermo) {
+      let bestLaunchTargetId = null;
+      let bestLaunchSourceId = null;
+      let maxTargetThreat = 0;
+
+      // Scan all attack frontiers
+      owned.forEach(sid => {
+        const src = gameState.territories[sid];
+        if (src.armies < 2) return;
+
+        const adjs = GameEngine.getAdjacentTerritories(mapData.connections, sid);
+        adjs.forEach(tid => {
+          const tgt = gameState.territories[tid];
+          if (!tgt || tgt.ownerId === playerId || tgt.ownerId === 'dummy') return;
+
+          // Target validation: Avoid launching on blizzards or radioactive nodes
+          if (gameState.blizzards && gameState.blizzards.includes(tid)) return;
+          if (gameState.radiation && gameState.radiation[tid] > 0) return;
+
+          // Break pacts if they are the leader or represent a major chokepoint threat
+          const isPact = hasActivePact(gameState, playerId, tgt.ownerId);
+          if (isPact && getPlayerStrength(gameState, tgt.ownerId) < getPlayerStrength(gameState, playerId) * 1.5) {
+            return; // Skip launching on weaker allies unless required
+          }
+
+          // Launch criteria: High target army density (Tactical requires > 12, Thermo > 15)
+          const targetArmies = tgt.armies || 1;
+          const minRequiredStack = hasThermo ? 15 : 12;
+
+          if (targetArmies >= minRequiredStack && targetArmies > maxTargetThreat) {
+            maxTargetThreat = targetArmies;
+            bestLaunchTargetId = tid;
+            bestLaunchSourceId = sid;
+          }
+        });
+      });
+
+      if (bestLaunchTargetId && bestLaunchSourceId) {
+        const fireThermo = hasThermo; // Prioritize Thermonuke if available
+
+        GameEngine.fireNuke(room, playerId, bestLaunchSourceId, bestLaunchTargetId, fireThermo);
+
+        // Emit launch graphics
+        const srcCenter = mapData.territories.find(t => t.id === bestLaunchSourceId)?.center;
+        const tgtCenter = mapData.territories.find(t => t.id === bestLaunchTargetId)?.center;
+        if (srcCenter && tgtCenter) {
+          io.to(room.code).emit('gameStateUpdate', RoomManager.getSanitizedGameState(gameState));
+          // Execute ballistic missile visual timeline
+          io.emit('fireNuclearMissileEvent', { srcCenter, tgtCenter, isThermo: fireThermo, targetId: bestLaunchTargetId });
+        }
+      }
+    }
+  }
+
   if (attacks.length === 0) return null;
   const best = attacks.sort((a, b) => b.priority - a.priority)[0];
   return { sourceId: best.sourceId, targetId: best.targetId, diceCount: best.diceCount };
@@ -4300,6 +4376,48 @@ function adjustTrustScore(aiPlayer, otherPlayerId, amount) {
   aiPlayer.trustScores = aiPlayer.trustScores || {};
   const current = getTrustScore(aiPlayer, otherPlayerId);
   aiPlayer.trustScores[otherPlayerId] = Math.max(0, Math.min(100, current + amount));
+}
+
+function currentPlayerIsHeuristic(player, room) {
+  if (!player) return false;
+  const isGlobalGenerative = room && (room.generativeAIMode || (room.gameState && room.gameState.generativeAIMode));
+  return !player.isLLM && !isGlobalGenerative;
+}
+
+// Intercepts pathfinding routes during Allied Path validation
+function hasAlliedPath(territories, connections, startId, endId, ownerId, pacts = [], blizzards = [], radiation = {}) {
+  if (startId === endId) return true;
+  if (blizzards.includes(startId) || blizzards.includes(endId)) return false;
+  if (radiation[startId] > 0 || radiation[endId] > 0) return false;
+
+  const alliedOwners = new Set([ownerId]);
+  if (pacts) {
+    pacts.forEach(p => {
+      if (p.type === 'alliance') {
+        if (p.playerA === ownerId) alliedOwners.add(p.playerB);
+        if (p.playerB === ownerId) alliedOwners.add(p.playerA);
+      }
+    });
+  }
+
+  const queue = [startId];
+  const visited = new Set([startId]);
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (current === endId) return true;
+
+    const adjacent = getAdjacentTerritories(connections, current);
+    for (const adjId of adjacent) {
+      const isBlizz = blizzards.includes(adjId);
+      const isRad = radiation[adjId] > 0;
+      if (!isBlizz && !isRad && !visited.has(adjId) && territories[adjId] && alliedOwners.has(territories[adjId].ownerId)) {
+        visited.add(adjId);
+        queue.push(adjId);
+      }
+    }
+  }
+  return false;
 }
 
 function hasActivePact(gameState, p1, p2) {

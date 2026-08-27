@@ -134,6 +134,27 @@
               </label>
             </div>
 
+            <!-- Watch AI: Blizzard & Nuke Options -->
+            <div style="margin-top: 6px; padding: 6px 8px; background: rgba(255,255,255,0.02); border: 1px solid var(--border-glass); border-radius: 6px; display: flex; flex-direction: column; gap: 4px;">
+              <label style="font-size: 11px; font-weight: 700; color: #38bdf8; display: block; margin-bottom: 2px;">❄️ Blizzard & Nuclear Settings</label>
+              <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px;">
+                <span>Blizzard Territories:</span>
+                <input type="number" id="input-watch-ai-blizzard-count" value="0" min="0" max="10" style="width: 50px; background: #000; border: 1px solid var(--border-glass); color: #fff; text-align: center; border-radius: 4px; padding: 2px;">
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px;">
+                <span>Starting Nukes:</span>
+                <input type="number" id="input-watch-ai-starting-nukes" value="0" min="0" max="5" style="width: 50px; background: #000; border: 1px solid var(--border-glass); color: #fff; text-align: center; border-radius: 4px; padding: 2px;">
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px;">
+                <span>Starting Thermonukes:</span>
+                <input type="number" id="input-watch-ai-starting-thermonukes" value="0" min="0" max="5" style="width: 50px; background: #000; border: 1px solid var(--border-glass); color: #fff; text-align: center; border-radius: 4px; padding: 2px;">
+              </div>
+              <label for="chk-watch-ai-allow-crafting" style="font-size: 11px; cursor: pointer; display: flex; align-items: center; justify-content: space-between;">
+                <span>Hammer Crafting of Nukes</span>
+                <input type="checkbox" id="chk-watch-ai-allow-crafting" style="cursor: pointer;">
+              </label>
+            </div>
+
             <div style="margin-bottom: 8px;">
               <label for="chk-watch-ai-generative" style="font-size: 11px; font-weight: 600; cursor: pointer; color: #a855f7; display: flex; align-items: center; justify-content: space-between;">
                 <span>🤖 Generative AI Mode</span>
@@ -336,6 +357,30 @@
             <p class="map-hint">Connect your API key or use Manual Clipboard to export prompts.</p>
           </div>
 
+          <div class="map-select-box" style="margin-top: 12px; border-color: rgba(245,158,11,0.3); background: rgba(245,158,11,0.02);">
+            <h3><i class="fa-solid fa-radiation"></i> Blizzards & Nuclear Settings
+              <span class="info-tip" data-tip="Enable and configure weapons of mass destruction or unpredictable environmental hazards for heuristic maps!">ℹ</span>
+            </h3>
+            <div style="display: flex; flex-direction: column; gap: 6px; font-size: 12px;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span>Blizzard Territories:</span>
+                <input type="number" id="select-lobby-blizzard-count" value="0" min="0" max="10" style="width: 60px; background: #000; border: 1px solid var(--border-glass); color: #fff; text-align: center; border-radius: 4px; padding: 3px;">
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span>Starting Nukes:</span>
+                <input type="number" id="select-lobby-starting-nukes" value="0" min="0" max="5" style="width: 60px; background: #000; border: 1px solid var(--border-glass); color: #fff; text-align: center; border-radius: 4px; padding: 3px;">
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span>Starting Thermonukes:</span>
+                <input type="number" id="select-lobby-starting-thermonukes" value="0" min="0" max="5" style="width: 60px; background: #000; border: 1px solid var(--border-glass); color: #fff; text-align: center; border-radius: 4px; padding: 3px;">
+              </div>
+              <label for="chk-lobby-allow-crafting" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; padding: 2px 0;">
+                <span>Allow Crafting of Nukes</span>
+                <input type="checkbox" id="chk-lobby-allow-crafting" style="cursor: pointer;">
+              </label>
+            </div>
+          </div>
+
           <div class="map-select-box" style="margin-top: 12px;">
             <h3><i class="fa-solid fa-gauge-high"></i> AI Turn Speed
               <span class="info-tip" data-tip="Set execution delay for AI actions. Fast (0.4s) or Blazing (0.1s) speed up AI moves significantly. Instant simulates AI turns in milliseconds.">ℹ</span>
@@ -499,6 +544,25 @@
             <i class="fa-solid fa-handshake"></i> Treaties & Pact proposals
             <span id="diplomacy-badge" class="diplomacy-badge" style="display: none;">0</span>
           </button>
+        </div>
+
+        <!-- Weapons Arsenal (Nukes) -->
+        <div class="game-nukes-section" id="game-nukes-panel" style="display: none; background: rgba(255,255,255,0.02); border: 1px solid var(--border-glass); border-radius: 10px; padding: 12px; margin-top: 10px;">
+          <h3 style="font-size: 11px; text-transform: uppercase; margin-bottom: 8px; color: #22c55e; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;"><i class="fa-solid fa-radiation"></i> Weapons Arsenal</h3>
+          <div class="nukes-status-row" style="display: flex; gap: 8px; margin-bottom: 8px;">
+            <div class="nuke-badge" id="btn-action-nuke" style="flex: 1; background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); padding: 6px; border-radius: 8px; text-align: center; cursor: pointer; transition: all 0.2s;" title="Select and Launch Tactical Nuke">
+              <span style="font-size: 16px;">☢️</span>
+              <div style="font-size: 10px; font-weight: 700; color: #22c55e; margin-top: 2px;">Tactical: <strong id="lbl-nuke-count">0</strong></div>
+            </div>
+            <div class="nuke-badge" id="btn-action-thermonuke" style="flex: 1; background: rgba(168, 85, 247, 0.1); border: 1px solid rgba(168, 85, 247, 0.3); padding: 6px; border-radius: 8px; text-align: center; cursor: pointer; transition: all 0.2s;" title="Select and Launch Thermonuclear Weapon">
+              <span style="font-size: 16px;">🚀</span>
+              <div style="font-size: 10px; font-weight: 700; color: #a855f7; margin-top: 2px;">Thermo: <strong id="lbl-thermonuke-count">0</strong></div>
+            </div>
+          </div>
+          <div style="display: flex; gap: 4px;" id="nuke-craft-buttons-row">
+            <button id="btn-craft-nuke" class="btn outline-btn btn-sm w-full" style="font-size: 11px; padding: 4px; border-color: #22c55e; color: #22c55e;" disabled><i class="fa-solid fa-hammer"></i> Craft Nuke</button>
+            <button id="btn-craft-thermonuke" class="btn outline-btn btn-sm w-full" style="font-size: 11px; padding: 4px; border-color: #a855f7; color: #a855f7;" disabled><i class="fa-solid fa-atom"></i> Craft Thermo</button>
+          </div>
         </div>
 
         <!-- Cards Panel -->
@@ -741,6 +805,11 @@
               <button id="tool-draw-connection" class="btn tool-btn" title="Add adjacency borders"><i class="fa-solid fa-link"></i> Border Link</button>
               <button id="tool-draw-sea" class="btn tool-btn" title="Add sea route connections"><i class="fa-solid fa-water"></i> Sea Route</button>
               <button id="tool-edit-nodes" class="btn tool-btn" title="Move territories/adjust labels"><i class="fa-solid fa-arrows-up-down-left-right"></i> Move Label</button>
+              <button id="tool-move-vertex" class="btn tool-btn" title="Move vertices of a territory"><i class="fa-solid fa-vector-square"></i> Move Vertex</button>
+              <button id="tool-draw-cosmetic" class="btn tool-btn" title="Draw cosmetic polygons"><i class="fa-solid fa-palette"></i> Cosmetic Shape</button>
+            </div>
+            <div style="display: flex; gap: 8px; margin-top: 8px;">
+              <button id="btn-editor-undo" class="btn outline-btn btn-sm w-full" style="border-color: var(--warning); color: var(--warning);"><i class="fa-solid fa-rotate-left"></i> UNDO (Ctrl+Z)</button>
             </div>
             <div class="form-group mt-3">
               <label class="flex justify-between">

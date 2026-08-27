@@ -64,6 +64,28 @@ function calculateFixedTradeBonus(cards) {
   return maxBonus;
 }
 
+// Connectivity BFS validator to prevent Blizzards from partitioning the map geometry
+function isGraphConnected(territories, connections, excludedSet) {
+  const activeIds = Object.keys(territories).filter(id => !excludedSet.has(id));
+  if (activeIds.length === 0) return false;
+  
+  const startId = activeIds[0];
+  const visited = new Set([startId]);
+  const queue = [startId];
+  
+  while (queue.length > 0) {
+    const curr = queue.shift();
+    const adj = getAdjacentTerritories(connections, curr);
+    for (const neighbor of adj) {
+      if (!excludedSet.has(neighbor) && !visited.has(neighbor)) {
+        visited.add(neighbor);
+        queue.push(neighbor);
+      }
+    }
+  }
+  return visited.size === activeIds.length;
+}
+
 // Breadth-First Search to find if there is an allied path between start and end territories
 // Support traversing through allied territories (Alliances)
 function hasAlliedPath(territories, connections, startId, endId, ownerId, pacts = []) {
@@ -205,12 +227,59 @@ function initializeGame(room, mapData, gameMode = 'auto') {
       }
     });
 
+    // Generate random Blizzards at start (safeguarded against map partitioning and Capital overlaps)
+    const blizzards = [];
+    const blizzardCount = Math.min(10, Math.max(0, parseInt(room.blizzardCount) || 0));
+    if (blizzardCount > 0 && mapData.territories) {
+      const excludedSet = new Set();
+      const tempTerritories = {};
+      mapData.territories.forEach(t => tempTerritories[t.id] = {});
+
+      const activeCapitals = [];
+      if (effectiveGameMode === 'capital_rush' && mapData.nations) {
+        mapData.nations.forEach(n => {
+          if (n.capitalTerritoryId) activeCapitals.push(n.capitalTerritoryId);
+        });
+      }
+      const capitalSet = new Set(activeCapitals);
+
+      const candidates = mapData.territories.filter(t => !capitalSet.has(t.id));
+      for (let i = candidates.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+      }
+
+      for (let i = 0; i < candidates.length && blizzards.length < blizzardCount; i++) {
+        const tId = candidates[i].id;
+        excludedSet.add(tId);
+        if (isGraphConnected(tempTerritories, mapData.connections, excludedSet)) {
+          blizzards.push(tId);
+        } else {
+          excludedSet.delete(tId);
+        }
+      }
+    }
+
     room.gameState = {
       gameMode: effectiveGameMode,
       cardTradeRule: room.cardTradeRule || 'progressive',
+      blizzards,
+      radiation: {},
+      allowCrafting: room.allowCrafting !== false,
       capitals: {},
       turnIndex: 0,
       turnStage: 'DRAFT', // Skip SETUP_CLAIM / SETUP_FORTIFY / CAPITAL_SELECTION completely!
+      isScenario: true,
+      players: players.map(p => ({
+        ...p,
+        cards: [],
+        nukes: parseInt(room.startingNukes) || 0,
+        thermonukes: parseInt(room.startingThermonukes) || 0,
+        cardsTradedCount: 0,
+        startingArmiesPool: 0,
+        eliminated: false,
+        stats: { drafted: 0, killed: 0, lost: 0, territoriesConquered: 0 }
+      })),
       isScenario: true,
       players: players.map(p => ({
         ...p,
@@ -307,16 +376,56 @@ function initializeGame(room, mapData, gameMode = 'auto') {
   else if (numPlayers === 5) startingArmies = 25;
   else if (numPlayers >= 6) startingArmies = 20;
 
+  // Generate random Blizzards at start (safeguarded against map partitioning and Capital overlaps)
+  const blizzards = [];
+  const blizzardCount = Math.min(10, Math.max(0, parseInt(room.blizzardCount) || 0));
+  if (blizzardCount > 0 && mapData.territories) {
+    const excludedSet = new Set();
+    const tempTerritories = {};
+    mapData.territories.forEach(t => tempTerritories[t.id] = {});
+
+    // Create a pool of candidate territories (excluding pre-set capitals if Capital Rush is active)
+    const activeCapitals = [];
+    if (effectiveGameMode === 'capital_rush' && mapData.nations) {
+      mapData.nations.forEach(n => {
+        if (n.capitalTerritoryId) activeCapitals.push(n.capitalTerritoryId);
+      });
+    }
+    const capitalSet = new Set(activeCapitals);
+
+    const candidates = mapData.territories.filter(t => !capitalSet.has(t.id));
+    // Shuffle candidates
+    for (let i = candidates.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+    }
+
+    for (let i = 0; i < candidates.length && blizzards.length < blizzardCount; i++) {
+      const tId = candidates[i].id;
+      excludedSet.add(tId);
+      if (isGraphConnected(tempTerritories, mapData.connections, excludedSet)) {
+        blizzards.push(tId);
+      } else {
+        excludedSet.delete(tId); // rollback if it would isolate territories
+      }
+    }
+  }
+
   // Reset players
   room.gameState = {
     gameMode: effectiveGameMode,
     cardTradeRule: room.cardTradeRule || 'progressive',
+    blizzards,
+    radiation: {},
+    allowCrafting: room.allowCrafting !== false,
     capitals: {},
     turnIndex: 0,
     turnStage: 'SETUP_CLAIM',
     players: players.map(p => ({
       ...p,
       cards: [],
+      nukes: parseInt(room.startingNukes) || 0,
+      thermonukes: parseInt(room.startingThermonukes) || 0,
       cardsTradedCount: 0,
       startingArmiesPool: startingArmies,
       eliminated: false,
@@ -335,10 +444,11 @@ function initializeGame(room, mapData, gameMode = 'auto') {
 
   room.gameState.cardDeck = buildBalancedDeck(mapData.territories);
 
+  const blizzardSet = new Set(room.gameState.blizzards);
   mapData.territories.forEach(t => {
     room.gameState.territories[t.id] = {
-      ownerId: null,
-      armies: 0
+      ownerId: blizzardSet.has(t.id) ? 'dummy' : null,
+      armies: blizzardSet.has(t.id) ? 0 : 0
     };
   });
 
@@ -362,17 +472,22 @@ function calculateReinforcements(gameState, mapData, playerId) {
   const player = gameState.players.find(p => p.id === playerId);
   if (!player || player.eliminated) return 0;
 
-  // 1. Territories count divided by 3 (min 3)
+  const blizzardSet = new Set(gameState.blizzards || []);
+
+  // 1. Territories count divided by 3 (min 3, excluding blizzards)
   const ownedTerritories = Object.keys(gameState.territories).filter(
-    tid => gameState.territories[tid].ownerId === playerId
+    tid => gameState.territories[tid].ownerId === playerId && !blizzardSet.has(tid)
   );
   let baseReinforcements = Math.max(3, Math.floor(ownedTerritories.length / 3));
 
-  // 2. Continent bonuses
+  // 2. Continent bonuses (blizzards are bypassed)
   let continentBonus = 0;
   if (mapData.continents) {
     mapData.continents.forEach(cont => {
-      const allOwned = cont.territoryIds.every(
+      const activeContinentTerritories = cont.territoryIds.filter(tid => !blizzardSet.has(tid));
+      if (activeContinentTerritories.length === 0) return;
+
+      const allOwned = activeContinentTerritories.every(
         tid => gameState.territories[tid] && gameState.territories[tid].ownerId === playerId
       );
       if (allOwned) {
@@ -391,6 +506,11 @@ function claimTerritory(room, playerId, territoryId) {
 
   if (currentPlayer.id !== playerId) return { error: 'Not your turn' };
   if (gameState.turnStage !== 'SETUP_CLAIM') return { error: 'Not in territory claim stage' };
+
+  // Blizzard restriction
+  if (gameState.blizzards && gameState.blizzards.includes(territoryId)) {
+    return { error: 'Cannot claim a territory locked under a Blizzard!' };
+  }
 
   const territory = gameState.territories[territoryId];
   if (!territory) return { error: 'Invalid territory ID' };
@@ -558,6 +678,30 @@ function executeAttack(room, playerId, sourceId, targetId, diceCount) {
   // Adjacency check
   const adjacent = getAdjacentTerritories(room.mapData.connections, sourceId);
   if (!adjacent.includes(targetId)) return { error: 'Territories are not adjacent' };
+
+  // Blizzard and Radiation restrictions
+  if (gameState.blizzards && gameState.blizzards.includes(targetId)) {
+    return { error: 'Cannot interact with territories locked under a Blizzard.' };
+  }
+  if (gameState.radiation && gameState.radiation[targetId] > 0) {
+    return { error: 'Cannot attack: territory is currently radioactive and un-interactable!' };
+  }
+
+  // Unclaimed Nuke-Devastated Claiming Block
+  if (target.ownerId === null && target.armies === 0) {
+    if (source.armies < 2) {
+      return { error: 'Must have at least 2 armies to move forward and claim this un-owned land.' };
+    }
+    // Claim territory instantly
+    target.ownerId = playerId;
+    target.armies = 1;
+    source.armies -= 1;
+    
+    addLog(gameState, `🚀 ${currentPlayer.name} marched into un-owned ruins to claim ${getTerritoryName(room.mapData, targetId)}!`);
+    gameState.conqueredThisTurn = true;
+    checkWinCondition(room);
+    return { success: true };
+  }
 
   // Check armies count
   if (source.armies < 2) return { error: 'Attacking territory must have at least 2 armies' };
@@ -1089,6 +1233,17 @@ function endTurn(room) {
   // Reset turn-based AI message tracking counters
   gameState.aiMessagesSentThisTurn = {};
 
+  // Ticks down Radioactive turns
+  if (gameState.radiation) {
+    Object.keys(gameState.radiation).forEach(tid => {
+      gameState.radiation[tid]--;
+      if (gameState.radiation[tid] <= 0) {
+        delete gameState.radiation[tid];
+        addLog(gameState, `☀️ Radioactive decay: radiation has dissipated completely at ${getTerritoryName(room.mapData, tid)}.`);
+      }
+    });
+  }
+
   // Draw exactly 1 card if player conquered at least 1 territory this turn
   // Faithful Risk rule: only 1 card per turn regardless of conquests count
   if (gameState.conqueredThisTurn && gameState.cardDeck.length > 0) {
@@ -1422,9 +1577,129 @@ function getTerritoryName(mapData, id) {
   return terr ? terr.name : id;
 }
 
+// Craft Nuke Weapon
+function craftNuke(room, playerId, cardIndices, isThermo) {
+  const gameState = room.gameState;
+  const player = gameState.players.find(p => p.id === playerId);
+
+  if (!player) return { error: 'Player not found' };
+  if (!gameState.allowCrafting) return { error: 'Weapon crafting is disabled for this room.' };
+  if (gameState.turnStage !== 'DRAFT') return { error: 'Can only craft weapons during your Draft stage!' };
+  if (gameState.players[gameState.turnIndex].id !== playerId) return { error: 'Not your turn' };
+
+  if (cardIndices.length !== 3) return { error: 'Must select exactly 3 cards to craft.' };
+
+  const selectedCards = cardIndices.map(idx => player.cards[idx]).filter(Boolean);
+  if (selectedCards.length !== 3) return { error: 'Invalid card selections.' };
+
+  if (isThermo) {
+    if (!isValidCardSet(selectedCards)) {
+      return { error: 'Thermonuclear crafting requires a valid matching set of 3 cards.' };
+    }
+    player.thermonukes = (player.thermonukes || 0) + 1;
+    addLog(gameState, `☢️ CRITICAL ASSEMBLY: ${player.name} crafted a Thermonuclear Weapon!`);
+  } else {
+    player.nukes = (player.nukes || 0) + 1;
+    addLog(gameState, `☢️ ASSEMBLY: ${player.name} crafted a Tactical Nuke!`);
+  }
+
+  // Remove cards from hand
+  const sortedIndices = [...cardIndices].sort((a, b) => b - a);
+  sortedIndices.forEach(idx => {
+    const card = player.cards.splice(idx, 1)[0];
+    gameState.cardDeck.unshift(card);
+  });
+
+  return { success: true };
+}
+
+// Fire Nuke Weapon
+function fireNuke(room, playerId, sourceId, targetId, isThermo) {
+  const gameState = room.gameState;
+  const player = gameState.players.find(p => p.id === playerId);
+
+  if (!player) return { error: 'Player not found' };
+  if (gameState.players[gameState.turnIndex].id !== playerId) return { error: 'Not your turn' };
+  if (gameState.turnStage !== 'ATTACK') return { error: 'Can only fire weapons during your Attack stage!' };
+
+  if (isThermo) {
+    if (!player.thermonukes || player.thermonukes <= 0) return { error: 'You hold zero Thermonuclear weapons.' };
+    player.thermonukes--;
+  } else {
+    if (!player.nukes || player.nukes <= 0) return { error: 'You hold zero Tactical Nukes.' };
+    player.nukes--;
+  }
+
+  // Adjacency pathing verification
+  const adjacent = getAdjacentTerritories(room.mapData.connections, sourceId);
+  if (!adjacent.includes(targetId)) return { error: 'Launch pads must be adjacent to the target territory.' };
+
+  const source = gameState.territories[sourceId];
+  if (!source || source.ownerId !== playerId || source.armies < 2) {
+    return { error: 'Must hold at least 2 armies on launch pad territory.' };
+  }
+
+  const target = gameState.territories[targetId];
+  if (!target) return { error: 'Invalid target territory.' };
+
+  const defenderId = target.ownerId;
+  const defenderPlayer = gameState.players.find(p => p.id === defenderId);
+
+  // Check Diplomacy breach and break active treaties
+  if (defenderId && defenderId !== 'dummy' && defenderId !== playerId) {
+    const activePactIndex = gameState.pacts.findIndex(
+      p => (p.playerA === playerId && p.playerB === defenderId) ||
+           (p.playerB === playerId && p.playerA === defenderId)
+    );
+    if (activePactIndex !== -1) {
+      gameState.pacts.splice(activePactIndex, 1);
+      addLog(gameState, `💔 TREATER BREACH: ${player.name} broke all treaties and fired a nuke on allied ${defenderPlayer ? defenderPlayer.name : defenderId}!`);
+    }
+
+    // Distrust penalties
+    gameState.players.forEach(p => {
+      if (p.isAI) {
+        p.trustScores = p.trustScores || {};
+        if (p.id === defenderId) p.trustScores[playerId] = 0; // immediate maximum distrust
+      }
+    });
+  }
+
+  // Execute Detonation
+  target.armies = 0;
+  target.ownerId = null; // Unclaimed
+
+  if (isThermo) {
+    gameState.radiation[targetId] = 2; // Radioactive for 2 turns
+
+    // Splash damage to adjacent territories
+    const splashTargets = getAdjacentTerritories(room.mapData.connections, targetId);
+    splashTargets.forEach(sid => {
+      const splashTerr = gameState.territories[sid];
+      if (splashTerr && !gameState.blizzards.includes(sid)) {
+        if (splashTerr.armies > 1) {
+          splashTerr.armies = Math.ceil(splashTerr.armies / 2); // Devastate half the garrison (safeguards final remaining troop)
+        }
+      }
+    });
+
+    addLog(gameState, `🚀 THERMONUCLEAR DETONATION! ${player.name} detonated a thermonuclear weapon on ${getTerritoryName(room.mapData, targetId)}! Splash damage applied to adjacent borders. Radioactive for 2 turns.`);
+  } else {
+    gameState.radiation[targetId] = 1; // Radioactive for 1 turn
+    addLog(gameState, `☢️ DETONATION: ${player.name} detonated a tactical nuke on ${getTerritoryName(room.mapData, targetId)}! Radioactive for 1 turn.`);
+  }
+
+  // Force sync
+  checkWinCondition(room);
+
+  return { success: true, result: { targetId, isThermo } };
+}
+
 module.exports = {
   addLog,
   initializeGame,
+  craftNuke,
+  fireNuke,
   claimTerritory,
   fortifySetup,
   selectCapital,
