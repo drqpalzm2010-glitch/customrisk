@@ -1562,8 +1562,8 @@
         <!-- High-tech payload fins and rocket fuselage -->
         <path d="M-3,5 L3,5 L2,-12 L0,-20 L-2,-12 Z" fill="#94a3b8" stroke="#0f172a" stroke-width="1.2"/>
         <polygon points="-5,5 -3,5 -3,1 L-5,1" fill="#ef4444"/>
-        <polygon points="5,5 3,5 3,1 5,1" fill="#ef4444"/>
-        <polygon points="-2,-12 2,-12 0,-20" fill="${isThermo ? '#a855f7' : '#22c55e'}"/>
+      <polygon points="5,5 3,5 3,1 5,1" fill="#ef4444"/>
+      <polygon points="-2,-12 2,-12 0,-20" fill="${isThermo ? '#dc2626' : '#facc15'}"/>
         <!-- Jet Engine Fire particle thrust -->
         <circle cx="0" cy="8" r="4.5" fill="#f97316" opacity="0.8" style="animation: pulse 0.1s infinite alternate;"/>
         <circle cx="0" cy="11" r="3" fill="#eab308" opacity="0.9" style="animation: pulse 0.08s infinite alternate;"/>
@@ -1613,114 +1613,153 @@
     }
 
     // Atomic / Toxic Mushroom Cloud Impact Explosion
-    triggerNuclearExplosion(targetCenter, isThermo, onImpact) {
-      if (!this.transformGroup || !targetCenter) return;
-      const [tx, ty] = targetCenter;
+  triggerNuclearExplosion(targetCenter, isThermo, onImpact) {
+    if (!this.transformGroup || !targetCenter) return;
+    const [tx, ty] = targetCenter;
 
-      // Play explosion audio sfx
-      if (window.MainController) {
-        window.MainController.playSFX('imagesandsounds/conflict2.mp3');
-      }
-
-      const nukeGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
-      nukeGroup.style.pointerEvents = "none";
-      nukeGroup.setAttribute("transform", `translate(${tx}, ${ty})`);
-
-      const atomicBlastColor = isThermo ? '#a855f7' : '#22c55e'; // Purple for Thermo splash, Green for Tactical nuke
-
-      // 1. Initial blinding flash ring
-      const flash = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      flash.setAttribute("r", "5");
-      flash.setAttribute("fill", "#ffffff");
-      flash.setAttribute("stroke", atomicBlastColor);
-      flash.setAttribute("stroke-width", "6");
-      nukeGroup.appendChild(flash);
-
-      // 2. High-Tech expanding atomic rings
-      const wave1 = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      wave1.setAttribute("r", "10");
-      wave1.setAttribute("fill", "none");
-      wave1.setAttribute("stroke", atomicBlastColor);
-      wave1.setAttribute("stroke-width", "4");
-      nukeGroup.appendChild(wave1);
-
-      const wave2 = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      wave2.setAttribute("r", "5");
-      wave2.setAttribute("fill", "none");
-      wave2.setAttribute("stroke", "#ffffff");
-      wave2.setAttribute("stroke-width", "2");
-      nukeGroup.appendChild(wave2);
-
-      // 3. Radioactive mushroom cloud bubbles
-      const bubbleCount = 8;
-      const bubbles = [];
-      for (let i = 0; i < bubbleCount; i++) {
-        const bubble = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-        const angle = (i / bubbleCount) * Math.PI * 2;
-        bubble.setAttribute("fill", atomicBlastColor);
-        bubble.setAttribute("fill-opacity", "0.75");
-        bubble.setAttribute("stroke", "#ffffff");
-        bubble.setAttribute("stroke-width", "1");
-        nukeGroup.appendChild(bubble);
-        bubbles.push({ el: bubble, angle, radius: 15 + Math.random() * 12 });
-      }
-
-      this.transformGroup.appendChild(nukeGroup);
-
-      if (typeof onImpact === 'function') {
-        onImpact();
-      }
-
-      // Explosion Expansion timeline
-      const startTime = performance.now();
-      const duration = 1600;
-      const maxWave1 = isThermo ? 110 : 70;
-      const maxWave2 = isThermo ? 135 : 90;
-
-      const animateNukeExplosion = (now) => {
-        const elapsed = now - startTime;
-        const p = Math.min(1, elapsed / duration);
-        const invP = 1 - p;
-
-        // Blinding flash expands and fades
-        const flashR = p < 0.2 ? 5 + 40 * (p / 0.2) : 45 * invP;
-        flash.setAttribute("r", Math.max(1, flashR).toString());
-        flash.setAttribute("fill-opacity", invP.toString());
-        flash.setAttribute("stroke-opacity", invP.toString());
-
-        // Expanding shockwave tethers
-        const r1 = 10 + (maxWave1 - 10) * Math.sin((p * Math.PI) / 2);
-        wave1.setAttribute("r", r1.toString());
-        wave1.setAttribute("stroke-opacity", (invP * 0.9).toString());
-
-        const r2 = 5 + (maxWave2 - 5) * (1 - Math.pow(invP, 3));
-        wave2.setAttribute("r", r2.toString());
-        wave2.setAttribute("stroke-opacity", (invP * 0.8).toString());
-
-        // Mushroom Cloud Billowing Expansion
-        bubbles.forEach(b => {
-          const bp = Math.min(1, p / 0.7); // Expand quickly
-          const curDist = b.radius * Math.sin((bp * Math.PI) / 2);
-          const cx = Math.cos(b.angle) * curDist;
-          const cy = Math.sin(b.angle) * curDist - (bp * 15); // float upward like a mushroom stem
-          const bR = (10 + b.radius * 0.4) * (1 - p); // shrink and fade at the end
-
-          b.el.setAttribute("cx", cx.toFixed(1));
-          b.el.setAttribute("cy", cy.toFixed(1));
-          b.el.setAttribute("r", Math.max(1, bR).toFixed(1));
-          b.el.setAttribute("fill-opacity", (0.75 * invP).toString());
-          b.el.setAttribute("stroke-opacity", invP.toString());
-        });
-
-        if (p < 1) {
-          requestAnimationFrame(animateNukeExplosion);
-        } else {
-          nukeGroup.remove();
-        }
-      };
-
-      requestAnimationFrame(animateNukeExplosion);
+    // Play explosion audio sfx
+    if (window.MainController) {
+      window.MainController.playSFX('imagesandsounds/conflict2.mp3');
     }
+
+    const nukeGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    nukeGroup.style.pointerEvents = "none";
+    nukeGroup.setAttribute("transform", `translate(${tx}, ${ty})`);
+
+    // Realistic color palettes: white-hot plasma, fire orange/red, ash gray/black
+    const fireColor = isThermo ? '#ff2a00' : '#ff5500';
+    const plasmaColor = isThermo ? '#ff9f00' : '#ffcc00';
+    const smokeColor = isThermo ? '#1c1917' : '#3c3836';
+
+    // 1. Initial blinding thermal flash ring
+    const flash = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    flash.setAttribute("r", "5");
+    flash.setAttribute("fill", "#ffffff");
+    flash.setAttribute("stroke", plasmaColor);
+    flash.setAttribute("stroke-width", "8");
+    flash.style.filter = "drop-shadow(0 0 15px #ffffff)";
+    nukeGroup.appendChild(flash);
+
+    // 2. Thermodynamic expanding blast wave rings
+    const wave1 = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    wave1.setAttribute("r", "10");
+    wave1.setAttribute("fill", "none");
+    wave1.setAttribute("stroke", fireColor);
+    wave1.setAttribute("stroke-width", "5");
+    wave1.style.filter = "drop-shadow(0 0 8px " + fireColor + ")";
+    nukeGroup.appendChild(wave1);
+
+    const wave2 = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    wave2.setAttribute("r", "5");
+    wave2.setAttribute("fill", "none");
+    wave2.setAttribute("stroke", "#ffffff");
+    wave2.setAttribute("stroke-width", "3");
+    nukeGroup.appendChild(wave2);
+
+    // 3. Mushroom Cloud Stem (parabolic thermal column)
+    const stem = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    stem.setAttribute("fill", fireColor);
+    stem.setAttribute("fill-opacity", "0.85");
+    stem.style.filter = "drop-shadow(0 0 10px " + fireColor + ")";
+    nukeGroup.appendChild(stem);
+
+    // 4. Mushroom Cloud Billowing Cap (fiery ember-gray smoke bubbles)
+    const bubbleCount = 10;
+    const bubbles = [];
+    for (let i = 0; i < bubbleCount; i++) {
+      const bubble = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      const angle = (i / (bubbleCount - 2)) * Math.PI - Math.PI; // fan out upward in a dome shape
+      bubble.setAttribute("fill", fireColor);
+      bubble.setAttribute("fill-opacity", "0.9");
+      bubble.setAttribute("stroke", plasmaColor);
+      bubble.setAttribute("stroke-width", "1.5");
+      bubble.style.filter = "drop-shadow(0 0 12px " + fireColor + ")";
+      nukeGroup.appendChild(bubble);
+      bubbles.push({
+        el: bubble,
+        angle,
+        radius: (isThermo ? 24 : 16) + Math.random() * 12,
+        delay: Math.random() * 0.15
+      });
+    }
+
+    this.transformGroup.appendChild(nukeGroup);
+
+    if (typeof onImpact === 'function') {
+      onImpact();
+    }
+
+    // Extended timeline (increased to 2200-2800ms for a heavier feel)
+    const startTime = performance.now();
+    const duration = isThermo ? 2800 : 2200;
+    const maxWave1 = isThermo ? 155 : 100;
+    const maxWave2 = isThermo ? 195 : 125;
+
+    const animateNukeExplosion = (now) => {
+      const elapsed = now - startTime;
+      const p = Math.min(1, elapsed / duration);
+      const invP = 1 - p;
+
+      // Blinding flash expands and decays
+      const flashR = p < 0.15 ? 5 + 60 * (p / 0.15) : 65 * invP;
+      flash.setAttribute("r", Math.max(1, flashR).toString());
+      flash.setAttribute("fill-opacity", (invP * 1.2).toString());
+      flash.setAttribute("stroke-opacity", invP.toString());
+
+      // Expanding shockwave tethers
+      const r1 = 10 + (maxWave1 - 10) * Math.sin((p * Math.PI) / 2);
+      wave1.setAttribute("r", r1.toString());
+      wave1.setAttribute("stroke-opacity", (invP * 0.95).toString());
+      wave1.setAttribute("stroke-width", (5 * invP).toString());
+
+      const r2 = 5 + (maxWave2 - 5) * (1 - Math.pow(invP, 3));
+      wave2.setAttribute("r", r2.toString());
+      wave2.setAttribute("stroke-opacity", (invP * 0.85).toString());
+      wave2.setAttribute("stroke-width", (3 * invP).toString());
+
+      // Animate plasma thermal mass cooling into soot
+      const transitionColor = p < 0.35 
+        ? fireColor 
+        : p < 0.65 
+          ? plasmaColor 
+          : smokeColor;
+      const currentOpacity = p < 0.5 ? 0.9 : 0.9 * invP;
+
+      // Animate rising mushroom stem
+      const stemWidth = (isThermo ? 24 : 14) * Math.sin(p * Math.PI * 0.5) * invP;
+      const stemHeight = (isThermo ? 75 : 50) * Math.sin(p * Math.PI * 0.5);
+      const d = `M ${-stemWidth} 0 Q ${-stemWidth*0.5} ${-stemHeight*0.5} ${-stemWidth*0.2} ${-stemHeight} L ${stemWidth*0.2} ${-stemHeight} Q ${stemWidth*0.5} ${-stemHeight*0.5} ${stemWidth} 0 Z`;
+      stem.setAttribute("d", d);
+      stem.setAttribute("fill", transitionColor);
+      stem.setAttribute("fill-opacity", currentOpacity.toString());
+
+      // Mushroom Cloud Billowing Cap Expansion
+      bubbles.forEach(b => {
+        const bp = Math.min(1, Math.max(0, p - b.delay) / 0.6); // expand up to 60% of duration
+        const curDist = b.radius * Math.sin((bp * Math.PI) / 2);
+        const cx = Math.cos(b.angle) * curDist * 1.2;
+        const cy = Math.sin(b.angle) * curDist * 0.7 - (bp * (isThermo ? 65 : 45)); 
+        const bR = (10 + b.radius * 0.5) * (1 - p * 0.8);
+
+        b.el.setAttribute("cx", cx.toFixed(1));
+        b.el.setAttribute("cy", cy.toFixed(1));
+        b.el.setAttribute("r", Math.max(1, bR).toFixed(1));
+        
+        b.el.setAttribute("fill", p > 0.45 ? smokeColor : (p > 0.2 ? plasmaColor : fireColor));
+        b.el.setAttribute("stroke", p > 0.6 ? smokeColor : plasmaColor);
+        b.el.setAttribute("fill-opacity", (currentOpacity * 0.8).toString());
+        b.el.setAttribute("stroke-opacity", (invP * 0.8).toString());
+      });
+
+      if (p < 1) {
+        requestAnimationFrame(animateNukeExplosion);
+      } else {
+        nukeGroup.remove();
+      }
+    };
+
+    requestAnimationFrame(animateNukeExplosion);
+  }
   }
 
   window.SVGRenderer = SVGRenderer;
