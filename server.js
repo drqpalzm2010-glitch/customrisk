@@ -942,18 +942,29 @@ const actType = (actionStr || typeStr || '').toUpperCase();
       callback({ error: 'Failed to update AI personality' });
     }
   });
-// Change Player Color (Host can change AI colors in Lobby)
+  // Change Player Color (Host can change AI colors, players can change own color)
   socket.on('changePlayerColor', ({ roomCode, targetPlayerId, newColor }, callback) => {
     try {
       const room = RoomManager.getRoom(roomCode);
       if (!room) return callback({ error: 'Room not found' });
-      if (room.hostId !== socket.id) return callback({ error: 'Only host can change player colors' });
+
+      const isHost = room.hostId === socket.id;
+      const isSelf = targetPlayerId === socket.id;
 
       const player = room.players.find(p => p.id === targetPlayerId);
       if (!player) return callback({ error: 'Player not found' });
 
+      if (!isHost && !isSelf) {
+        return callback({ error: 'Only the host or player can change colors' });
+      }
+      if (player.isAI && !isHost) {
+        return callback({ error: 'Only the host can change AI colors' });
+      }
+
       // Ensure color is unique in room
-      const cleanColor = newColor.trim().toLowerCase();
+      const cleanColor = (newColor || '').trim().toLowerCase();
+      if (!cleanColor) return callback({ error: 'Invalid color' });
+
       const colorTaken = room.players.some(p => p.id !== targetPlayerId && p.color.toLowerCase() === cleanColor);
       if (colorTaken) {
         return callback({ error: 'This color is already taken by another commander' });

@@ -831,11 +831,12 @@
         const item = document.createElement('div');
         item.setAttribute('class', 'player-item');
         
-        const canEditColor = isHost && p.isAI;
+        const myId = window.SocketClient.socket ? window.SocketClient.socket.id : null;
+        const canEditColor = (isHost && p.isAI) || (p.id === myId);
         const personalities = ['normal', 'strategic', 'kind', 'goofball', 'cynical', 'aggressive'];
 
         let selectHtml = '';
-        if (canEditColor) {
+        if (isHost && p.isAI) {
           selectHtml = `
             <select class="lobby-ai-type-select" data-id="${p.id}" style="background: #1e293b; color: #f8fafc; border: 1px solid #475569; padding: 2px 6px; margin-left: 8px; border-radius: 4px; font-size: 11px; cursor: pointer; outline: none; font-weight: 600;">
               <option value="traditional" ${!p.isLLM ? 'selected' : ''}>🤖 Heuristic AI</option>
@@ -859,7 +860,7 @@
 
         item.innerHTML = `
           ${canEditColor ? 
-            `<input type="color" class="lobby-color-picker" data-id="${p.id}" value="${p.color}" style="border: none; background: none; width: 26px; height: 24px; cursor: pointer; border-radius: 50%; padding: 0; outline: none; transition: transform 0.2s;" title="Change AI Color">` :
+            `<input type="color" class="lobby-color-picker" data-id="${p.id}" value="${p.color}" title="${p.isAI ? 'Click to change AI Color' : 'Click to change your Color'}">` :
             `<div class="player-color-dot" style="background-color: ${p.color};"></div>`
           }
           <span class="player-name">${displayName}</span>
@@ -871,18 +872,19 @@
         // Listen to live updates
         if (canEditColor) {
           const picker = item.querySelector('.lobby-color-picker');
-          picker.addEventListener('change', (e) => {
-            const targetId = e.target.getAttribute('data-id');
-            const val = e.target.value;
-            window.SocketClient.changePlayerColor(targetId, val, (res) => {
-              if (res.error) {
-                alert(res.error);
-                e.target.value = p.color;
-              }
+          if (picker) {
+            picker.addEventListener('change', (e) => {
+              const targetId = e.target.getAttribute('data-id');
+              const val = e.target.value;
+              window.SocketClient.changePlayerColor(targetId, val, (res) => {
+                if (res.error) {
+                  alert(res.error);
+                  e.target.value = p.color;
+                }
+              });
             });
-          });
-          picker.addEventListener('mouseenter', () => picker.style.transform = 'scale(1.15)');
-          picker.addEventListener('mouseleave', () => picker.style.transform = 'scale(1)');
+          }
+        }
 
           const selectType = item.querySelector('.lobby-ai-type-select');
           const selectPers = item.querySelector('.lobby-personality-select');
