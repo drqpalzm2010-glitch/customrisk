@@ -830,51 +830,15 @@
 
         // Highlight territories on map when hovering over continent in editor list
         item.addEventListener('mouseenter', () => {
-          (c.territoryIds || []).forEach(tid => {
-            const poly = document.getElementById(`poly-${tid}`);
-            if (poly) {
-              if (!poly.dataset.origFill) {
-                poly.dataset.origFill = poly.style.fill || '';
-                poly.dataset.origFillOpacity = poly.style.fillOpacity || '0.55';
-                poly.dataset.origStroke = poly.style.stroke || '';
-                poly.dataset.origStrokeWidth = poly.style.strokeWidth || '';
-              }
-              poly.style.fill = c.color || '#a855f7';
-              poly.style.fillOpacity = '0.80';
-              poly.style.stroke = '#ffffff';
-              poly.style.strokeWidth = '4.5px';
-              poly.classList.add('highlight-continent');
-              if (poly.parentNode) poly.parentNode.appendChild(poly);
-            }
-            const badge = document.getElementById(`badge-group-${tid}`);
-            if (badge) {
-              badge.classList.add('highlight-continent-badge');
-              if (badge.parentNode) badge.parentNode.appendChild(badge);
-            }
-          });
+          if (this.renderer) {
+            this.renderer.highlightContinent(c);
+          }
         });
 
         item.addEventListener('mouseleave', () => {
-          (c.territoryIds || []).forEach(tid => {
-            const poly = document.getElementById(`poly-${tid}`);
-            if (poly) {
-              if (poly.dataset.origFill !== undefined) {
-                poly.style.fill = poly.dataset.origFill;
-                poly.style.fillOpacity = poly.dataset.origFillOpacity;
-                poly.style.stroke = poly.dataset.origStroke;
-                poly.style.strokeWidth = poly.dataset.origStrokeWidth;
-                delete poly.dataset.origFill;
-                delete poly.dataset.origFillOpacity;
-                delete poly.dataset.origStroke;
-                delete poly.dataset.origStrokeWidth;
-              }
-              poly.classList.remove('highlight-continent');
-            }
-            const badge = document.getElementById(`badge-group-${tid}`);
-            if (badge) {
-              badge.classList.remove('highlight-continent-badge');
-            }
-          });
+          if (this.renderer) {
+            this.renderer.clearContinentHighlight();
+          }
         });
 
         container.appendChild(item);

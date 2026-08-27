@@ -217,6 +217,33 @@
         polygon.style.fill = ownerColor;
         polygon.style.fillOpacity = '0.55';
 
+        // Check Frontline Danger: If an adjacent hostile territory has >= 2x our armies
+        if (gameState && gameState.territories && gameState.territories[terr.id]) {
+          const myArmies = gameState.territories[terr.id].armies || 1;
+          const myOwner = gameState.territories[terr.id].ownerId;
+          const adjacents = this.getAdjacentTerritories(terr.id);
+          let isThreatened = false;
+
+          for (const adjId of adjacents) {
+            const adjTerr = gameState.territories[adjId];
+            if (adjTerr && adjTerr.ownerId !== myOwner && adjTerr.ownerId !== 'dummy') {
+              // Check if formal alliance exists
+              let isAllied = false;
+              if (gameState.pacts) {
+                isAllied = gameState.pacts.some(p => p.type === 'alliance' && ((p.playerA === myOwner && p.playerB === adjTerr.ownerId) || (p.playerA === adjTerr.ownerId && p.playerB === myOwner)));
+              }
+              if (!isAllied && adjTerr.armies >= myArmies * 2 && adjTerr.armies >= 4) {
+                isThreatened = true;
+                break;
+              }
+            }
+          }
+
+          if (isThreatened) {
+            polygon.classList.add('danger-frontline');
+          }
+        }
+
         // Mouse Events
         polygon.addEventListener('click', (e) => {
           if (this.hasDragged) return;
@@ -546,6 +573,160 @@
       if (window.MainController && window.MainController.gameClient && typeof window.MainController.gameClient.highlightSourceTarget === 'function') {
         window.MainController.gameClient.highlightSourceTarget();
       }
+    }
+
+    // Artillery / Cannon Shelling Visual Effect on Target
+    triggerCombatArtillery(sourceCenter, targetCenter, isConquest = false) {
+      if (!this.transformGroup || !targetCenter) return;
+      const [tx, ty] = targetCenter;
+
+      // Create animated burst ripple
+      const burstGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      burstGroup.setAttribute("class", "artillery-burst-effect");
+      burstGroup.style.pointerEvents = "none";
+
+      const circle1 = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      circle1.setAttribute("cx", tx);
+      circle1.setAttribute("cy", ty);
+      circle1.setAttribute("r", "10");
+      circle1.setAttribute("fill", "none");
+      circle1.setAttribute("stroke", "#ff7700");
+      circle1.setAttribute("stroke-width", "3");
+      circle1.setAttribute("class", "cannon-shockwave");
+      burstGroup.appendChild(circle1);
+
+      const flash = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      flash.setAttribute("cx", tx);
+      flash.setAttribute("cy", ty);
+      flash.setAttribute("r", isConquest ? "35" : "22");
+      flash.setAttribute("fill", isConquest ? "#00ffcc" : "#ff3b30");
+      flash.setAttribute("fill-opacity", "0.6");
+      flash.setAttribute("class", "cannon-flash");
+      burstGroup.appendChild(flash);
+
+      this.transformGroup.appendChild(burstGroup);
+
+      setTimeout(() => {
+        burstGroup.remove();
+      }, 1200);
+    }
+
+    // Brief Conquest Flash Ripple
+    triggerConquestShockwave(targetCenter, conquerorColor = '#00e5ff') {
+      if (!this.transformGroup || !targetCenter) return;
+      const [tx, ty] = targetCenter;
+
+      const conquestGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      conquestGroup.style.pointerEvents = "none";
+
+      const ripple = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      ripple.setAttribute("cx", tx);
+      ripple.setAttribute("cy", ty);
+      ripple.setAttribute("r", "15");
+      ripple.setAttribute("fill", "none");
+      ripple.setAttribute("stroke", conquerorColor);
+      ripple.setAttribute("stroke-width", "4");
+      ripple.setAttribute("class", "conquest-ripple");
+      conquestGroup.appendChild(ripple);
+
+      this.transformGroup.appendChild(conquestGroup);
+
+      setTimeout(() => {
+        conquestGroup.remove();
+      }, 1400);
+    }
+
+    // Continent Spotlight Highlight
+    highlightContinent(contRef) {
+      const mapData = this.mapData || (window.SocketClient && window.SocketClient.mapData);
+      if (!mapData || !this.transformGroup) return;
+
+      let targetCont = null;
+      if (contRef && typeof contRef === 'object') {
+        targetCont = contRef;
+      } else if (mapData.continents) {
+        targetCont = mapData.continents.find(c => c.id === contRef || c.name === contRef);
+      }
+      if (!targetCont) return;
+
+      const territoryIds = targetCont.territoryIds || [];
+      if (territoryIds.length === 0) return;
+
+      const memberIds = new Set(territoryIds);
+      const contColor = targetCont.color || '#a855f7';
+
+      // Remove any existing continent highlight overlays
+      this.clearContinentHighlight();
+
+      // Create an SVG group for highlight overlays on top of polygons
+      const overlayGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      overlayGroup.setAttribute("id", "continent-highlight-overlay-group");
+      overlayGroup.style.pointerEvents = "none";
+
+      (mapData.territories || []).forEach(t => {
+        const poly = document.getElementById(`poly-${t.id}`);
+        const badge = document.getElementById(`badge-group-${t.id}`);
+        const isMember = memberIds.has(t.id);
+
+        if (poly) {
+          if (isMember) {
+            poly.style.opacity = '1';
+            // Create a glowing clone on the overlay group
+            if (t.points && t.points.length > 0) {
+              const highlightClone = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+              highlightClone.setAttribute("points", t.points.map(p => p.join(',')).join(' '));
+              highlightClone.setAttribute("fill", contColor);
+              highlightClone.setAttribute("fill-opacity", "0.4");
+              highlightClone.setAttribute("stroke", "#ffffff");
+              highlightClone.setAttribute("stroke-width", "4.5");
+              highlightClone.style.filter = "drop-shadow(0 0 10px " + contColor + ")";
+              overlayGroup.appendChild(highlightClone);
+            }
+          } else {
+            poly.style.opacity = '0.22';
+          }
+        }
+
+        if (badge) {
+          if (isMember) {
+            badge.style.opacity = '1';
+            badge.classList.add('highlight-continent-badge');
+          } else {
+            badge.style.opacity = '0.22';
+          }
+        }
+      });
+
+      // Insert overlay group before the badges so badges remain on top
+      const firstBadge = this.transformGroup.querySelector('.army-badge-container');
+      if (firstBadge) {
+        this.transformGroup.insertBefore(overlayGroup, firstBadge);
+      } else {
+        this.transformGroup.appendChild(overlayGroup);
+      }
+    }
+
+    clearContinentHighlight() {
+      // Remove overlay group if present
+      const overlayGroup = document.getElementById("continent-highlight-overlay-group");
+      if (overlayGroup) overlayGroup.remove();
+
+      const mapData = this.mapData || (window.SocketClient && window.SocketClient.mapData);
+      if (!mapData) return;
+
+      (mapData.territories || []).forEach(t => {
+        const poly = document.getElementById(`poly-${t.id}`);
+        const badge = document.getElementById(`badge-group-${t.id}`);
+
+        if (poly) {
+          poly.style.opacity = '1';
+        }
+
+        if (badge) {
+          badge.style.opacity = '1';
+          badge.classList.remove('highlight-continent-badge');
+        }
+      });
     }
 
     // Tooltip management

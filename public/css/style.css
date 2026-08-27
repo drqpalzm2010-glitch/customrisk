@@ -1497,6 +1497,87 @@ svg.editor-canvas {
   stroke-linejoin: round;
 }
 
+.territory-poly.danger-frontline {
+  stroke: #ff3344 !important;
+  stroke-width: 2.5px !important;
+  stroke-dasharray: 6 3;
+  animation: dangerPulse 2.5s ease-in-out infinite;
+}
+
+@keyframes dangerPulse {
+  0%, 100% { stroke-opacity: 0.6; }
+  50% { stroke-opacity: 1; }
+}
+
+/* Artillery & Conquest Map Animations */
+.cannon-shockwave {
+  animation: shockwaveExpand 0.7s cubic-bezier(0.1, 0.8, 0.3, 1) forwards;
+}
+
+.cannon-flash {
+  animation: flashFade 0.6s ease-out forwards;
+}
+
+.conquest-ripple {
+  animation: conquestRippleExpand 1.2s cubic-bezier(0.15, 0.85, 0.35, 1) forwards;
+}
+
+@keyframes shockwaveExpand {
+  0% { r: 6; stroke-width: 4; stroke-opacity: 1; }
+  100% { r: 35; stroke-width: 1; stroke-opacity: 0; }
+}
+
+@keyframes flashFade {
+  0% { opacity: 0.8; transform: scale(0.6); }
+  50% { opacity: 1; transform: scale(1.1); }
+  100% { opacity: 0; transform: scale(1.3); }
+}
+
+@keyframes conquestRippleExpand {
+  0% { r: 10; stroke-width: 5; stroke-opacity: 1; }
+  60% { stroke-opacity: 0.8; }
+  100% { r: 65; stroke-width: 1; stroke-opacity: 0; }
+}
+
+/* Bottom World Dominance Progress Bar */
+.dominance-bar-container {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 8px;
+  background: rgba(15, 23, 42, 0.8);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  z-index: 990;
+  overflow: hidden;
+  transition: height 0.2s ease;
+  backdrop-filter: blur(4px);
+}
+
+.dominance-bar-container:hover {
+  height: 16px;
+}
+
+.dominance-bar {
+  display: flex;
+  width: 100%;
+  height: 100%;
+}
+
+.dominance-bar-segment {
+  height: 100%;
+  transition: width 0.4s ease-out;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 800;
+  color: #ffffff;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
 /* SVG Connection Lines */
 .connection-line {
   stroke: var(--map-connection-stroke);

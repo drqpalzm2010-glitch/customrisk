@@ -660,12 +660,13 @@
         }
       }
 
-      // 5. Sidebar lists
+      // 5. Sidebar lists & Dominance Meter
       this.renderPlayersList();
       this.renderContinentsLegend();
       this.renderActivePacts();
       this.renderCards();
       this.renderLogs();
+      this.renderDominanceMeter();
 
       // Update Diplomacy Badge
       const myId = window.SocketClient.socket ? window.SocketClient.socket.id : null;
@@ -1404,6 +1405,53 @@
       });
     }
 
+    renderDominanceMeter() {
+      const bar = document.getElementById('game-dominance-bar');
+      if (!bar || !this.gameState || !this.gameState.territories) return;
+
+      const totalTerritories = Object.keys(this.gameState.territories).length;
+      if (totalTerritories === 0) return;
+
+      // Group territory counts by player
+      const counts = {};
+      Object.keys(this.gameState.territories).forEach(tid => {
+        const ownerId = this.gameState.territories[tid]?.ownerId || 'dummy';
+        counts[ownerId] = (counts[ownerId] || 0) + 1;
+      });
+
+      bar.innerHTML = '';
+      (this.gameState.players || []).forEach(p => {
+        const count = counts[p.id] || 0;
+        if (count > 0) {
+          const pct = Math.round((count / totalTerritories) * 100);
+          const seg = document.createElement('div');
+          seg.className = 'dominance-bar-segment';
+          seg.style.width = `${(count / totalTerritories) * 100}%`;
+          seg.style.backgroundColor = p.color || '#00e5ff';
+          seg.title = `${p.name}: ${count}/${totalTerritories} territories (${pct}%)`;
+          if (pct >= 8) {
+            seg.textContent = `${pct}%`;
+          }
+          bar.appendChild(seg);
+        }
+      });
+
+      // Neutral / Dummy territories
+      if (counts['dummy']) {
+        const count = counts['dummy'];
+        const pct = Math.round((count / totalTerritories) * 100);
+        const seg = document.createElement('div');
+        seg.className = 'dominance-bar-segment neutral';
+        seg.style.width = `${(count / totalTerritories) * 100}%`;
+        seg.style.backgroundColor = '#475569';
+        seg.title = `Neutral: ${count}/${totalTerritories} territories (${pct}%)`;
+        if (pct >= 8) {
+          seg.textContent = `${pct}%`;
+        }
+        bar.appendChild(seg);
+      }
+    }
+
     renderContinentsLegend() {
       const container = document.getElementById('game-continents-list');
       if (!container) return;
@@ -1447,51 +1495,15 @@
 
         // Highlight territories on map when hovering over the continent legend item
         item.addEventListener('mouseenter', () => {
-          c.territoryIds.forEach(tid => {
-            const poly = document.getElementById(`poly-${tid}`);
-            if (poly) {
-              if (!poly.dataset.origFill) {
-                poly.dataset.origFill = poly.style.fill || '';
-                poly.dataset.origFillOpacity = poly.style.fillOpacity || '0.55';
-                poly.dataset.origStroke = poly.style.stroke || '';
-                poly.dataset.origStrokeWidth = poly.style.strokeWidth || '';
-              }
-              poly.style.fill = c.color || '#a855f7';
-              poly.style.fillOpacity = '0.80';
-              poly.style.stroke = '#ffffff';
-              poly.style.strokeWidth = '4.5px';
-              poly.classList.add('highlight-continent');
-              if (poly.parentNode) poly.parentNode.appendChild(poly);
-            }
-            const badge = document.getElementById(`badge-group-${tid}`);
-            if (badge) {
-              badge.classList.add('highlight-continent-badge');
-              if (badge.parentNode) badge.parentNode.appendChild(badge);
-            }
-          });
+          if (this.renderer) {
+            this.renderer.highlightContinent(c);
+          }
         });
 
         item.addEventListener('mouseleave', () => {
-          c.territoryIds.forEach(tid => {
-            const poly = document.getElementById(`poly-${tid}`);
-            if (poly) {
-              if (poly.dataset.origFill !== undefined) {
-                poly.style.fill = poly.dataset.origFill;
-                poly.style.fillOpacity = poly.dataset.origFillOpacity;
-                poly.style.stroke = poly.dataset.origStroke;
-                poly.style.strokeWidth = poly.dataset.origStrokeWidth;
-                delete poly.dataset.origFill;
-                delete poly.dataset.origFillOpacity;
-                delete poly.dataset.origStroke;
-                delete poly.dataset.origStrokeWidth;
-              }
-              poly.classList.remove('highlight-continent');
-            }
-            const badge = document.getElementById(`badge-group-${tid}`);
-            if (badge) {
-              badge.classList.remove('highlight-continent-badge');
-            }
-          });
+          if (this.renderer) {
+            this.renderer.clearContinentHighlight();
+          }
           if (typeof this.highlightSourceTarget === 'function') {
             this.highlightSourceTarget();
           }
@@ -2241,6 +2253,14 @@
             outcome.textContent = 'Casualties Decided!';
           }
 
+          // Trigger cannon shelling animation directly on the map viewport
+          if (this.renderer) {
+            this.renderer.triggerCombatArtillery(sourceTerr ? sourceTerr.center : null, targetTerr ? targetTerr.center : null, roll.captured);
+            if (roll.captured) {
+              this.renderer.triggerConquestShockwave(targetTerr ? targetTerr.center : null, attacker.color);
+            }
+          }
+
           // Show close button
           btnClose.style.display = 'inline-flex';
 
@@ -2250,6 +2270,14 @@
           }, 4000);
 
         }, 1000);
+      } else {
+        // If overlay was skipped for spectators, still show the visual artillery battle clash on the map!
+        if (this.renderer && targetTerr && targetTerr.center) {
+          this.renderer.triggerCombatArtillery(sourceTerr ? sourceTerr.center : null, targetTerr.center, roll.captured);
+          if (roll.captured) {
+            this.renderer.triggerConquestShockwave(targetTerr.center, attacker.color);
+          }
+        }
       }
     }
 
