@@ -886,6 +886,7 @@
           }
         }
 
+        if (isHost && p.isAI) {
           const selectType = item.querySelector('.lobby-ai-type-select');
           const selectPers = item.querySelector('.lobby-personality-select');
 
@@ -905,16 +906,18 @@
           }
 
           const select = item.querySelector('.lobby-personality-select');
-          select.addEventListener('change', (e) => {
-            const targetId = e.target.getAttribute('data-id');
-            const val = e.target.value;
-            window.SocketClient.changeAIPersonality(targetId, val, (res) => {
-              if (res.error) {
-                alert(res.error);
-                e.target.value = p.personality;
-              }
+          if (select) {
+            select.addEventListener('change', (e) => {
+              const targetId = e.target.getAttribute('data-id');
+              const val = e.target.value;
+              window.SocketClient.changeAIPersonality(targetId, val, (res) => {
+                if (res.error) {
+                  alert(res.error);
+                  e.target.value = p.personality;
+                }
+              });
             });
-          });
+          }
         }
 
         list.appendChild(item);
