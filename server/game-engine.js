@@ -919,15 +919,21 @@ function resolveCombatRolls(room, sourceId, targetId, attackerDiceCount, defende
     addLog(gameState, `${currentPlayer.name} attacked ${getTerritoryName(room.mapData, targetId)}. Rolls — Attacker: [${attackerRolls.join(', ')}], Defender: [${defenderRolls.join(', ')}]. Attacker lost ${attackerLosses}, Defender lost ${defenderLosses}.`);
   }
 
-  // Track territory casualties
+  // Track territory casualties with timestamps (for battlescarred 2-turn expiry)
   gameState.territoryCasualties = gameState.territoryCasualties || {};
   gameState.territoryCasualties[targetId] = (gameState.territoryCasualties[targetId] || 0) + defenderLosses;
   gameState.territoryCasualties[sourceId] = (gameState.territoryCasualties[sourceId] || 0) + attackerLosses;
+
+  // Per-turn casualties (for battlescarred: only single-turn heavy battles trigger it)
+  const currentTurnNum = gameState.turnNum || 0;
+  gameState.territoryCasualtyTurn = gameState.territoryCasualtyTurn || {};
   if (gameState.territories[targetId]) {
-    gameState.territories[targetId].casualties = (gameState.territories[targetId].casualties || 0) + defenderLosses;
+    gameState.territories[targetId].currentTurnCasualties = (gameState.territories[targetId].currentTurnCasualties || 0) + defenderLosses;
+    if (defenderLosses > 0) gameState.territories[targetId].lastBattleTurn = currentTurnNum;
   }
   if (gameState.territories[sourceId]) {
-    gameState.territories[sourceId].casualties = (gameState.territories[sourceId].casualties || 0) + attackerLosses;
+    gameState.territories[sourceId].currentTurnCasualties = (gameState.territories[sourceId].currentTurnCasualties || 0) + attackerLosses;
+    if (attackerLosses > 0) gameState.territories[sourceId].lastBattleTurn = currentTurnNum;
   }
 
   // Update stats
@@ -1094,11 +1100,34 @@ function endTurn(room) {
   // Reset turn flags
   gameState.conqueredThisTurn = false;
   gameState.lastDiceRolls = null;
+  gameState.turnNum = (gameState.turnNum || 0) + 1;
+
   if (gameState.players) {
     gameState.players.forEach(p => {
       if (p.stats) {
         p.stats.currentTurnConquests = 0;
         p.stats.currentTurnLost = 0;
+      }
+    });
+  }
+
+  // Snapshot single-turn casualties → recentBattleCasualties (shown as battlescarred smoke for 2 turns)
+  // Then clear currentTurnCasualties for next turn
+  if (gameState.territories) {
+    Object.keys(gameState.territories).forEach(tid => {
+      const t = gameState.territories[tid];
+      const turnCas = t.currentTurnCasualties || 0;
+      if (turnCas > 0) {
+        // Snapshot this turn's casualties as the "recent" ones that drive battlescarred
+        t.recentBattleCasualties = turnCas;
+        t.recentBattleTurn = gameState.turnNum;
+      }
+      t.currentTurnCasualties = 0;
+
+      // Expire battlescarred smoke after 2 full turns since the heavy battle turn
+      if (t.recentBattleTurn !== undefined && gameState.turnNum - t.recentBattleTurn > 2) {
+        t.recentBattleCasualties = 0;
+        t.recentBattleTurn = undefined;
       }
     });
   }

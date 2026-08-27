@@ -269,9 +269,10 @@
         polygon.style.fill = ownerColor;
         polygon.style.fillOpacity = '0.55';
 
-        // Check if territory is Battlescarred (cumulative casualties meet/exceed fortressThreshold)
-        const territoryCasualties = (gameState && gameState.territoryCasualties && gameState.territoryCasualties[terr.id]) || (gameState && gameState.territories && gameState.territories[terr.id] && gameState.territories[terr.id].casualties) || 0;
-        if (territoryCasualties >= fortressThreshold && !this.options.isEditor) {
+        // Check if territory is Battlescarred (SINGLE-TURN casualties >= fortressThreshold, within 2 turns)
+        const polyRecentCas = (gameState && gameState.territories && gameState.territories[terr.id] && gameState.territories[terr.id].recentBattleCasualties) || 0;
+        const polyCurrentCas = (gameState && gameState.territories && gameState.territories[terr.id] && gameState.territories[terr.id].currentTurnCasualties) || 0;
+        if (Math.max(polyRecentCas, polyCurrentCas) >= fortressThreshold && !this.options.isEditor) {
           polygon.classList.add('battlescarred-poly');
         }
 
@@ -398,33 +399,55 @@
         if (troopCount >= fortressThreshold && !this.options.isEditor) {
           const fortressGroup = document.createElementNS(svgNamespace, "g");
           fortressGroup.setAttribute("class", "fortress-citadel-badge");
-          fortressGroup.setAttribute("transform", `translate(${terr.center[0] + 13}, ${terr.center[1] - 14}) scale(0.85)`);
+          // Shifted right and down to place on bottom-right of the badge
+          fortressGroup.setAttribute("transform", `translate(${terr.center[0] + 17}, ${terr.center[1] + 17}) scale(1.15)`);
           fortressGroup.style.pointerEvents = "none";
+          fortressGroup.style.filter = "drop-shadow(0 1px 3px rgba(0,0,0,0.8))";
           fortressGroup.innerHTML = `
-            <rect x="-8" y="-4" width="16" height="12" rx="1.5" fill="#334155" stroke="#f1f5f9" stroke-width="1.5"/>
-            <rect x="-8" y="-8" width="4" height="4" rx="0.5" fill="#475569" stroke="#f1f5f9" stroke-width="1"/>
-            <rect x="-2" y="-8" width="4" height="4" rx="0.5" fill="#475569" stroke="#f1f5f9" stroke-width="1"/>
-            <rect x="4" y="-8" width="4" height="4" rx="0.5" fill="#475569" stroke="#f1f5f9" stroke-width="1"/>
-            <path d="M -3 8 L -3 3 A 3 3 0 0 1 3 3 L 3 8 Z" fill="#0f172a"/>
-            <line x1="0" y1="-8" x2="0" y2="-13" stroke="#f59e0b" stroke-width="1.5"/>
-            <polygon points="0,-13 6,-11 0,-9" fill="#f59e0b"/>
+            <rect x="-8" y="-4" width="16" height="12" rx="1.5" fill="#1e293b" stroke="#e2e8f0" stroke-width="1.5"/>
+            <rect x="-8" y="-8" width="4" height="4" rx="0.5" fill="#334155" stroke="#e2e8f0" stroke-width="1"/>
+            <rect x="-2" y="-8" width="4" height="4" rx="0.5" fill="#334155" stroke="#e2e8f0" stroke-width="1"/>
+            <rect x="4" y="-8" width="4" height="4" rx="0.5" fill="#334155" stroke="#e2e8f0" stroke-width="1"/>
+            <rect x="-5" y="1" width="4" height="7" rx="0.5" fill="#0f172a"/>
+            <rect x="1" y="1" width="4" height="7" rx="0.5" fill="#0f172a"/>
+            <line x1="0" y1="-8" x2="0" y2="-14" stroke="#f59e0b" stroke-width="1.8"/>
+            <polygon points="0,-14 7,-12 0,-10" fill="#f59e0b"/>
           `;
           g.appendChild(fortressGroup);
         }
 
-        // Draw Battlescarred Crossed Swords Marker if cumulative casualties >= fortressThreshold
-        const territoryCasualties = (gameState && gameState.territoryCasualties && gameState.territoryCasualties[terr.id]) || (gameState && gameState.territories && gameState.territories[terr.id] && gameState.territories[terr.id].casualties) || 0;
-        if (territoryCasualties >= fortressThreshold && !this.options.isEditor) {
-          const scarGroup = document.createElementNS(svgNamespace, "g");
-          scarGroup.setAttribute("class", "battlescarred-marker");
-          scarGroup.setAttribute("transform", `translate(${terr.center[0] - 13}, ${terr.center[1] - 14}) scale(0.8)`);
-          scarGroup.style.pointerEvents = "none";
-          scarGroup.innerHTML = `
-            <circle cx="0" cy="0" r="8" fill="#1c1917" stroke="#78716c" stroke-dasharray="3 2" stroke-width="1.2" opacity="0.9"/>
-            <path d="M -5 -5 L 5 5 M -3 -6 L -6 -3 M 3 6 L 6 3" stroke="#ef4444" stroke-width="1.6" stroke-linecap="round"/>
-            <path d="M 5 -5 L -5 5 M 3 -6 L 6 -3 M -3 6 L -6 3" stroke="#ef4444" stroke-width="1.6" stroke-linecap="round"/>
+        // Draw Battlescarred animated smoke + craters if SINGLE-TURN casualties >= fortressThreshold (within 2 turns)
+        // Uses recentBattleCasualties = casualties from the most recent turn on this territory
+        const recentCasualties = (gameState && gameState.territories && gameState.territories[terr.id] && gameState.territories[terr.id].recentBattleCasualties) || 0;
+        const currentTurnCasualties = (gameState && gameState.territories && gameState.territories[terr.id] && gameState.territories[terr.id].currentTurnCasualties) || 0;
+        const battlescarredAmount = Math.max(recentCasualties, currentTurnCasualties);
+        if (battlescarredAmount >= fortressThreshold && !this.options.isEditor) {
+          const smokeGroup = document.createElementNS(svgNamespace, "g");
+          smokeGroup.setAttribute("class", "battlescarred-smoke");
+          smokeGroup.setAttribute("transform", `translate(${terr.center[0]}, ${terr.center[1]})`);
+          smokeGroup.style.pointerEvents = "none";
+
+          // Calculate time-based negative delays relative to animation loop durations
+          // This keeps the animations continuous across rapid state-update redraws
+          const delay1 = -((Date.now() % 3200) / 1000);
+          const delay2 = -(((Date.now() - 400) % 2800) / 1000);
+          const delay3 = -(((Date.now() - 900) % 3600) / 1000);
+          const delay4 = -(((Date.now() - 1100) % 2900) / 1000);
+          const delay5 = -(((Date.now() - 600) % 3400) / 1000);
+
+          // Craters shifted outwards (from x=10/12 to x=16) to avoid badge overlap
+          smokeGroup.innerHTML = `
+            <ellipse cx="-16" cy="13" rx="6" ry="2.5" fill="#1c1917" opacity="0.75"/>
+            <ellipse cx="-16" cy="13" rx="4" ry="1.5" fill="#292524" opacity="0.9"/>
+            <ellipse cx="16" cy="11" rx="4.5" ry="2" fill="#1c1917" opacity="0.7"/>
+            <ellipse cx="16" cy="11" rx="3" ry="1.2" fill="#292524" opacity="0.85"/>
+            <circle class="smoke-puff smoke-puff-1" cx="-14" cy="5" r="4" fill="#57534e" opacity="0.55" style="animation-delay: ${delay1}s;"/>
+            <circle class="smoke-puff smoke-puff-2" cx="-12" cy="0" r="3" fill="#78716c" opacity="0.45" style="animation-delay: ${delay2}s;"/>
+            <circle class="smoke-puff smoke-puff-3" cx="-10" cy="-4" r="2.5" fill="#a8a29e" opacity="0.3" style="animation-delay: ${delay3}s;"/>
+            <circle class="smoke-puff smoke-puff-4" cx="14" cy="5" r="3.5" fill="#57534e" opacity="0.5" style="animation-delay: ${delay4}s;"/>
+            <circle class="smoke-puff smoke-puff-5" cx="12" cy="0" r="2.5" fill="#78716c" opacity="0.4" style="animation-delay: ${delay5}s;"/>
           `;
-          g.appendChild(scarGroup);
+          g.appendChild(smokeGroup);
         }
 
         // Army Badge text (friendly troop numbers)
