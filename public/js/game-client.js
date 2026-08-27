@@ -2077,8 +2077,9 @@
       const tgtName = this.getTerritoryName(roll.targetId);
       if (locs) locs.textContent = `${srcName} ⚔️ ${tgtName}`;
 
-      const sourceTerr = this.gameState.territories[roll.sourceId];
-      const targetTerr = this.gameState.territories[roll.targetId];
+      const mapTerritories = (mapData && mapData.territories) ? mapData.territories : [];
+      const sourceTerr = mapTerritories.find(t => t.id === roll.sourceId);
+      const targetTerr = mapTerritories.find(t => t.id === roll.targetId);
 
       const attacker = this.gameState.players.find(p => p.id === roll.attackerId) || { name: 'Attacker', color: '#00e5ff' };
       const defender = this.gameState.players.find(p => p.id === roll.defenderId) || { name: 'Defender', color: '#ff3366' };
@@ -2253,11 +2254,11 @@
             outcome.textContent = 'Casualties Decided!';
           }
 
-          // Trigger cannon shelling animation directly on the map viewport
-          if (this.renderer) {
-            this.renderer.triggerCombatArtillery(sourceTerr ? sourceTerr.center : null, targetTerr ? targetTerr.center : null, roll.captured);
+          // Trigger cannon shelling animation directly on the map viewport for all players
+          if (this.renderer && targetTerr && targetTerr.center) {
+            this.renderer.triggerCombatArtillery(sourceTerr ? sourceTerr.center : null, targetTerr.center, roll.captured);
             if (roll.captured) {
-              this.renderer.triggerConquestShockwave(targetTerr ? targetTerr.center : null, attacker.color);
+              this.renderer.triggerConquestShockwave(targetTerr.center, attacker.color);
             }
           }
 

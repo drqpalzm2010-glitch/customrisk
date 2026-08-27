@@ -119,6 +119,36 @@
               line2.setAttribute("class", isSea ? "connection-line sea-route wrap-around" : "connection-line wrap-around");
               this.transformGroup.appendChild(line2);
             } else {
+              // Check if connection is dangerous: connects to a territory owned by CURRENT USER threatened by >=2x enemy forces
+              let isDangerConn = false;
+              if (gameState && gameState.territories && window.SocketClient && window.SocketClient.socket) {
+                const myId = window.SocketClient.socket.id;
+                const t1 = gameState.territories[fromId];
+                const t2 = gameState.territories[toId];
+                if (t1 && t2) {
+                  // Check case A: fromId is mine, toId is hostile
+                  if (t1.ownerId === myId && t2.ownerId !== myId && t2.ownerId !== 'dummy') {
+                    let isAllied = false;
+                    if (gameState.pacts) {
+                      isAllied = gameState.pacts.some(p => p.type === 'alliance' && ((p.playerA === myId && p.playerB === t2.ownerId) || (p.playerA === t2.ownerId && p.playerB === myId)));
+                    }
+                    if (!isAllied && t2.armies >= t1.armies * 2 && t2.armies >= 4) {
+                      isDangerConn = true;
+                    }
+                  }
+                  // Check case B: toId is mine, fromId is hostile
+                  else if (t2.ownerId === myId && t1.ownerId !== myId && t1.ownerId !== 'dummy') {
+                    let isAllied = false;
+                    if (gameState.pacts) {
+                      isAllied = gameState.pacts.some(p => p.type === 'alliance' && ((p.playerA === myId && p.playerB === t1.ownerId) || (p.playerA === t1.ownerId && p.playerB === myId)));
+                    }
+                    if (!isAllied && t1.armies >= t2.armies * 2 && t1.armies >= 4) {
+                      isDangerConn = true;
+                    }
+                  }
+                }
+              }
+
               if (isSea) {
                 // Draw curved dashed route for sea connections
                 const path = document.createElementNS(svgNamespace, "path");
@@ -138,7 +168,7 @@
                 const cy = my + ny * shift;
 
                 path.setAttribute("d", `M ${x1} ${y1} Q ${cx} ${cy} ${x2} ${y2}`);
-                path.setAttribute("class", "connection-line sea-route");
+                path.setAttribute("class", isDangerConn ? "connection-line sea-route danger-connection" : "connection-line sea-route");
                 this.transformGroup.appendChild(path);
               } else {
                 // Standard straight line connection
@@ -147,7 +177,7 @@
                 line.setAttribute("y1", y1);
                 line.setAttribute("x2", x2);
                 line.setAttribute("y2", y2);
-                line.setAttribute("class", "connection-line");
+                line.setAttribute("class", isDangerConn ? "connection-line danger-connection" : "connection-line");
                 this.transformGroup.appendChild(line);
               }
             }
@@ -216,33 +246,6 @@
         // Fill color combining owner color and transparency
         polygon.style.fill = ownerColor;
         polygon.style.fillOpacity = '0.55';
-
-        // Check Frontline Danger: If an adjacent hostile territory has >= 2x our armies
-        if (gameState && gameState.territories && gameState.territories[terr.id]) {
-          const myArmies = gameState.territories[terr.id].armies || 1;
-          const myOwner = gameState.territories[terr.id].ownerId;
-          const adjacents = this.getAdjacentTerritories(terr.id);
-          let isThreatened = false;
-
-          for (const adjId of adjacents) {
-            const adjTerr = gameState.territories[adjId];
-            if (adjTerr && adjTerr.ownerId !== myOwner && adjTerr.ownerId !== 'dummy') {
-              // Check if formal alliance exists
-              let isAllied = false;
-              if (gameState.pacts) {
-                isAllied = gameState.pacts.some(p => p.type === 'alliance' && ((p.playerA === myOwner && p.playerB === adjTerr.ownerId) || (p.playerA === adjTerr.ownerId && p.playerB === myOwner)));
-              }
-              if (!isAllied && adjTerr.armies >= myArmies * 2 && adjTerr.armies >= 4) {
-                isThreatened = true;
-                break;
-              }
-            }
-          }
-
-          if (isThreatened) {
-            polygon.classList.add('danger-frontline');
-          }
-        }
 
         // Mouse Events
         polygon.addEventListener('click', (e) => {
@@ -580,35 +583,42 @@
       if (!this.transformGroup || !targetCenter) return;
       const [tx, ty] = targetCenter;
 
-      // Create animated burst ripple
       const burstGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
-      burstGroup.setAttribute("class", "artillery-burst-effect");
       burstGroup.style.pointerEvents = "none";
 
-      const circle1 = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      circle1.setAttribute("cx", tx);
-      circle1.setAttribute("cy", ty);
-      circle1.setAttribute("r", "10");
-      circle1.setAttribute("fill", "none");
-      circle1.setAttribute("stroke", "#ff7700");
-      circle1.setAttribute("stroke-width", "3");
-      circle1.setAttribute("class", "cannon-shockwave");
-      burstGroup.appendChild(circle1);
-
-      const flash = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      flash.setAttribute("cx", tx);
-      flash.setAttribute("cy", ty);
-      flash.setAttribute("r", isConquest ? "35" : "22");
-      flash.setAttribute("fill", isConquest ? "#00ffcc" : "#ff3b30");
-      flash.setAttribute("fill-opacity", "0.6");
-      flash.setAttribute("class", "cannon-flash");
-      burstGroup.appendChild(flash);
+      const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      circle.setAttribute("cx", tx);
+      circle.setAttribute("cy", ty);
+      circle.setAttribute("r", "5");
+      circle.setAttribute("fill", isConquest ? "#00ffcc" : "#ff3300");
+      circle.setAttribute("fill-opacity", "0.7");
+      circle.setAttribute("stroke", "#ffffff");
+      circle.setAttribute("stroke-width", "3");
+      burstGroup.appendChild(circle);
 
       this.transformGroup.appendChild(burstGroup);
 
-      setTimeout(() => {
-        burstGroup.remove();
-      }, 1200);
+      const startTime = performance.now();
+      const duration = 750;
+      const maxR = isConquest ? 50 : 35;
+
+      const animate = (time) => {
+        const elapsed = time - startTime;
+        const progress = Math.min(1, elapsed / duration);
+        const currentR = 5 + (maxR - 5) * Math.sin((progress * Math.PI) / 2);
+        const opacity = 1 - progress;
+
+        circle.setAttribute("r", currentR.toString());
+        circle.setAttribute("fill-opacity", (0.7 * opacity).toString());
+        circle.setAttribute("stroke-opacity", opacity.toString());
+
+        if (progress < 1) {
+          requestAnimationFrame(animate);
+        } else {
+          burstGroup.remove();
+        }
+      };
+      requestAnimationFrame(animate);
     }
 
     // Brief Conquest Flash Ripple
@@ -622,18 +632,36 @@
       const ripple = document.createElementNS("http://www.w3.org/2000/svg", "circle");
       ripple.setAttribute("cx", tx);
       ripple.setAttribute("cy", ty);
-      ripple.setAttribute("r", "15");
-      ripple.setAttribute("fill", "none");
-      ripple.setAttribute("stroke", conquerorColor);
+      ripple.setAttribute("r", "10");
+      ripple.setAttribute("fill", conquerorColor);
+      ripple.setAttribute("fill-opacity", "0.4");
+      ripple.setAttribute("stroke", "#ffffff");
       ripple.setAttribute("stroke-width", "4");
-      ripple.setAttribute("class", "conquest-ripple");
       conquestGroup.appendChild(ripple);
 
       this.transformGroup.appendChild(conquestGroup);
 
-      setTimeout(() => {
-        conquestGroup.remove();
-      }, 1400);
+      const startTime = performance.now();
+      const duration = 1100;
+      const maxR = 75;
+
+      const animate = (time) => {
+        const elapsed = time - startTime;
+        const progress = Math.min(1, elapsed / duration);
+        const currentR = 10 + (maxR - 10) * (1 - Math.pow(1 - progress, 3));
+        const opacity = 1 - progress;
+
+        ripple.setAttribute("r", currentR.toString());
+        ripple.setAttribute("fill-opacity", (0.45 * opacity).toString());
+        ripple.setAttribute("stroke-opacity", opacity.toString());
+
+        if (progress < 1) {
+          requestAnimationFrame(animate);
+        } else {
+          conquestGroup.remove();
+        }
+      };
+      requestAnimationFrame(animate);
     }
 
     // Continent Spotlight Highlight
@@ -671,14 +699,13 @@
         if (poly) {
           if (isMember) {
             poly.style.opacity = '1';
-            // Create a glowing clone on the overlay group
+            // Create a glowing border outline clone on the overlay group without changing fill
             if (t.points && t.points.length > 0) {
               const highlightClone = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
               highlightClone.setAttribute("points", t.points.map(p => p.join(',')).join(' '));
-              highlightClone.setAttribute("fill", contColor);
-              highlightClone.setAttribute("fill-opacity", "0.4");
+              highlightClone.setAttribute("fill", "none");
               highlightClone.setAttribute("stroke", "#ffffff");
-              highlightClone.setAttribute("stroke-width", "4.5");
+              highlightClone.setAttribute("stroke-width", "5");
               highlightClone.style.filter = "drop-shadow(0 0 10px " + contColor + ")";
               overlayGroup.appendChild(highlightClone);
             }
