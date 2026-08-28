@@ -1614,7 +1614,8 @@ function saveHistorySnapshot(room) {
     territoriesSnapshot[tid] = {
       ownerId: gameState.territories[tid].ownerId,
       armies: gameState.territories[tid].armies,
-      isCapital: gameState.capitals ? Object.values(gameState.capitals).includes(tid) : false
+      isCapital: gameState.capitals ? Object.values(gameState.capitals).includes(tid) : false,
+      nuked: !!gameState.territories[tid].nuked // Capture ash ruins marker
     };
   });
 
@@ -1625,6 +1626,8 @@ function saveHistorySnapshot(room) {
     nationId: p.nationId || p.selectedNationId || null,
     nationName: p.nationName || null,
     eliminated: p.eliminated,
+    nukes: p.nukes || 0, // Capture player nuke counts
+    thermonukes: p.thermonukes || 0, // Capture player thermo counts
     stats: p.stats ? { ...p.stats } : { drafted: 0, killed: 0, lost: 0, territoriesConquered: 0 }
   }));
 
@@ -1634,6 +1637,7 @@ function saveHistorySnapshot(room) {
     activePlayerId: gameState.players[gameState.turnIndex]?.id,
     territories: territoriesSnapshot,
     players: playersSnapshot,
+    radiation: JSON.parse(JSON.stringify(gameState.radiation || {})), // Capture active radiation map
     chatCount: gameState.chatArchive ? gameState.chatArchive.length : 0, // Store only the size
     timestamp: Date.now()
   });

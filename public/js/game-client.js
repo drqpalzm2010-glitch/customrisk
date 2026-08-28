@@ -3182,6 +3182,7 @@
         turnStage: 'TIMELAPSE',
         players: frame.players,
         territories: frame.territories,
+        radiation: frame.radiation || {}, // Feed radioactive maps to renderer
         logs: [],
         pacts: []
       };
@@ -3257,14 +3258,15 @@
             const ownerIdx = t && t.ownerId && playerMap.has(t.ownerId) ? playerMap.get(t.ownerId) : -1;
             const isCap = t && t.isCapital ? 1 : 0;
             const armies = t ? (t.armies || 0) : 0;
-            const currTuple = [ownerIdx, armies, isCap];
+            const isNuked = t && t.nuked ? 1 : 0; // Capture nuked flag
+            const currTuple = [ownerIdx, armies, isCap, isNuked];
             currTerritories[tid] = currTuple;
 
             if (isKeyframe) {
               terrDiff[tid] = currTuple;
             } else {
               const prevTuple = prevTerritories[tid];
-              if (!prevTuple || prevTuple[0] !== ownerIdx || prevTuple[1] !== armies || prevTuple[2] !== isCap) {
+              if (!prevTuple || prevTuple[0] !== ownerIdx || prevTuple[1] !== armies || prevTuple[2] !== isCap || prevTuple[3] !== isNuked) {
                 terrDiff[tid] = currTuple;
               }
             }
@@ -3281,7 +3283,9 @@
             st.drafted || 0,
             st.killed || 0,
             st.lost || 0,
-            st.territoriesConquered || 0
+            st.territoriesConquered || 0,
+            p.nukes || 0, // Compress player nukes
+            p.thermonukes || 0 // Compress player thermo counts
           ];
         });
 
@@ -3291,6 +3295,7 @@
           activePlayerIdx: playerMap.has(frame.activePlayerId) ? playerMap.get(frame.activePlayerId) : frame.turnIndex,
           t: terrDiff,
           p: playersStats,
+          ra: frame.radiation || {}, // Compress active radiation levels
           chatCount: frame.chatCount || 0,
           timestamp: frame.timestamp
         });
@@ -3334,7 +3339,8 @@
             currentTerritories[tid] = {
               ownerId: ownerPlayer ? ownerPlayer.id : null,
               armies: tuple[1],
-              isCapital: !!tuple[2]
+              isCapital: !!tuple[2],
+              nuked: !!tuple[3] // Decode ash ruins marker
             };
           });
         }
@@ -3353,6 +3359,8 @@
             nationId: pHeader.nationId || null,
             nationName: pHeader.nationName || null,
             eliminated: !!pTuple[1],
+            nukes: pTuple[6] || 0, // Decode player nukes
+            thermonukes: pTuple[7] || 0, // Decode player thermo counts
             stats: {
               drafted: pTuple[2] || 0,
               killed: pTuple[3] || 0,
@@ -3370,6 +3378,7 @@
           activePlayerId: activePlayer ? activePlayer.id : null,
           territories: territoriesSnapshot,
           players: playersSnapshot,
+          radiation: frame.ra || {}, // Decode active radiation map
           chatCount: frame.chatCount || 0,
           timestamp: frame.timestamp
         });

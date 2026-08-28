@@ -215,8 +215,45 @@
           polygon.setAttribute("points", cp.points.map(p => p.join(',')).join(' '));
           polygon.setAttribute("fill", cp.color || '#ff00ff');
           polygon.setAttribute("fill-opacity", cp.opacity !== undefined ? cp.opacity : '0.4');
-          polygon.setAttribute("stroke", "none");
-          polygon.style.pointerEvents = "none";
+          polygon.setAttribute("id", `cosmetic-${cp.id}`);
+          
+          if (this.options.isEditor) {
+            polygon.style.pointerEvents = "auto";
+            polygon.style.cursor = "pointer";
+            if (this.options.selectedCosmeticId === cp.id) {
+              polygon.setAttribute("stroke", "#00e5ff");
+              polygon.setAttribute("stroke-width", "3");
+              polygon.setAttribute("stroke-dasharray", "4 4");
+            } else {
+              polygon.setAttribute("stroke", "transparent");
+              polygon.setAttribute("stroke-width", "4");
+            }
+            
+            polygon.addEventListener("click", (e) => {
+              if (this.hasDragged) return;
+              if (this.options.onCosmeticClick) {
+                this.options.onCosmeticClick(cp.id, e);
+              }
+            });
+            
+            polygon.addEventListener("mouseenter", () => {
+              if (this.options.selectedCosmeticId !== cp.id) {
+                polygon.setAttribute("stroke", "#ffffff");
+                polygon.setAttribute("stroke-width", "3");
+                polygon.setAttribute("stroke-dasharray", "4 4");
+              }
+            });
+            polygon.addEventListener("mouseleave", () => {
+              if (this.options.selectedCosmeticId !== cp.id) {
+                polygon.setAttribute("stroke", "transparent");
+                polygon.setAttribute("stroke-width", "4");
+                polygon.removeAttribute("stroke-dasharray");
+              }
+            });
+          } else {
+            polygon.setAttribute("stroke", "none");
+            polygon.style.pointerEvents = "none";
+          }
           this.transformGroup.appendChild(polygon);
         });
       }

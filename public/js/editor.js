@@ -38,6 +38,10 @@
       this.selectTerritoryContinent = document.getElementById('edit-territory-continent');
       this.btnDeleteTerritory = document.getElementById('btn-delete-territory');
       this.btnCloseRightSidebar = document.getElementById('btn-close-territory-sidebar');
+      
+      // Save default territory details layout so we can safely restore it
+      this.defaultSidebarHTML = this.sidebarRight.innerHTML;
+      this.selectedCosmeticId = null;
 
       // Bind events
       this.initUI();
@@ -204,101 +208,7 @@
         this.redraw();
       });
 
-      // Delete Territory
-      this.btnDeleteTerritory.addEventListener('click', () => {
-        if (this.selectedTerritoryId) {
-          this.deleteTerritory(this.selectedTerritoryId);
-          this.closeRightSidebar();
-        }
-      });
-
-      // Close territory sidebar
-      this.btnCloseRightSidebar.addEventListener('click', () => {
-        this.closeRightSidebar();
-      });
-
-      this.txtTerritoryName.addEventListener('input', (e) => {
-        if (this.selectedTerritoryId) {
-          const terr = this.mapData.territories.find(t => t.id === this.selectedTerritoryId);
-          if (terr) {
-            terr.name = e.target.value;
-            this.redraw();
-          }
-        }
-      });
-
-      this.selectTerritoryContinent.addEventListener('change', (e) => {
-        if (this.selectedTerritoryId) {
-          const terrId = this.selectedTerritoryId;
-          const contId = e.target.value;
-          
-          this.mapData.continents.forEach(c => {
-            c.territoryIds = c.territoryIds.filter(tid => tid !== terrId);
-          });
-
-          if (contId) {
-            const cont = this.mapData.continents.find(c => c.id === contId);
-            if (cont) {
-              cont.territoryIds.push(terrId);
-            }
-          }
-          this.redraw();
-        }
-      });
-
-      // Territory Scenario Inspector Inputs
-      const selectOwner = document.getElementById('edit-territory-owner');
-      if (selectOwner) {
-        selectOwner.addEventListener('change', (e) => {
-          if (this.selectedTerritoryId) {
-            const terr = this.mapData.territories.find(t => t.id === this.selectedTerritoryId);
-            if (terr) {
-              terr.startingOwnerId = e.target.value;
-              this.renderNationsList();
-              this.redraw();
-            }
-          }
-        });
-      }
-
-      const inputArmies = document.getElementById('edit-territory-armies');
-      if (inputArmies) {
-        inputArmies.addEventListener('change', (e) => {
-          if (this.selectedTerritoryId) {
-            const terr = this.mapData.territories.find(t => t.id === this.selectedTerritoryId);
-            if (terr) {
-              terr.startingArmies = parseInt(e.target.value) || 1;
-              this.renderNationsList();
-              this.redraw();
-            }
-          }
-        });
-      }
-
-      const chkIsCapital = document.getElementById('edit-territory-is-capital');
-      if (chkIsCapital) {
-        chkIsCapital.addEventListener('change', (e) => {
-          if (this.selectedTerritoryId) {
-            const terr = this.mapData.territories.find(t => t.id === this.selectedTerritoryId);
-            if (!terr) return;
-            const ownerId = terr.startingOwnerId;
-            if (!ownerId || ownerId === 'dummy') {
-              alert('Please assign this territory to a custom Scenario Nation before marking it as a capital.');
-              chkIsCapital.checked = false;
-              return;
-            }
-            const nation = this.mapData.nations.find(n => n.id === ownerId);
-            if (nation) {
-              if (e.target.checked) {
-                nation.capitalTerritoryId = terr.id;
-              } else if (nation.capitalTerritoryId === terr.id) {
-                nation.capitalTerritoryId = null;
-              }
-              this.redraw();
-            }
-          }
-        });
-      }
+      this.rebindTerritorySidebarEvents();
 
       // Export
       document.getElementById('btn-editor-export').addEventListener('click', () => {
@@ -388,9 +298,11 @@
         this.renderer = new window.SVGRenderer('editor-canvas-container', {
           isEditor: true,
           onTerritoryClick: (tid, e) => this.handleTerritoryClick(tid, e),
-          onLabelDragStart: (tid, e) => this.handleLabelDragStart(tid, e)
+          onLabelDragStart: (tid, e) => this.handleLabelDragStart(tid, e),
+          onCosmeticClick: (cid, e) => this.handleCosmeticClick(cid, e)
         });
       }
+      this.renderer.options.selectedCosmeticId = this.selectedCosmeticId;
       this.renderer.activeTool = this.activeTool;
       this.renderer.render(this.mapData);
 
@@ -456,7 +368,7 @@
         // If we dragged/panned the map, do not add a vertex
         if (svgElement.__renderer && svgElement.__renderer.hasDragged) return;
 
-        if (this.activeTool === 'draw-territory') {
+        if (this.activeTool === 'draw-territory' || this.activeTool === 'draw-cosmetic') {
           // Get click location relative to SVG transformed group element using SVG matrix transform
           const pt = svgElement.createSVGPoint();
           pt.x = e.clientX;
@@ -662,6 +574,9 @@
             cont.territoryIds.push(data.territory.id);
           }
         }
+      } else if (type === 'delete-cosmetic') {
+        this.mapData.cosmeticPolygons = this.mapData.cosmeticPolygons || [];
+        this.mapData.cosmeticPolygons.push(data);
       }
 
       this.redraw();
@@ -1579,7 +1494,204 @@
       this.renderAlliancesList();
       this.redraw();
     }
+    rebindTerritorySidebarEvents() {
+      if (!this.btnDeleteTerritory) return;
+      this.btnDeleteTerritory.onclick = () => {
+        if (this.selectedTerritoryId) {
+          this.deleteTerritory(this.selectedTerritoryId);
+          this.closeRightSidebar();
+        }
+      };
+
+      this.btnCloseRightSidebar.onclick = () => {
+        this.closeRightSidebar();
+      };
+
+      this.txtTerritoryName.oninput = (e) => {
+        if (this.selectedTerritoryId) {
+          const terr = this.mapData.territories.find(t => t.id === this.selectedTerritoryId);
+          if (terr) {
+            terr.name = e.target.value;
+            this.redraw();
+          }
+        }
+      };
+
+      this.selectTerritoryContinent.onchange = (e) => {
+        if (this.selectedTerritoryId) {
+          const terrId = this.selectedTerritoryId;
+          const contId = e.target.value;
+          
+          this.mapData.continents.forEach(c => {
+            c.territoryIds = c.territoryIds.filter(tid => tid !== terrId);
+          });
+
+          if (contId) {
+            const cont = this.mapData.continents.find(c => c.id === contId);
+            if (cont) {
+              cont.territoryIds.push(terrId);
+            }
+          }
+          this.redraw();
+        }
+      };
+
+      const selectOwner = document.getElementById('edit-territory-owner');
+      if (selectOwner) {
+        selectOwner.onchange = (e) => {
+          if (this.selectedTerritoryId) {
+            const terr = this.mapData.territories.find(t => t.id === this.selectedTerritoryId);
+            if (terr) {
+              terr.startingOwnerId = e.target.value;
+              this.renderNationsList();
+              this.redraw();
+            }
+          }
+        };
+      }
+
+      const inputArmies = document.getElementById('edit-territory-armies');
+      if (inputArmies) {
+        inputArmies.onchange = (e) => {
+          if (this.selectedTerritoryId) {
+            const terr = this.mapData.territories.find(t => t.id === this.selectedTerritoryId);
+            if (terr) {
+              terr.startingArmies = parseInt(e.target.value) || 1;
+              this.renderNationsList();
+              this.redraw();
+            }
+          }
+        };
+      }
+
+      const chkIsCapital = document.getElementById('edit-territory-is-capital');
+      if (chkIsCapital) {
+        chkIsCapital.onchange = (e) => {
+          if (this.selectedTerritoryId) {
+            const terr = this.mapData.territories.find(t => t.id === this.selectedTerritoryId);
+            if (!terr) return;
+            const ownerId = terr.startingOwnerId;
+            if (!ownerId || ownerId === 'dummy') {
+              alert('Please assign this territory to a custom Scenario Nation before marking it as a capital.');
+              chkIsCapital.checked = false;
+              return;
+            }
+            const nation = this.mapData.nations.find(n => n.id === ownerId);
+            if (nation) {
+              if (e.target.checked) {
+                nation.capitalTerritoryId = terr.id;
+              } else if (nation.capitalTerritoryId === terr.id) {
+                nation.capitalTerritoryId = null;
+              }
+              this.redraw();
+            }
+          }
+        };
+      }
+    }
+
+    handleCosmeticClick(cosmeticId, event) {
+      if (this.currentPolygonPoints.length > 0) return;
+      event.stopPropagation();
+      this.cancelCurrentDrawing();
+      this.selectedCosmeticId = cosmeticId;
+      this.selectedTerritoryId = null;
+      this.openCosmeticSidebar(cosmeticId);
+    }
+
+    openCosmeticSidebar(cosmeticId) {
+      const cp = this.mapData.cosmeticPolygons.find(p => p.id === cosmeticId);
+      if (!cp) return;
+
+      this.sidebarRight.style.display = 'block';
+
+      this.sidebarRight.innerHTML = `
+        <h3>Cosmetic Shape Details</h3>
+        <div class="form-group" style="margin-top: 10px;">
+          <label>Fill Color (Hex, RGB, Name)</label>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <input type="color" id="edit-cosmetic-color-picker" value="${cp.color.startsWith('#') ? cp.color : '#ff00ff'}" style="border: none; background: none; width: 36px; height: 36px; cursor: pointer; padding: 0; outline: none; flex-shrink: 0;">
+            <input type="text" id="edit-cosmetic-color-text" value="${cp.color || '#ff00ff'}" style="flex: 1; background: rgba(0,0,0,0.3); border: 1px solid var(--border-glass); border-radius: 6px; padding: 8px; color: #fff;">
+          </div>
+        </div>
+        <div class="form-group" style="margin-top: 15px;">
+          <label>Opacity: <span id="edit-cosmetic-opacity-val" style="color: var(--primary); font-weight: bold;">${Math.round((cp.opacity !== undefined ? cp.opacity : 0.4) * 100)}%</span></label>
+          <input type="range" id="edit-cosmetic-opacity" min="0" max="100" value="${Math.round((cp.opacity !== undefined ? cp.opacity : 0.4) * 100)}" style="width: 100%; cursor: pointer; accent-color: var(--primary);">
+        </div>
+        <div class="flex justify-between mt-6" style="display: flex; justify-content: space-between; margin-top: 25px;">
+          <button id="btn-delete-cosmetic" class="btn danger-btn" style="padding: 10px 16px;"><i class="fa-solid fa-trash-can"></i> Delete</button>
+          <button id="btn-close-cosmetic-sidebar" class="btn outline-btn" style="padding: 10px 16px;">Done</button>
+        </div>
+      `;
+
+      const picker = document.getElementById('edit-cosmetic-color-picker');
+      const text = document.getElementById('edit-cosmetic-color-text');
+      const opacitySlider = document.getElementById('edit-cosmetic-opacity');
+      const opacityVal = document.getElementById('edit-cosmetic-opacity-val');
+      const btnDelete = document.getElementById('btn-delete-cosmetic');
+      const btnClose = document.getElementById('btn-close-cosmetic-sidebar');
+
+      picker.addEventListener('input', (e) => {
+        const val = e.target.value;
+        text.value = val;
+        cp.color = val;
+        this.redraw();
+      });
+
+      text.addEventListener('input', (e) => {
+        const val = e.target.value;
+        if (val.startsWith('#') && val.length === 7) {
+          picker.value = val;
+        }
+        cp.color = val;
+        this.redraw();
+      });
+
+      opacitySlider.addEventListener('input', (e) => {
+        const pct = parseInt(e.target.value);
+        opacityVal.textContent = `${pct}%`;
+        cp.opacity = pct / 100;
+        this.redraw();
+      });
+
+      btnDelete.addEventListener('click', () => {
+        this.deleteCosmetic(cosmeticId);
+        this.closeCosmeticSidebar();
+      });
+
+      btnClose.addEventListener('click', () => {
+        this.closeCosmeticSidebar();
+      });
+    }
+
+    closeCosmeticSidebar() {
+      this.sidebarRight.style.display = 'none';
+      this.selectedCosmeticId = null;
+      if (this.renderer) {
+        this.renderer.options.selectedCosmeticId = null;
+      }
+      this.sidebarRight.innerHTML = this.defaultSidebarHTML;
+
+      this.txtTerritoryName = document.getElementById('edit-territory-name');
+      this.selectTerritoryContinent = document.getElementById('edit-territory-continent');
+      this.btnDeleteTerritory = document.getElementById('btn-delete-territory');
+      this.btnCloseRightSidebar = document.getElementById('btn-close-territory-sidebar');
+
+      this.rebindTerritorySidebarEvents();
+      this.redraw();
+    }
+
+    deleteCosmetic(cosmeticId) {
+      const cp = this.mapData.cosmeticPolygons.find(p => p.id === cosmeticId);
+      if (!cp) return;
+      this.pushToUndo('delete-cosmetic', JSON.parse(JSON.stringify(cp)));
+      this.mapData.cosmeticPolygons = this.mapData.cosmeticPolygons.filter(p => p.id !== cosmeticId);
+      this.redraw();
+    }
   }
+  
+
+  
 
   window.MapEditor = MapEditor;
 })();
