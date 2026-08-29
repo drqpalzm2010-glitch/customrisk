@@ -1013,6 +1013,10 @@ body.dark-mode {
   pointer-events: none;
 }
 
+.viewport-header * {
+  pointer-events: auto;
+}
+
 .viewport-header .instructions {
   font-size: 13px;
   font-weight: 500;

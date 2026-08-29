@@ -641,6 +641,8 @@ function startGame(roomCode) {
         existingPlayer.nationId = n.id;
         existingPlayer.name = `${n.name} (${existingPlayer.originalName})`;
         existingPlayer.color = n.color; // Override color with nation color
+        existingPlayer.startingNukes = n.startingNukes || 0;
+        existingPlayer.startingThermonukes = n.startingThermonukes || 0;
         finalPlayers.push(existingPlayer);
       } else if (existingPlayer && existingPlayer.isAI) {
         existingPlayer.nationName = n.name;
@@ -648,6 +650,8 @@ function startGame(roomCode) {
         existingPlayer.name = n.name;
         existingPlayer.color = n.color;
         existingPlayer.personality = existingPlayer.personality || personalities[idx % personalities.length];
+        existingPlayer.startingNukes = n.startingNukes || 0;
+        existingPlayer.startingThermonukes = n.startingThermonukes || 0;
         finalPlayers.push(existingPlayer);
       } else {
         // Unchosen nation becomes an AI player with varied personality!
@@ -662,7 +666,9 @@ function startGame(roomCode) {
           isAI: true,
           autoDefend: true,
           trustScores: {},
-          personality: assignedPersonality
+          personality: assignedPersonality,
+          startingNukes: n.startingNukes || 0,
+          startingThermonukes: n.startingThermonukes || 0
         };
         finalPlayers.push(aiPlayer);
       }

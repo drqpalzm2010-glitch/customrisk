@@ -273,8 +273,8 @@ function initializeGame(room, mapData, gameMode = 'auto') {
       players: players.map(p => ({
         ...p,
         cards: [],
-        nukes: parseInt(room.startingNukes) || 0,
-        thermonukes: parseInt(room.startingThermonukes) || 0,
+        nukes: p.startingNukes !== undefined ? p.startingNukes : (parseInt(room.startingNukes) || 0),
+        thermonukes: p.startingThermonukes !== undefined ? p.startingThermonukes : (parseInt(room.startingThermonukes) || 0),
         cardsTradedCount: 0,
         startingArmiesPool: 0,
         eliminated: false,

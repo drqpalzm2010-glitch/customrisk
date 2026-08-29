@@ -942,7 +942,9 @@
         name,
         color: this.getRandomColor(),
         description: `The proud people of ${name}, defenders of the realm.`,
-        capitalTerritoryId: null
+        capitalTerritoryId: null,
+        startingNukes: 0,
+        startingThermonukes: 0
       };
 
       this.mapData.nations.push(newNation);
@@ -1030,6 +1032,16 @@
           <div style="margin-bottom: 6px;">
             <textarea class="nation-desc-input" style="width: 100%; height: 40px; background: rgba(0,0,0,0.5); border: 1px solid var(--border-glass); color: #fff; padding: 4px 8px; border-radius: 4px; font-size: 11px; resize: none;" placeholder="Enter nation backstory / description...">${n.description || ''}</textarea>
           </div>
+          <div style="display: flex; gap: 10px; margin-bottom: 6px; background: rgba(255,255,255,0.02); padding: 4px 6px; border-radius: 4px; border: 1px solid var(--border-glass);">
+            <div style="flex: 1; display: flex; align-items: center; gap: 4px;">
+              <span style="color: #22c55e; font-size: 11px;" title="Starting Tactical Nukes">☢️ Nukes:</span>
+              <input type="number" class="nation-nukes-input" value="${n.startingNukes || 0}" min="0" max="999" style="width: 50px; background: rgba(0,0,0,0.5); border: 1px solid var(--border-glass); color: #fff; padding: 2px 4px; border-radius: 4px; font-size: 11px; text-align: center;">
+            </div>
+            <div style="flex: 1; display: flex; align-items: center; gap: 4px;">
+              <span style="color: #a855f7; font-size: 11px;" title="Starting Thermonuclear Weapons">🚀 Thermos:</span>
+              <input type="number" class="nation-thermos-input" value="${n.startingThermonukes || 0}" min="0" max="999" style="width: 50px; background: rgba(0,0,0,0.5); border: 1px solid var(--border-glass); color: #fff; padding: 2px 4px; border-radius: 4px; font-size: 11px; text-align: center;">
+            </div>
+          </div>
           <div style="font-size: 11px; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
             <span><i class="fa-solid fa-crown" style="color: #fbbf24;"></i> Capital: <strong style="color: #fff;">${capitalLabel}</strong></span>
             <span style="color: rgba(255,255,255,0.7); font-size: 10px;"><i class="fa-solid fa-list-ol" style="color: var(--primary);"></i> Position: <strong>#${idx + 1}</strong></span>
@@ -1065,6 +1077,14 @@
 
         item.querySelector('.nation-desc-input').addEventListener('input', (e) => {
           n.description = e.target.value;
+        });
+
+        item.querySelector('.nation-nukes-input').addEventListener('change', (e) => {
+          n.startingNukes = parseInt(e.target.value) || 0;
+        });
+
+        item.querySelector('.nation-thermos-input').addEventListener('change', (e) => {
+          n.startingThermonukes = parseInt(e.target.value) || 0;
         });
 
         item.querySelector('.btn-nation-up').addEventListener('click', () => {
@@ -1250,7 +1270,9 @@
           color: n.color,
           description: n.description,
           capitalTerritoryId: n.capitalTerritoryId,
-          turnOrder: n.turnOrder !== undefined ? n.turnOrder : idx + 1
+          turnOrder: n.turnOrder !== undefined ? n.turnOrder : idx + 1,
+          startingNukes: n.startingNukes || 0,
+          startingThermonukes: n.startingThermonukes || 0
         })),
         premadeAlliances: (this.mapData.premadeAlliances || []).map(a => ({
           id: a.id,
@@ -1461,7 +1483,12 @@
         continents: data.continents || [],
         isScenario: !!data.isScenario,
         scenarioSettings: data.scenarioSettings || { capitalRush: false, defaultDummyArmies: 1 },
-        nations: (data.nations || []).map((n, idx) => ({ ...n, turnOrder: n.turnOrder !== undefined ? n.turnOrder : idx + 1 })).sort((a, b) => a.turnOrder - b.turnOrder),
+        nations: (data.nations || []).map((n, idx) => ({
+          ...n,
+          turnOrder: n.turnOrder !== undefined ? n.turnOrder : idx + 1,
+          startingNukes: n.startingNukes || 0,
+          startingThermonukes: n.startingThermonukes || 0
+        })).sort((a, b) => a.turnOrder - b.turnOrder),
         premadeAlliances: data.premadeAlliances || []
       };
 
