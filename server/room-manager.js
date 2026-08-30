@@ -352,6 +352,7 @@ function createRoom(hostSocketId, playerName, playerColor, mapData) {
     hostId: hostSocketId,
     status: 'LOBBY',
     gameMode: 'auto',
+    allowCrafting: false, // Nuke crafting is opt-IN (matches unchecked lobby checkbox); enabled when host toggles "Allow Crafting of Nukes"
     mapData,
     players: [
       {

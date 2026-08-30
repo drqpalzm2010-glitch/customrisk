@@ -265,7 +265,7 @@ function initializeGame(room, mapData, gameMode = 'auto') {
       cardTradeRule: room.cardTradeRule || 'progressive',
       blizzards,
       radiation: {},
-      allowCrafting: room.allowCrafting !== false,
+      allowCrafting: room.allowCrafting === true,
       capitals: {},
       turnIndex: 0,
       turnStage: 'DRAFT', // Skip SETUP_CLAIM / SETUP_FORTIFY / CAPITAL_SELECTION completely!
@@ -275,15 +275,6 @@ function initializeGame(room, mapData, gameMode = 'auto') {
         cards: [],
         nukes: p.startingNukes !== undefined ? p.startingNukes : (parseInt(room.startingNukes) || 0),
         thermonukes: p.startingThermonukes !== undefined ? p.startingThermonukes : (parseInt(room.startingThermonukes) || 0),
-        cardsTradedCount: 0,
-        startingArmiesPool: 0,
-        eliminated: false,
-        stats: { drafted: 0, killed: 0, lost: 0, territoriesConquered: 0 }
-      })),
-      isScenario: true,
-      players: players.map(p => ({
-        ...p,
-        cards: [],
         cardsTradedCount: 0,
         startingArmiesPool: 0,
         eliminated: false,
@@ -417,7 +408,7 @@ function initializeGame(room, mapData, gameMode = 'auto') {
     cardTradeRule: room.cardTradeRule || 'progressive',
     blizzards,
     radiation: {},
-    allowCrafting: room.allowCrafting !== false,
+    allowCrafting: room.allowCrafting === true,
     capitals: {},
     turnIndex: 0,
     turnStage: 'SETUP_CLAIM',

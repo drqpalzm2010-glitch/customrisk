@@ -104,7 +104,7 @@ io.on('connection', (socket) => {
       room.blizzardCount = parseInt(reqBlizzardCount) || 0;
       room.startingNukes = parseInt(reqStartingNukes) || 0;
       room.startingThermonukes = parseInt(reqStartingThermonukes) || 0;
-      room.allowCrafting = reqAllowCrafting !== false;
+      room.allowCrafting = reqAllowCrafting === true;
       if (llmProviderConfig) {
         room.llmProviderConfig = {
           provider: llmProviderConfig.provider || 'clipboard',
@@ -777,7 +777,7 @@ const actType = (actionStr || typeStr || '').toUpperCase();
       room.gameState.generativeAIMode = room.generativeAIMode;
       
       // Restore nuke, craft, and radiation metrics
-      room.allowCrafting = saveData.allowCrafting !== undefined ? saveData.allowCrafting : (saveData.gameState.allowCrafting !== undefined ? saveData.gameState.allowCrafting : true);
+      room.allowCrafting = saveData.allowCrafting !== undefined ? saveData.allowCrafting : (saveData.gameState.allowCrafting !== undefined ? saveData.gameState.allowCrafting : false);
       room.blizzardCount = saveData.blizzardCount !== undefined ? saveData.blizzardCount : (saveData.gameState.blizzards ? saveData.gameState.blizzards.length : 0);
       room.startingNukes = saveData.startingNukes !== undefined ? saveData.startingNukes : 0;
       room.startingThermonukes = saveData.startingThermonukes !== undefined ? saveData.startingThermonukes : 0;
