@@ -40,6 +40,7 @@
       this.initMenu();
       this.initLobby();
       this.initAudio();
+      this.initInfoTips();
     }
 
     showScreen(screenId) {
@@ -95,46 +96,51 @@
 
       // Create lobby button
       document.getElementById('btn-create-lobby').addEventListener('click', () => {
-        // Prompt for map selection
-        if (confirm('Click OK to upload a custom Map JSON file, or Cancel to use the default skirmish battleground.')) {
-          const mapFileInput = document.createElement('input');
-          mapFileInput.type = 'file';
-          mapFileInput.accept = '.json';
-          mapFileInput.onchange = (e) => {
-            const file = e.target.files[0];
-            if (file) {
-              const reader = new FileReader();
-              reader.onload = (event) => {
-                try {
-                  let data = JSON.parse(event.target.result);
-                  if (data && !data.territories && data.mapData && data.mapData.territories) {
-                    if (data.gameState) {
-                      data.mapData.gameState = data.gameState;
+        window.showConfirm('Choose a battleground for your campaign.', {
+          title: 'New Campaign',
+          okLabel: 'Upload Custom Map',
+          cancelLabel: 'Use Default Skirmish'
+        }).then((useCustomMap) => {
+          if (useCustomMap) {
+            const mapFileInput = document.createElement('input');
+            mapFileInput.type = 'file';
+            mapFileInput.accept = '.json';
+            mapFileInput.onchange = (e) => {
+              const file = e.target.files[0];
+              if (file) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                  try {
+                    let data = JSON.parse(event.target.result);
+                    if (data && !data.territories && data.mapData && data.mapData.territories) {
+                      if (data.gameState) {
+                        data.mapData.gameState = data.gameState;
+                      }
+                      data = data.mapData;
                     }
-                    data = data.mapData;
-                  }
-                  if (data && data.territories && data.territories.length > 0) {
-                    this.selectedMap = data;
-                    this.createLobbyRoom();
-                  } else {
-                    alert('Invalid map format. Using default skirmish map.');
+                    if (data && data.territories && data.territories.length > 0) {
+                      this.selectedMap = data;
+                      this.createLobbyRoom();
+                    } else {
+                      window.showToast('Invalid map format. Using default skirmish map.', 'error');
+                      this.selectedMap = DEFAULT_MAP;
+                      this.createLobbyRoom();
+                    }
+                  } catch (err) {
+                    window.showToast('Error parsing map file. Using default skirmish map.', 'error');
                     this.selectedMap = DEFAULT_MAP;
                     this.createLobbyRoom();
                   }
-                } catch (err) {
-                  alert('Error parsing map file. Using default skirmish map.');
-                  this.selectedMap = DEFAULT_MAP;
-                  this.createLobbyRoom();
-                }
-              };
-              reader.readAsText(file);
-            }
-          };
-          mapFileInput.click();
-        } else {
-          this.selectedMap = DEFAULT_MAP;
-          this.createLobbyRoom();
-        }
+                };
+                reader.readAsText(file);
+              }
+            };
+            mapFileInput.click();
+          } else {
+            this.selectedMap = DEFAULT_MAP;
+            this.createLobbyRoom();
+          }
+        });
       });
 
       // Join lobby button
@@ -889,8 +895,8 @@
         if (isHost && p.isAI) {
           selectHtml = `
             <select class="lobby-ai-type-select" data-id="${p.id}" style="background: #1e293b; color: #f8fafc; border: 1px solid #475569; padding: 2px 6px; margin-left: 8px; border-radius: 4px; font-size: 11px; cursor: pointer; outline: none; font-weight: 600;">
-              <option value="traditional" ${!p.isLLM ? 'selected' : ''}>🤖 Heuristic AI</option>
-              <option value="llm" ${p.isLLM ? 'selected' : ''}>🧠 LLM AI</option>
+              <option value="traditional" ${!p.isLLM ? 'selected' : ''}>Heuristic AI</option>
+              <option value="llm" ${p.isLLM ? 'selected' : ''}>LLM AI</option>
             </select>
             <select class="lobby-personality-select" data-id="${p.id}" style="background: #1e293b; color: #f8fafc; border: 1px solid #475569; padding: 2px 6px; margin-left: 8px; border-radius: 4px; font-size: 11px; cursor: pointer; outline: none; ${p.isLLM ? 'display: none;' : ''}">
               ${personalities.map(pers => `<option value="${pers}" ${p.personality === pers ? 'selected' : ''}>${pers.toUpperCase()}</option>`).join('')}
@@ -1118,10 +1124,181 @@
         this.renderLobbyPreview();
       }
     }
+
+    // Replace CSS-only .info-tip tooltips with a single JS-positioned
+    // fixed bubble clamped to the viewport and immune to sidebar overflow.
+    initInfoTips() {
+      const tooltip = document.createElement('div');
+      tooltip.className = 'info-tip-tooltip';
+      tooltip.setAttribute('role', 'tooltip');
+      document.body.appendChild(tooltip);
+
+      const EDGE_MARGIN = 10;
+      const V_GAP = 8;
+
+      let activeEl = null;
+      let visible = false;
+
+      const hide = () => {
+        if (!visible && !activeEl) return;
+        visible = false;
+        activeEl = null;
+        tooltip.classList.remove('visible', 'above', 'below', 'dark');
+        tooltip.style.cssText = '';
+        tooltip.textContent = '';
+      };
+
+      const position = (el) => {
+        if (!visible) return;
+        const rect = el.getBoundingClientRect();
+        // Measure while hidden so clamping uses the real rendered size
+        tooltip.classList.remove('visible');
+        const tw = tooltip.offsetWidth;
+        const th = tooltip.offsetHeight;
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+
+        const spaceAbove = rect.top - V_GAP;
+        const spaceBelow = vh - rect.bottom - V_GAP;
+        const placeBelow = spaceAbove < th + EDGE_MARGIN && spaceBelow > spaceAbove;
+
+        // Horizontal center on the icon, clamped to the viewport
+        let left = rect.left + rect.width / 2 - tw / 2;
+        left = Math.max(EDGE_MARGIN, Math.min(vw - tw - EDGE_MARGIN, left));
+
+        const arrowLeft = Math.max(12, Math.min(tw - 12, (rect.left + rect.width / 2) - left));
+
+        tooltip.classList.toggle('above', !placeBelow);
+        tooltip.classList.toggle('below', placeBelow);
+
+        let top;
+        if (placeBelow) {
+          top = Math.min(vh - th - EDGE_MARGIN, rect.bottom + V_GAP);
+        } else {
+          top = Math.max(EDGE_MARGIN, rect.top - V_GAP - th);
+        }
+
+        tooltip.style.left = `${left}px`;
+        tooltip.style.top = `${top}px`;
+        tooltip.style.setProperty('--arrow-pos', `${arrowLeft}px`);
+        tooltip.classList.add('visible');
+      };
+
+      const show = (el) => {
+        const text = (el.getAttribute('data-tip') || '').trim();
+        if (!text) return;
+        activeEl = el;
+        tooltip.textContent = text;
+        tooltip.classList.toggle('dark', el.classList.contains('info-tip--dark'));
+        visible = true;
+        position(el);
+      };
+
+      const closestTip = (node) =>
+        node && node.closest ? node.closest('.info-tip') : null;
+
+      // Delegated listeners also cover info icons added dynamically later
+      document.addEventListener('mouseover', (e) => {
+        const el = closestTip(e.target);
+        if (el && el !== activeEl) show(el);
+      });
+      document.addEventListener('mouseout', (e) => {
+        if (!activeEl) return;
+        const next = closestTip(e.relatedTarget);
+        if (!next) hide();
+      });
+      document.addEventListener('click', () => hide());
+
+      // Keyboard accessibility (hover-less usage)
+      document.addEventListener('focusin', (e) => {
+        const el = closestTip(e.target);
+        if (el) show(el);
+      });
+      document.addEventListener('focusout', (e) => {
+        if (!activeEl) return;
+        const next = closestTip(e.relatedTarget);
+        if (!next) hide();
+      });
+
+      window.addEventListener('resize', () => {
+        if (activeEl) position(activeEl);
+      });
+      window.addEventListener('scroll', () => {
+        if (activeEl) position(activeEl);
+      }, true);
+      window.addEventListener('blur', () => hide());
+    }
+  }
+
+  function initShowConfirm() {
+    if (window.showConfirm) return;
+
+    window.showConfirm = (message, options = {}) => new Promise((resolve) => {
+      const isDanger = !!options.danger;
+      const okLabel = options.okLabel || 'Confirm';
+      const cancelLabel = options.cancelLabel || 'Cancel';
+      const title = options.title || (isDanger ? 'Confirm Action' : 'Confirm');
+
+      const overlay = document.createElement('div');
+      overlay.className = 'modal confirm-modal';
+      overlay.style.zIndex = '100000';
+
+      overlay.innerHTML = `
+        <div class="modal-content glass confirm-modal-content" role="alertdialog" aria-modal="true" aria-labelledby="confirm-modal-title">
+          <div class="modal-header">
+            <h2 id="confirm-modal-title"><i class="fa-solid ${isDanger ? 'fa-triangle-exclamation' : 'fa-circle-question'}" style="margin-right: 8px; color: ${isDanger ? 'var(--danger)' : 'var(--primary)'};"></i>${title}</h2>
+          </div>
+          <div class="modal-body" style="padding-bottom: 18px;"></div>
+          <div class="confirm-modal-actions">
+            <button type="button" class="btn outline-btn" data-confirm-cancel>${cancelLabel}</button>
+            <button type="button" class="btn ${isDanger ? 'danger-btn' : 'primary-btn'}" data-confirm-ok>${okLabel}</button>
+          </div>
+        </div>
+      `;
+
+      const bodyEl = overlay.querySelector('.modal-body');
+      const p = document.createElement('p');
+      p.textContent = message;
+      bodyEl.appendChild(p);
+
+      document.body.appendChild(overlay);
+
+      let settled = false;
+      const prevOverflow = document.body.style.overflow;
+
+      const close = (result) => {
+        if (settled) return;
+        settled = true;
+        document.body.style.overflow = prevOverflow;
+        document.removeEventListener('keydown', onKey);
+        overlay.classList.remove('active');
+        setTimeout(() => overlay.remove(), 220);
+        resolve(result);
+      };
+
+      const onKey = (e) => {
+        if (e.key === 'Escape') close(false);
+        if (e.key === 'Enter') close(true);
+      };
+
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) close(false);
+      });
+      overlay.querySelector('[data-confirm-ok]').addEventListener('click', () => close(true));
+      overlay.querySelector('[data-confirm-cancel]').addEventListener('click', () => close(false));
+      document.addEventListener('keydown', onKey);
+      document.body.style.overflow = 'hidden';
+
+      requestAnimationFrame(() => {
+        overlay.classList.add('active');
+        overlay.querySelector('[data-confirm-ok]').focus();
+      });
+    });
   }
 
   // Initialize SPA
   window.addEventListener('load', () => {
+    initShowConfirm();
     window.MainController = new MainController();
   });
 

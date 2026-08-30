@@ -14,13 +14,32 @@
       toast.style.transform = 'translateY(0)';
     }, 10);
 
+    const durations = { info: 4500, success: 4000, warning: 5500, error: 7500 };
+    const delay = durations[type] || 4500;
+
     setTimeout(() => {
       toast.style.opacity = '0';
       toast.style.transform = 'translateY(20px)';
       setTimeout(() => {
         toast.remove();
       }, 300);
-    }, 4500);
+    }, delay);
+  }
+
+  // Expose the toast system globally so editor.js and main-controller.js can
+  // use it too. (They load before this file, but every call happens after page
+  // load, when this assignment has already run.)
+  window.showToast = showToast;
+
+  // Redirect every legacy native alert() call to a styled toast. Messages are
+  // auto-classified as errors vs. informational based on their wording.
+  if (!window.__toastShimInstalled) {
+    window.__toastShimInstalled = true;
+    window.alert = (msg) => {
+      const text = String(msg || '');
+      const looksLikeError = /error|invalid|fail|already|must|only accepts|cannot|can't|not allowed|denied|exceeded|required|invalid|at least/i.test(text);
+      showToast(text, looksLikeError ? 'error' : 'info');
+    };
   }
 
   class GameClient {
@@ -400,9 +419,9 @@
               alert(res.error);
             } else {
               if (res.autoDeposited > 0) {
-                showToast(`🚀 Traded card set and auto-deposited ${res.autoDeposited} armies!`, 'success');
+                showToast(`<i class="fa-solid fa-rocket"></i> Traded card set and auto-deposited ${res.autoDeposited} armies!`, 'success');
               } else {
-                showToast(`🎯 Traded card set for +${res.bonusArmies} bonus armies!`, 'success');
+                showToast(`<i class="fa-solid fa-bullseye"></i> Traded card set for +${res.bonusArmies} bonus armies!`, 'success');
               }
               this.selectedCardIndices = [];
               this.renderCards();
@@ -428,7 +447,7 @@
             if (res.error) {
               alert(res.error);
             } else {
-              showToast(`⚡ Traded ${res.setsTraded} card set(s) for +${res.totalBonus} bonus armies!`, 'success');
+              showToast(`<i class="fa-solid fa-bolt"></i> Traded ${res.setsTraded} card set(s) for +${res.totalBonus} bonus armies!`, 'success');
               this.selectedCardIndices = [];
               this.renderCards();
             }
@@ -674,7 +693,7 @@
               if (res.error) {
                 alert(res.error);
               } else {
-                showToast(`☢️ Tactical Nuke crafted successfully!`, 'success');
+                showToast(`<i class="fa-solid fa-radiation"></i> Tactical Nuke crafted successfully!`, 'success');
                 this.selectedCardIndices = [];
                 this.renderCards();
               }
@@ -692,7 +711,7 @@
               if (res.error) {
                 alert(res.error);
               } else {
-                showToast(`🚀 Thermonuclear weapon assembled!`, 'success');
+                showToast(`<i class="fa-solid fa-rocket"></i> Thermonuclear weapon assembled!`, 'success');
                 this.selectedCardIndices = [];
                 this.renderCards();
               }
@@ -721,7 +740,7 @@
             const btnThermo = document.getElementById('btn-action-thermonuke');
             if (btnThermo) btnThermo.classList.remove('active-pulsing');
             this.selectedLaunchPadId = null;
-            this.lblInstructions.innerHTML = `⚠️ **LAUNCH SEQUENCING**: Select one of your territories (with >= 2 armies) to act as the Launch Pad Silo.`;
+            this.lblInstructions.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> **LAUNCH SEQUENCING**: Select one of your territories (with >= 2 armies) to act as the Launch Pad Silo.`;
           }
         });
       }
@@ -745,16 +764,20 @@
             const btnTact = document.getElementById('btn-action-nuke');
             if (btnTact) btnTact.classList.remove('active-pulsing');
             this.selectedLaunchPadId = null;
-            this.lblInstructions.innerHTML = `⚠️ **LAUNCH SEQUENCING**: Select one of your adjacent territories (with >= 2 armies) to act as the Launch Pad Silo.`;
+            this.lblInstructions.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> **LAUNCH SEQUENCING**: Select one of your adjacent territories (with >= 2 armies) to act as the Launch Pad Silo.`;
           }
         });
       }
 
       // Quit Game
       document.getElementById('btn-quit-game').addEventListener('click', () => {
-        if (confirm('Are you sure you want to quit the campaign?')) {
-          window.location.reload();
-        }
+        window.showConfirm('Are you sure you want to quit the campaign?', {
+          title: 'Quit Campaign',
+          okLabel: 'Quit Campaign',
+          danger: true
+        }).then((ok) => {
+          if (ok) window.location.reload();
+        });
       });
 
       if (this.btnVictoryExit) {
@@ -864,12 +887,12 @@
       });
 
       window.SocketClient.onDiplomacyReceived((proposal) => {
-        showToast(`✉️ New treaty proposal received from <strong>${proposal.senderName}</strong>!`, 'info');
+        showToast(`<i class="fa-solid fa-envelope"></i> New treaty proposal received from <strong>${proposal.senderName}</strong>!`, 'info');
 
         // Force refresh state or popup
         this.appendLog({
           timestamp: new Date().toLocaleTimeString(),
-          message: `✉️ New treaty proposal received from ${proposal.senderName}!`
+          message: `<i class="fa-solid fa-envelope"></i> New treaty proposal received from ${proposal.senderName}!`
         });
         if (this.diplomacyModal.classList.contains('active')) {
           this.renderIncomingProposals();
@@ -1103,7 +1126,7 @@
         if (context) {
           const srcName = this.getTerritoryName(context.sourceId);
           const tgtName = this.getTerritoryName(context.targetId);
-          document.getElementById('post-attack-title').textContent = `${srcName} ➡️ ${tgtName}`;
+          document.getElementById('post-attack-title').innerHTML = `${srcName} <i class="fa-solid fa-arrow-right"></i> ${tgtName}`;
           
           this.sliderPostAttack.min = 0;
           this.sliderPostAttack.max = context.additionalMax;
@@ -1192,7 +1215,7 @@
             const players = this.gameState.players;
             const accolades = [];
 
-            // 1. 🎯 Lucky Gambler (Highest dice duel win rate)
+            // 1. Lucky Gambler (Highest dice duel win rate)
             let bestGambler = null;
             let bestGamblerRate = -1;
             let bestGamblerWins = 0;
@@ -1212,14 +1235,14 @@
             });
             if (bestGambler && bestGamblerRate > 0) {
               accolades.push({
-                icon: '🎯',
+                icon: '<i class="fa-solid fa-bullseye"></i>',
                 title: 'Lucky Gambler',
                 player: bestGambler,
                 desc: `${Math.round(bestGamblerRate * 100)}% Dice Duel Win Rate (${bestGamblerWins}/${bestGamblerTotal})`
               });
             }
 
-            // 2. 🛡️ Iron Fortress (Most casualties defended)
+            // 2. Iron Fortress (Most casualties defended)
             let ironFortress = null;
             let maxDefended = 0;
             players.forEach(p => {
@@ -1232,14 +1255,14 @@
             });
             if (ironFortress && maxDefended > 0) {
               accolades.push({
-                icon: '🛡️',
+                icon: '<i class="fa-solid fa-shield-halved"></i>',
                 title: 'Iron Fortress',
                 player: ironFortress,
                 desc: `${maxDefended} Enemy Armies Repelled on Defense`
               });
             }
 
-            // 3. ⚡ Blitz King (Most conquests in a single turn)
+            // 3. Blitz King (Most conquests in a single turn)
             let blitzKing = null;
             let maxBlitz = 0;
             players.forEach(p => {
@@ -1252,14 +1275,14 @@
             });
             if (blitzKing && maxBlitz > 0) {
               accolades.push({
-                icon: '⚡',
+                icon: '<i class="fa-solid fa-bolt"></i>',
                 title: 'Blitz King',
                 player: blitzKing,
                 desc: `${maxBlitz} Territories Conquered in 1 Turn`
               });
             }
 
-            // 4. 🐍 Backstabber of the Match (Most treaties broken)
+            // 4. Backstabber of the Match (Most treaties broken)
             let backstabber = null;
             let maxBetrayals = 0;
             players.forEach(p => {
@@ -1272,14 +1295,14 @@
             });
             if (backstabber && maxBetrayals > 0) {
               accolades.push({
-                icon: '🐍',
+                icon: '<i class="fa-solid fa-snake"></i>',
                 title: 'Backstabber of the Match',
                 player: backstabber,
                 desc: `${maxBetrayals} Non-Aggression Treaties Broken`
               });
             }
 
-            // 5. 📉 Tragic Fall (Most territories lost in a single turn)
+            // 5. Tragic Fall (Most territories lost in a single turn)
             let tragicFall = null;
             let maxLost = 0;
             players.forEach(p => {
@@ -1292,7 +1315,7 @@
             });
             if (tragicFall && maxLost > 0) {
               accolades.push({
-                icon: '📉',
+                icon: '<i class="fa-solid fa-arrow-trend-down"></i>',
                 title: 'Tragic Fall',
                 player: tragicFall,
                 desc: `${maxLost} Territories Lost in 1 Turn`
@@ -1637,14 +1660,14 @@
         case 'DEFENDER_DICE_DECISION':
           const combatCtx = this.gameState.combatContext;
           if (combatCtx && combatCtx.defenderId === window.SocketClient.socket.id) {
-            return '⚠️ **Defense warning**: You are under attack! Select how many dice to roll to defend your territory.';
+            return '<i class="fa-solid fa-triangle-exclamation"></i> **Defense warning**: You are under attack! Select how many dice to roll to defend your territory.';
           }
           const defender = this.gameState.players.find(p => p.id === (combatCtx ? combatCtx.defenderId : null));
           return `Awaiting defense decision from <strong style="color:${defender ? defender.color : '#fff'}">${defender ? defender.name : 'Defender'}</strong>...`;
         case 'DRAFT':
           const player = this.gameState.players[this.gameState.turnIndex];
           if (player && player.cards.length >= 5 && this.gameState.draftPool === 0) {
-            return `⚠️ **Card Trade-In Required**: You hold **${player.cards.length} cards**. You must select a set of 3 matching cards below and click **Trade Card Set** to get armies and proceed.`;
+            return `<i class="fa-solid fa-triangle-exclamation"></i> **Card Trade-In Required**: You hold **${player.cards.length} cards**. You must select a set of 3 matching cards below and click **Trade Card Set** to get armies and proceed.`;
           }
           return `Draft Phase: Select **your territory** to place reinforcements. (${this.gameState.draftPool} left)`;
         case 'ATTACK':
@@ -1665,7 +1688,7 @@
           }
         case 'GAME_OVER':
           const winner = this.gameState.players.find(p => p.id === this.gameState.winner);
-          return `🏆 Campaign concluded! Winner: <strong style="color:${winner ? winner.color : '#fff'}">${winner ? winner.name : 'Unknown'}</strong>.`;
+          return `<i class="fa-solid fa-trophy"></i> Campaign concluded! Winner: <strong style="color:${winner ? winner.color : '#fff'}">${winner ? winner.name : 'Unknown'}</strong>.`;
         default:
           return '';
       }
@@ -1702,11 +1725,16 @@
           alert('You must select one of your own territories to be your capital.');
           return;
         }
-        if (confirm(`Establish your Capital in ${this.getTerritoryName(territoryId)}?`)) {
-          window.SocketClient.selectCapital(territoryId, (res) => {
-            if (res.error) alert(res.error);
-          });
-        }
+        window.showConfirm(`Establish your Capital in ${this.getTerritoryName(territoryId)}?`, {
+          title: 'Designate Capital',
+          okLabel: 'Establish Capital'
+        }).then((ok) => {
+          if (ok) {
+            window.SocketClient.selectCapital(territoryId, (res) => {
+              if (res.error) window.showToast(res.error, 'error');
+            });
+          }
+        });
         return;
 
       } else if (stage === 'SETUP_CLAIM') {
@@ -1779,10 +1807,15 @@
               return;
             }
             this.selectedLaunchPadId = territoryId;
-            this.lblInstructions.innerHTML = `⚠️ **LAUNCH SEQUENCING**: Launch pad Silo locked on ${this.getTerritoryName(territoryId)}. Select any territory on the map (self, ally, or opponent) to detonate!`;
+            this.lblInstructions.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> **LAUNCH SEQUENCING**: Launch pad Silo locked on ${this.getTerritoryName(territoryId)}. Select any territory on the map (self, ally, or opponent) to detonate!`;
           } else {
 
-            if (confirm(`🚨 DETONATION WARNING: Fire Nuclear missile from ${this.getTerritoryName(this.selectedLaunchPadId)} and detonate on ${this.getTerritoryName(territoryId)}? This action is irreversible.`)) {
+            window.showConfirm(`Fire a nuclear missile from ${this.getTerritoryName(this.selectedLaunchPadId)} and detonate on ${this.getTerritoryName(territoryId)}? This action is irreversible.`, {
+              title: 'Detonation Warning',
+              okLabel: 'Fire Missile',
+              danger: true
+            }).then((confirmed) => {
+              if (!confirmed) return;
               const srcId = this.selectedLaunchPadId;
               const tgtId = territoryId;
               const thermoFlag = isThermo;
@@ -1795,7 +1828,7 @@
 
               window.SocketClient.fireNuke(srcId, tgtId, thermoFlag, (res) => {
                 if (res.error) {
-                  alert(res.error);
+                  window.showToast(res.error, 'error');
                 } else {
                   // Trigger gorgeous ballistic missile launching animation
                   const mapData = window.SocketClient.mapData || this.gameState.mapData;
@@ -1803,12 +1836,14 @@
                   const tgtCenter = mapData.territories.find(t => t.id === tgtId)?.center;
                   if (srcCenter && tgtCenter && this.renderer) {
                     this.renderer.fireNuclearMissile(srcCenter, tgtCenter, thermoFlag, () => {
-                      showToast(`💥 NUCLEAR DETONATION COMPLETE!`, 'warning');
+                      showToast('NUCLEAR DETONATION COMPLETE!', 'warning');
                     });
+                  } else {
+                    showToast('NUCLEAR DETONATION COMPLETE!', 'warning');
                   }
                 }
               });
-            }
+            });
           }
           return;
         }
@@ -1874,7 +1909,7 @@
               // Show attack dice selection modal
               const srcName = this.getTerritoryName(this.selectedSourceId);
               const tgtName = this.getTerritoryName(this.selectedTargetId);
-              document.getElementById('attack-dice-title').textContent = `${srcName} ⚔️ ${tgtName}`;
+              document.getElementById('attack-dice-title').innerHTML = `${srcName} <i class="fa-solid fa-crossed-swords"></i> ${tgtName}`;
               
               // Enable/disable buttons based on troop constraints
               if (this.btnAttackDice2) this.btnAttackDice2.disabled = sourceArmies < 3;
@@ -2003,8 +2038,8 @@
         if (isHost && p.isAI && !p.eliminated) {
           selectHtml = `
             <select class="game-ai-type-select" data-id="${p.id}" style="background: rgba(0,0,0,0.5); color: #fff; border: 1px solid var(--border-glass); padding: 2px 4px; border-radius: 4px; font-size: 10px; cursor: pointer; outline: none; margin-left: 8px; font-weight: 600;">
-              <option value="traditional" ${!p.isLLM ? 'selected' : ''}>🤖 Heuristic</option>
-              <option value="llm" ${p.isLLM ? 'selected' : ''}>🧠 LLM</option>
+              <option value="traditional" ${!p.isLLM ? 'selected' : ''}>Heuristic</option>
+              <option value="llm" ${p.isLLM ? 'selected' : ''}>LLM</option>
             </select>
           `;
         } else {
@@ -2079,7 +2114,7 @@
               alert(res.error);
               e.target.value = isLLM ? 'traditional' : 'llm'; // Revert visual state
             } else {
-              showToast(`🔄 AI Commander switched to ${isLLM ? 'LLM Mode' : 'Heuristic Mode'}!`, 'success');
+              showToast(`<i class="fa-solid fa-arrows-rotate"></i> AI Commander switched to ${isLLM ? 'LLM Mode' : 'Heuristic Mode'}!`, 'success');
             }
           });
         });
@@ -2228,11 +2263,17 @@
         if (btnBreak) {
           btnBreak.addEventListener('click', () => {
             const oppId = btnBreak.getAttribute('data-opp');
-            if (confirm(`Are you sure you want to betray and break your pact with ${this.getPlayerName(oppId)}?`)) {
-              window.SocketClient.breakPact(oppId, (res) => {
-                if (res.error) alert(res.error);
-              });
-            }
+            window.showConfirm(`Are you sure you want to betray and break your pact with ${this.getPlayerName(oppId)}? This will permanently lower their trust in you.`, {
+              title: 'Break Pact',
+              okLabel: 'Betray & Break',
+              danger: true
+            }).then((ok) => {
+              if (ok) {
+                window.SocketClient.breakPact(oppId, (res) => {
+                  if (res.error) window.showToast(res.error, 'error');
+                });
+              }
+            });
           });
         }
 
@@ -2438,10 +2479,10 @@
     evaluateCardTradeIndicator() {
       if (this.cardTradeStatus) {
         if (this.selectedCardIndices.length === 0) {
-          this.cardTradeStatus.textContent = '❌ Select 3 cards to evaluate';
+          this.cardTradeStatus.innerHTML = '<i class="fa-solid fa-circle-xmark"></i> Select 3 cards to evaluate';
           this.cardTradeStatus.style.color = 'var(--text-muted)';
         } else if (this.selectedCardIndices.length < 3) {
-          this.cardTradeStatus.textContent = `❌ Selected ${this.selectedCardIndices.length}/3 cards`;
+          this.cardTradeStatus.innerHTML = `<i class="fa-solid fa-circle-xmark"></i> Selected ${this.selectedCardIndices.length}/3 cards`;
           this.cardTradeStatus.style.color = 'var(--text-muted)';
         } else {
           // Exactly 3 selected
@@ -2453,7 +2494,7 @@
               const me = this.gameState.players.find(p => p.id === window.SocketClient.socket.id);
               const selectedCards = this.selectedCardIndices.map(idx => me ? me.cards[idx] : null).filter(Boolean);
               nextVal = this.calculateFixedTradeBonus(selectedCards);
-              this.cardTradeStatus.textContent = `✅ Valid Fixed Set! Worth +${nextVal} armies.`;
+              this.cardTradeStatus.innerHTML = `<i class="fa-solid fa-circle-check"></i> Valid Fixed Set! Worth +${nextVal} armies.`;
             } else {
               const tradeCount = this.gameState.tradeInCount || 0;
               const count = tradeCount + 1;
@@ -2464,11 +2505,11 @@
               else if (count === 5) nextVal = 12;
               else if (count === 6) nextVal = 15;
               else nextVal = 15 + (count - 6) * 5;
-              this.cardTradeStatus.textContent = `✅ Valid Set! Worth +${nextVal} armies.`;
+              this.cardTradeStatus.innerHTML = `<i class="fa-solid fa-circle-check"></i> Valid Set! Worth +${nextVal} armies.`;
             }
             this.cardTradeStatus.style.color = '#33ff66';
           } else {
-            this.cardTradeStatus.textContent = '❌ Invalid Set: select 3 same or 1 of each';
+            this.cardTradeStatus.innerHTML = '<i class="fa-solid fa-circle-xmark"></i> Invalid Set: select 3 same or 1 of each';
             this.cardTradeStatus.style.color = '#ff3366';
           }
         }
@@ -2616,7 +2657,7 @@
       const defLosses = document.getElementById('blitz-stat-def-losses');
       const armiesLeft = document.getElementById('blitz-stat-armies-left');
 
-      if (locs) locs.textContent = `${blitz.sourceName} ⚔️ ${blitz.targetName}`;
+      if (locs) locs.innerHTML = `${blitz.sourceName} <i class="fa-solid fa-crossed-swords"></i> ${blitz.targetName}`;
       if (rounds) rounds.textContent = blitz.roundsFought;
       if (attLosses) attLosses.textContent = `-${blitz.totalAttackerLosses} Armies`;
       if (defLosses) defLosses.textContent = `-${blitz.totalDefenderLosses} Armies`;
@@ -2627,12 +2668,12 @@
           banner.style.borderColor = 'var(--primary)';
           banner.style.color = 'var(--primary)';
           banner.style.background = 'rgba(0, 229, 255, 0.1)';
-          banner.textContent = '🏆 TERRITORY CONQUERED!';
+          banner.innerHTML = '<i class="fa-solid fa-trophy"></i> TERRITORY CONQUERED!';
         } else {
           banner.style.borderColor = '#ff3366';
           banner.style.color = '#ff3366';
           banner.style.background = 'rgba(255, 51, 102, 0.1)';
-          banner.textContent = '🛡️ ATTACK HALTED (DEFENDED)';
+          banner.innerHTML = '<i class="fa-solid fa-shield-halved"></i> ATTACK HALTED (DEFENDED)';
         }
       }
 
@@ -2786,7 +2827,7 @@
       const mapData = window.SocketClient.mapData || this.gameState.mapData;
       const srcName = this.getTerritoryName(roll.sourceId);
       const tgtName = this.getTerritoryName(roll.targetId);
-      if (locs) locs.textContent = `${srcName} ⚔️ ${tgtName}`;
+      if (locs) locs.innerHTML = `${srcName} <i class="fa-solid fa-crossed-swords"></i> ${tgtName}`;
 
       const mapTerritories = (mapData && mapData.territories) ? mapData.territories : [];
       const sourceTerr = mapTerritories.find(t => t.id === roll.sourceId);
@@ -2963,7 +3004,7 @@
           if (roll.captured) {
             outcome.innerHTML = '<span style="color:#00ffcc">VICTORY! Territory Conquered!</span>';
           } else if (roll.betrayed) {
-            outcome.innerHTML = '<span style="color:#ef4444">⚠️ BETRAYAL! Treaty Broken!</span>';
+            outcome.innerHTML = '<span style="color:#ef4444"><i class="fa-solid fa-triangle-exclamation"></i> BETRAYAL! Treaty Broken!</span>';
           } else {
             outcome.textContent = 'Casualties Decided!';
           }
@@ -3766,16 +3807,16 @@
           if (txtArea && txtArea.value) {
             if (navigator.clipboard && navigator.clipboard.writeText) {
               navigator.clipboard.writeText(txtArea.value).then(() => {
-                showToast('📋 Summary copied to clipboard!', 'success');
+                showToast('<i class="fa-solid fa-clipboard-list"></i> Summary copied to clipboard!', 'success');
               }).catch(() => {
                 txtArea.select();
                 document.execCommand('copy');
-                showToast('📋 Summary copied to clipboard!', 'success');
+                showToast('<i class="fa-solid fa-clipboard-list"></i> Summary copied to clipboard!', 'success');
               });
             } else {
               txtArea.select();
               document.execCommand('copy');
-              showToast('📋 Summary copied to clipboard!', 'success');
+              showToast('<i class="fa-solid fa-clipboard-list"></i> Summary copied to clipboard!', 'success');
             }
           }
         };
@@ -3794,7 +3835,7 @@
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
-            showToast('💾 Summary text file downloaded!', 'success');
+            showToast('<i class="fa-solid fa-floppy-disk"></i> Summary text file downloaded!', 'success');
           }
         };
       }
@@ -4086,7 +4127,7 @@
         this.btnExportLLMPrompt.addEventListener('click', () => {
           const prompt = this.generateLLMPrompt();
           navigator.clipboard.writeText(prompt).then(() => {
-            alert('📋 Generative AI Prompt exported to clipboard!');
+            window.showToast('<i class="fa-solid fa-clipboard-list"></i> Generative AI Prompt exported to clipboard!', 'success');
           }).catch(() => {
             this.openLLMImportModal();
           });
@@ -4097,7 +4138,7 @@
         this.btnCopyLLMPromptModal.addEventListener('click', () => {
           const prompt = this.generateLLMPrompt();
           navigator.clipboard.writeText(prompt).then(() => {
-            alert('📋 Generative AI Prompt re-copied to clipboard!');
+            window.showToast('<i class="fa-solid fa-clipboard-list"></i> Generative AI Prompt re-copied to clipboard!', 'success');
           });
         });
       }
@@ -4219,7 +4260,7 @@
     executePastedLLMAction(jsonText) {
       if (!jsonText || !jsonText.trim()) {
         if (this.lblLLMImportStatus) {
-          this.lblLLMImportStatus.textContent = '❌ Please paste a JSON response first.';
+          this.lblLLMImportStatus.innerHTML = '<i class="fa-solid fa-circle-xmark"></i> Please paste a JSON response first.';
           this.lblLLMImportStatus.style.color = '#ff3366';
           this.lblLLMImportStatus.style.display = 'block';
         }
@@ -4237,7 +4278,7 @@
         data = JSON.parse(cleaned);
       } catch (err) {
         if (this.lblLLMImportStatus) {
-          this.lblLLMImportStatus.textContent = '❌ Invalid JSON syntax. Check quotes and commas.';
+          this.lblLLMImportStatus.innerHTML = '<i class="fa-solid fa-circle-xmark"></i> Invalid JSON syntax. Check quotes and commas.';
           this.lblLLMImportStatus.style.color = '#ff3366';
           this.lblLLMImportStatus.style.display = 'block';
         }
@@ -4247,13 +4288,13 @@
       window.SocketClient.executeLLMAction(data, (res) => {
         if (res && res.error) {
           if (this.lblLLMImportStatus) {
-            this.lblLLMImportStatus.textContent = `❌ Execution Error: ${res.error}`;
+            this.lblLLMImportStatus.innerHTML = `<i class="fa-solid fa-circle-xmark"></i> Execution Error: ${res.error}`;
             this.lblLLMImportStatus.style.color = '#ff3366';
             this.lblLLMImportStatus.style.display = 'block';
           }
         } else {
           if (this.lblLLMImportStatus) {
-            this.lblLLMImportStatus.textContent = '✅ LLM action executed successfully!';
+            this.lblLLMImportStatus.innerHTML = '<i class="fa-solid fa-circle-check"></i> LLM action executed successfully!';
             this.lblLLMImportStatus.style.color = '#33ff66';
             this.lblLLMImportStatus.style.display = 'block';
           }
@@ -4307,7 +4348,7 @@
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      alert('💾 Campaign state exported successfully! Keep this .json file to resume later from the Main Menu.');
+      window.showToast('<i class="fa-solid fa-floppy-disk"></i> Campaign state exported successfully! Keep this .json file to resume later from the Main Menu.', 'success');
     }
 
     generateLLMPrompt(targetPlayerId = null) {

@@ -21,6 +21,17 @@ const io = new Server(server, {
 // Serve static assets from public/ folder
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Serve the root favicon.ico (kept at the project root, outside public/) with
+// caching so it is fetched once per visit.
+app.get('/favicon.ico', (req, res) => {
+  res.set('Cache-Control', 'public, max-age=86400');
+  res.sendFile(path.join(__dirname, 'favicon.ico'), (err) => {
+    if (err && !res.headersSent) {
+      res.status(404).end();
+    }
+  });
+});
+
 // Default route (Express 5 compatibility wildcard)
 app.get('*any', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));

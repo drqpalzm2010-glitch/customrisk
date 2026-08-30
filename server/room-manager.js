@@ -30,7 +30,12 @@ function sendAIChatMessage(room, io, aiPlayer, text, prefixSymbol = '💬', igno
 
   gameState.chatArchive = gameState.chatArchive || [];
   gameState.chatArchive.push(chatMsg);
-  io.to(room.code).emit('chatMessage', chatMsg);
+  // io can be null/undefined when AI decision helpers run without a socket
+  // context (e.g. some lazy-required call sites in ai-engine.js). Guard so the
+  // chat archive is still updated but we never crash on a null emit.
+  if (io && typeof io.to === 'function' && room && room.code) {
+    io.to(room.code).emit('chatMessage', chatMsg);
+  }
 }
 // Key Minification Map for Network Compression
 const KEY_MAP = {
@@ -982,7 +987,7 @@ function runAITurn(room, io) {
       let safetyAttempts = 0;
       while (gameState.draftPool > 0 && safetyAttempts < 50) {
         safetyAttempts++;
-        const decision = AIEngine.makeDraftDecision(room, currentPlayer.id);
+        const decision = AIEngine.makeDraftDecision(room, currentPlayer.id, io);
         if (decision && decision.amount > 0 && decision.territoryId) {
           const res = GameEngine.placeDraft(room, currentPlayer.id, decision.territoryId, decision.amount);
           if (res && res.error) break;

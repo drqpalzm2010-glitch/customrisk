@@ -27,6 +27,10 @@
       this.snapEnabled = true;
       this.undoStack = [];
 
+      // Autosave (download-based map backup)
+      this.autosaveTimer = null;
+      this.lastAutosaveSerialized = null;
+
       // Dragging states
       this.draggedLabelTerritoryId = null;
       this.draggedVertex = null; // { territoryId, vertexIndex }
@@ -240,11 +244,20 @@
         }
       });
 
+      // Autosave controls (downloads the current map on an interval)
+      this.initAutosave();
+
       // Exit
       document.getElementById('btn-editor-exit').addEventListener('click', () => {
-        if (confirm('Are you sure you want to exit the editor? Any unsaved progress will be lost.')) {
+        window.showConfirm('Are you sure you want to exit the editor? Any unsaved progress will be lost.', {
+          title: 'Exit Editor',
+          okLabel: 'Exit Editor',
+          danger: true
+        }).then((ok) => {
+          if (!ok) return;
+          this.stopAutosaveTimer();
           window.MainController.showScreen('menu');
-        }
+        });
       });
     }
 
@@ -289,6 +302,7 @@
       this.closeRightSidebar();
       this.renderContinentsList();
       this.renderNationsList();
+      this.resetAutosaveBaseline();
       this.redraw();
     }
 
@@ -1034,11 +1048,11 @@
           </div>
           <div style="display: flex; gap: 10px; margin-bottom: 6px; background: rgba(255,255,255,0.02); padding: 4px 6px; border-radius: 4px; border: 1px solid var(--border-glass);">
             <div style="flex: 1; display: flex; align-items: center; gap: 4px;">
-              <span style="color: #22c55e; font-size: 11px;" title="Starting Tactical Nukes">☢️ Nukes:</span>
+              <span style="color: #22c55e; font-size: 11px;" title="Starting Tactical Nukes"><i class="fa-solid fa-radiation"></i> Nukes:</span>
               <input type="number" class="nation-nukes-input" value="${n.startingNukes || 0}" min="0" max="999" style="width: 50px; background: rgba(0,0,0,0.5); border: 1px solid var(--border-glass); color: #fff; padding: 2px 4px; border-radius: 4px; font-size: 11px; text-align: center;">
             </div>
             <div style="flex: 1; display: flex; align-items: center; gap: 4px;">
-              <span style="color: #a855f7; font-size: 11px;" title="Starting Thermonuclear Weapons">🚀 Thermos:</span>
+              <span style="color: #a855f7; font-size: 11px;" title="Starting Thermonuclear Weapons"><i class="fa-solid fa-rocket"></i> Thermos:</span>
               <input type="number" class="nation-thermos-input" value="${n.startingThermonukes || 0}" min="0" max="999" style="width: 50px; background: rgba(0,0,0,0.5); border: 1px solid var(--border-glass); color: #fff; padding: 2px 4px; border-radius: 4px; font-size: 11px; text-align: center;">
             </div>
           </div>
@@ -1191,7 +1205,7 @@
             <select class="select-alliance-nation-a" data-id="${alliance.id}" style="font-size: 11px; padding: 2px 4px; background: rgba(0,0,0,0.5); color:#fff; border-radius: 4px; border: 1px solid var(--border-glass); flex: 1;">
               ${nations.map(n => `<option value="${n.id}" ${n.id === alliance.nationAId ? 'selected' : ''}>${n.name}</option>`).join('')}
             </select>
-            <span style="font-weight: bold; color: var(--primary); font-size: 12px;">🤝</span>
+            <span style="font-weight: bold; color: var(--primary); font-size: 12px;"><i class="fa-solid fa-handshake"></i></span>
             <select class="select-alliance-nation-b" data-id="${alliance.id}" style="font-size: 11px; padding: 2px 4px; background: rgba(0,0,0,0.5); color:#fff; border-radius: 4px; border: 1px solid var(--border-glass); flex: 1;">
               ${nations.map(n => `<option value="${n.id}" ${n.id === alliance.nationBId ? 'selected' : ''}>${n.name}</option>`).join('')}
             </select>
@@ -1254,8 +1268,21 @@
         return;
       }
 
-      // Convert to clean JSON schema
-      const exportData = {
+      const exportData = this.buildExportData();
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportData, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+
+      const filename = `${exportData.mapName.toLowerCase().replace(/[^a-z0-9]+/g, '_')}_map.json`;
+      downloadAnchor.setAttribute("download", filename);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+    }
+
+    // Shared serializer for normal export and autosave downloads
+    buildExportData() {
+      return {
         mapName: this.mapData.mapName || 'Custom Battleground',
         width: this.mapData.width || 1200,
         height: this.mapData.height || 800,
@@ -1296,16 +1323,88 @@
           territoryIds: c.territoryIds
         }))
       };
+    }
 
-      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportData, null, 2));
-      const downloadAnchor = document.createElement('a');
-      downloadAnchor.setAttribute("href", dataStr);
-      
-      const filename = `${exportData.mapName.toLowerCase().replace(/[^a-z0-9]+/g, '_')}_map.json`;
-      downloadAnchor.setAttribute("download", filename);
-      document.body.appendChild(downloadAnchor);
-      downloadAnchor.click();
-      downloadAnchor.remove();
+    // Wire up the editor autosave checkbox/interval and persist preferences.
+    initAutosave() {
+      const chkAutosave = document.getElementById('chk-editor-autosave');
+      const selInterval = document.getElementById('select-editor-autosave-interval');
+      if (!chkAutosave || !selInterval) return;
+
+      // Load persisted preferences (default: enabled, every 10 minutes)
+      chkAutosave.checked = localStorage.getItem('editor-autosave-enabled') !== 'false';
+      const storedInterval = localStorage.getItem('editor-autosave-interval');
+      selInterval.value = ['5', '10', '15', '20', '30', '60'].includes(storedInterval) ? storedInterval : '10';
+
+      const applyTimer = () => {
+        this.stopAutosaveTimer();
+        if (!chkAutosave.checked) return;
+        const minutes = parseInt(selInterval.value, 10) || 10;
+        this.autosaveTimer = setInterval(() => this.autosaveMap(), Math.max(1, minutes) * 60 * 1000);
+      };
+
+      chkAutosave.addEventListener('change', (e) => {
+        localStorage.setItem('editor-autosave-enabled', e.target.checked ? 'true' : 'false');
+        applyTimer();
+        if (e.target.checked) {
+          this.resetAutosaveBaseline();
+          if (this.mapData.territories.length > 0 && window.showToast) {
+            window.showToast('<i class="fa-solid fa-clock"></i> Autosave enabled. Current map will be downloaded on the set interval.', 'info');
+          }
+        }
+      });
+
+      selInterval.addEventListener('change', (e) => {
+        localStorage.setItem('editor-autosave-interval', e.target.value);
+        applyTimer();
+      });
+
+      applyTimer();
+    }
+
+    stopAutosaveTimer() {
+      if (this.autosaveTimer) {
+        clearInterval(this.autosaveTimer);
+        this.autosaveTimer = null;
+      }
+    }
+
+    // Stash the current serialized map so autosave only downloads real changes.
+    resetAutosaveBaseline() {
+      try {
+        if (this.mapData && this.mapData.territories) {
+          this.lastAutosaveSerialized = JSON.stringify(this.buildExportData());
+        } else {
+          this.lastAutosaveSerialized = null;
+        }
+      } catch (err) {
+        this.lastAutosaveSerialized = null;
+      }
+    }
+
+    // Interval callback: download the current map if it changed since the last autosave.
+    autosaveMap() {
+      if (!this.mapData || !this.mapData.territories || this.mapData.territories.length === 0) return;
+      const exportData = this.buildExportData();
+      const serialized = JSON.stringify(exportData);
+      if (serialized === this.lastAutosaveSerialized) return;
+      this.lastAutosaveSerialized = serialized;
+
+      const slug = ((exportData.mapName || 'custom_map').toLowerCase().replace(/[^a-z0-9]+/g, '_')) || 'custom_map';
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const filename = `${slug}_autosave_${stamp}.json`;
+
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(serialized);
+      const a = document.createElement('a');
+      a.href = dataStr;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      if (window.showToast) {
+        window.showToast(`<i class="fa-solid fa-floppy-disk"></i> Map autosaved: ${filename}`, 'success');
+      }
     }
 
     // Process map connections and stats, then copy clean JSON to clipboard
@@ -1519,6 +1618,7 @@
       this.renderContinentsList();
       this.renderNationsList();
       this.renderAlliancesList();
+      this.resetAutosaveBaseline();
       this.redraw();
     }
     rebindTerritorySidebarEvents() {

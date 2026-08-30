@@ -2522,46 +2522,9 @@ svg.editor-canvas {
   backdrop-filter: blur(8px);
 }
 
-/* Fix sidebar info-tip hover boxes clipping into the map or shooting off-screen */
-.game-sidebar .info-tip::after,
-.lobby-sidebar .info-tip::after,
-.editor-sidebar .info-tip::after {
-  left: auto;
-  right: -8px;
-  transform: none;
-  max-width: 210px;
-}
-.game-sidebar .info-tip::before,
-.lobby-sidebar .info-tip::before,
-.editor-sidebar .info-tip::before {
-  left: auto;
-  right: 3px;
-  transform: none;
-}
-
-/* Prevent tooltips near the top of the sidebar/cards from going above the screen */
-.phase-card .info-tip::after,
-.phase-indicator .info-tip::after,
-.turn-indicator .info-tip::after,
-.viewport-header .info-tip::after {
-  bottom: auto !important;
-  top: calc(100% + 8px) !important;
-  left: 0 !important;
-  right: auto !important;
-  transform: none !important;
-}
-
-.phase-card .info-tip::before,
-.phase-indicator .info-tip::before,
-.turn-indicator .info-tip::before,
-.viewport-header .info-tip::before {
-  bottom: auto !important;
-  top: calc(100% + 2px) !important;
-  left: 4px !important;
-  transform: none !important;
-  border-top-color: transparent !important;
-  border-bottom-color: rgba(0, 229, 255, 0.25) !important;
-}
+/* Info-tip tooltips are rendered by a single JS-positioned fixed bubble
+   (.info-tip-tooltip) created in main-controller.js, so no CSS-only
+   container workarounds are needed anymore. */
 
 .tooltip-title {
   font-weight: 700;
@@ -2936,12 +2899,13 @@ svg.editor-canvas {
   background: rgba(0, 229, 255, 0.35);
 }
 
-.info-tip::after {
-  content: attr(data-tip);
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 50%;
-  transform: translateX(-50%);
+/* Floating info-tip bubble. position:fixed escapes sidebar overflow
+   clipping; main-controller.js clamps it to the viewport and flips it
+   above/below the icon depending on available space. */
+.info-tip-tooltip {
+  position: fixed;
+  z-index: 99999;
+  max-width: 240px;
   background: #0f1c2e;
   color: #e2e8f0;
   border: 1px solid rgba(0, 229, 255, 0.25);
@@ -2950,42 +2914,49 @@ svg.editor-canvas {
   font-size: 11.5px;
   font-weight: 400;
   line-height: 1.5;
-  width: 220px;
-  white-space: normal;
   text-align: left;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.55);
+  white-space: pre-line;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
   pointer-events: none;
-  opacity: 0;
   visibility: hidden;
+  opacity: 0;
   transition: opacity 0.18s ease, visibility 0.18s ease;
-  z-index: 9999;
 }
 
-.info-tip::before {
+.info-tip-tooltip.visible {
+  visibility: visible;
+  opacity: 1;
+}
+
+/* Pointer arrow; nudged to track the icon via --arrow-pos */
+.info-tip-tooltip::after {
   content: '';
   position: absolute;
-  bottom: calc(100% + 2px);
-  left: 50%;
-  transform: translateX(-50%);
+  left: var(--arrow-pos, 50%);
   border: 5px solid transparent;
+}
+
+.info-tip-tooltip.above::after {
+  top: 100%;
   border-top-color: rgba(0, 229, 255, 0.25);
-  pointer-events: none;
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 0.18s ease, visibility 0.18s ease;
-  z-index: 9999;
 }
 
-.info-tip:hover::after,
-.info-tip:hover::before {
-  opacity: 1;
-  visibility: visible;
+.info-tip-tooltip.below::after {
+  bottom: 100%;
+  border-bottom-color: rgba(0, 229, 255, 0.25);
 }
 
-.info-tip--dark::after {
+/* Dark variant (used inside the diplomacy modal) */
+.info-tip-tooltip.dark {
   background: #1e293b;
   border-color: rgba(148, 163, 184, 0.3);
   color: #cbd5e1;
+}
+.info-tip-tooltip.dark.above::after {
+  border-top-color: rgba(148, 163, 184, 0.3);
+}
+.info-tip-tooltip.dark.below::after {
+  border-bottom-color: rgba(148, 163, 184, 0.3);
 }
 
 /* Diplomacy Alert Badge */
@@ -3023,6 +2994,9 @@ svg.editor-canvas {
   pointer-events: auto;
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   border: 1px solid var(--border-glass);
+  max-width: 340px;
+  white-space: pre-line;
+  line-height: 1.45;
 }
 
 .toast-info {
@@ -3035,6 +3009,31 @@ svg.editor-canvas {
 
 .toast-warning {
   border-left: 4px solid #f59e0b;
+}
+
+.toast-error {
+  border-left: 4px solid #ef4444;
+}
+
+/* Styled confirmation dialog (replaces native confirm()) */
+.confirm-modal-content {
+  width: 460px;
+  max-width: 92%;
+}
+
+.confirm-modal-content .modal-body p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text-main);
+  white-space: pre-line;
+}
+
+.confirm-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 0 24px 22px;
 }
 
 /* Draft Batch Placement Toolbar */

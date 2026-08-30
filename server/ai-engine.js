@@ -4075,7 +4075,7 @@ function chooseTargetContinent(gameState, mapData, playerId) {
   return bestCont;
 }
 
-function makeDraftDecision(room, playerId) {
+function makeDraftDecision(room, playerId, io) {
   const { gameState, mapData } = room;
   const aiPlayer = gameState.players.find(p => p.id === playerId);
   const owned = Object.keys(gameState.territories).filter(tid => gameState.territories[tid].ownerId === playerId);
@@ -4110,7 +4110,7 @@ function makeDraftDecision(room, playerId) {
           gameMode: gameState.gameMode
         });
         const RoomManager = require('./room-manager');
-        RoomManager.sendAIChatMessage(room, null, aiPlayer, craftText, '☢️', false, '[AI]');
+        RoomManager.sendAIChatMessage(room, io, aiPlayer, craftText, '☢️', false, '[AI]');
       }
     }
   }
@@ -4522,7 +4522,7 @@ function makeAttackDecision(room, playerId, io) {
           gameMode: gameState.gameMode
         });
         const RoomManager = require('./room-manager');
-        RoomManager.sendAIChatMessage(room, null, aiPlayer, launchText, '🚀', false, '[AI]');
+        RoomManager.sendAIChatMessage(room, io, aiPlayer, launchText, '🚀', false, '[AI]');
 
         // Emit launch graphics
         const srcCenter = mapData.territories.find(t => t.id === bestLaunchSourceId)?.center;
