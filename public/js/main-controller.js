@@ -94,52 +94,18 @@
         }
       });
 
-      // Create lobby button
+      // Create lobby button — pick a battleground first
       document.getElementById('btn-create-lobby').addEventListener('click', () => {
-        window.showConfirm('Choose a battleground for your campaign.', {
-          title: 'New Campaign',
-          okLabel: 'Upload Custom Map',
-          cancelLabel: 'Use Default Skirmish'
-        }).then((useCustomMap) => {
-          if (useCustomMap) {
-            const mapFileInput = document.createElement('input');
-            mapFileInput.type = 'file';
-            mapFileInput.accept = '.json';
-            mapFileInput.onchange = (e) => {
-              const file = e.target.files[0];
-              if (file) {
-                const reader = new FileReader();
-                reader.onload = (event) => {
-                  try {
-                    let data = JSON.parse(event.target.result);
-                    if (data && !data.territories && data.mapData && data.mapData.territories) {
-                      if (data.gameState) {
-                        data.mapData.gameState = data.gameState;
-                      }
-                      data = data.mapData;
-                    }
-                    if (data && data.territories && data.territories.length > 0) {
-                      this.selectedMap = data;
-                      this.createLobbyRoom();
-                    } else {
-                      window.showToast('Invalid map format. Using default skirmish map.', 'error');
-                      this.selectedMap = DEFAULT_MAP;
-                      this.createLobbyRoom();
-                    }
-                  } catch (err) {
-                    window.showToast('Error parsing map file. Using default skirmish map.', 'error');
-                    this.selectedMap = DEFAULT_MAP;
-                    this.createLobbyRoom();
-                  }
-                };
-                reader.readAsText(file);
-              }
-            };
-            mapFileInput.click();
-          } else {
+        this.showMapSelectionModal().then((choice) => {
+          if (choice === 'earth') {
+            this.launchWithBuiltInMap('earth_map.json');
+          } else if (choice === 'upload') {
+            this.promptUploadMap();
+          } else if (choice === 'default') {
             this.selectedMap = DEFAULT_MAP;
             this.createLobbyRoom();
           }
+          // choice === null (cancelled) → do nothing
         });
       });
 
@@ -513,6 +479,151 @@
           this.renderLobbyPreview();
         }
       });
+    }
+    // Map selection modal — resolves 'default' | 'earth' | 'upload' | null (cancelled)
+    showMapSelectionModal() {
+      return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.className = 'modal confirm-modal';
+        overlay.style.zIndex = '100000';
+
+        const options = [
+          { key: 'default', icon: 'fa-chess-board', title: 'Default Skirmish', desc: 'Quick 6-territory arena. Best for a fast match.' },
+          { key: 'earth', icon: 'fa-earth-americas', title: 'Earth Map (Classic Risk)', desc: 'The classic 42-territory world with authentic continent bonuses.' },
+          { key: 'upload', icon: 'fa-upload', title: 'Upload Custom Map', desc: 'Load a map JSON exported from the Map Editor.' }
+        ];
+
+        overlay.innerHTML = `
+          <div class="modal-content glass confirm-modal-content" role="dialog" aria-modal="true" aria-labelledby="map-select-title">
+            <div class="modal-header">
+              <h2 id="map-select-title"><i class="fa-solid fa-map" style="margin-right: 8px; color: var(--primary);"></i>Choose a Battleground</h2>
+            </div>
+            <div class="modal-body" style="padding-bottom: 18px;">
+              ${options.map(o => `
+                <button type="button" class="btn outline-btn w-full" data-map-choice="${o.key}" style="display: flex; align-items: center; gap: 12px; text-align: left; margin-bottom: 10px; padding: 12px 14px;">
+                  <i class="fa-solid ${o.icon}" style="font-size: 20px; color: var(--primary); flex-shrink: 0;"></i>
+                  <span style="display: flex; flex-direction: column; gap: 2px;">
+                    <span style="font-weight: 700; font-size: 13px;">${o.title}</span>
+                    <span style="font-size: 11px; color: var(--text-muted); font-weight: 400;">${o.desc}</span>
+                  </span>
+                </button>
+              `).join('')}
+            </div>
+            <div class="confirm-modal-actions">
+              <button type="button" class="btn outline-btn" data-map-cancel>Cancel</button>
+            </div>
+          </div>
+        `;
+
+        document.body.appendChild(overlay);
+
+        let settled = false;
+        const prevOverflow = document.body.style.overflow;
+
+        const close = (result) => {
+          if (settled) return;
+          settled = true;
+          document.body.style.overflow = prevOverflow;
+          document.removeEventListener('keydown', onKey);
+          overlay.classList.remove('active');
+          setTimeout(() => overlay.remove(), 220);
+          resolve(result);
+        };
+
+        const onKey = (e) => { if (e.key === 'Escape') close(null); };
+
+        overlay.addEventListener('click', (e) => {
+          if (e.target === overlay) { close(null); return; }
+          const btn = e.target.closest('[data-map-choice]');
+          if (btn) close(btn.getAttribute('data-map-choice'));
+        });
+        overlay.querySelector('[data-map-cancel]').addEventListener('click', () => close(null));
+        document.addEventListener('keydown', onKey);
+        document.body.style.overflow = 'hidden';
+
+        requestAnimationFrame(() => overlay.classList.add('active'));
+      });
+    }
+
+
+
+    // Built-in map shipped in /public — fetch, validate, and open the lobby with it
+    launchWithBuiltInMap(filename) {
+      fetch(`/${filename}`)
+        .then((res) => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return res.json();
+        })
+        .then((data) => {
+          if (data && !data.territories && data.mapData && data.mapData.territories) {
+            data = data.mapData;
+          }
+          if (!data || !data.territories || data.territories.length === 0) {
+            throw new Error('Invalid map format.');
+          }
+          this.selectedMap = data;
+          window.SocketClient.mapData = data;
+          const lbl = document.getElementById('lobby-map-filename');
+          if (lbl) lbl.innerHTML = '<i class="fa-solid fa-earth-americas"></i> Earth Map (built-in)';
+          this.createLobbyRoom();
+        })
+        .catch((err) => {
+          console.error('Built-in map load failed:', err);
+          if (window.showToast) window.showToast('Could not load the built-in Earth map. Falling back to Default Skirmish.', 'error');
+          else alert('Could not load the built-in Earth map. Falling back to Default Skirmish.');
+          this.selectedMap = DEFAULT_MAP;
+          window.SocketClient.mapData = DEFAULT_MAP;
+          this.createLobbyRoom();
+        });
+    }
+
+    // File-picker upload flow chosen from the map selection modal
+    promptUploadMap() {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.json';
+      input.style.display = 'none';
+      document.body.appendChild(input);
+
+      input.addEventListener('change', () => {
+        const file = input.files && input.files[0];
+        if (!file) {
+          input.remove();
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          input.remove();
+          try {
+            let data = JSON.parse(event.target.result);
+            if (data && !data.territories && data.mapData && data.mapData.territories) {
+              data = data.mapData;
+            }
+            if (!data || !data.territories || data.territories.length === 0) {
+              if (window.showToast) window.showToast('Invalid map format.', 'error');
+              else alert('Invalid map format.');
+              return;
+            }
+            this.selectedMap = data;
+            window.SocketClient.mapData = data;
+            const lbl = document.getElementById('lobby-map-filename');
+            if (lbl) lbl.innerHTML = `<i class="fa-solid fa-file-circle-check"></i> ${file.name}`;
+            this.createLobbyRoom();
+          } catch (err) {
+            console.error(err);
+            if (window.showToast) window.showToast('Error parsing map file.', 'error');
+            else alert('Error parsing map file.');
+          }
+        };
+        reader.onerror = () => {
+          input.remove();
+          if (window.showToast) window.showToast('Could not read the selected file.', 'error');
+          else alert('Could not read the selected file.');
+        };
+        reader.readAsText(file);
+      });
+
+      input.click();
     }
 
     initLobby() {

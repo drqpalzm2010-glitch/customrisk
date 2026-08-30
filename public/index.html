@@ -679,9 +679,21 @@
           <!-- Game map SVG goes here -->
         </div>
 
-        <!-- Global Dominance Meter (World Control Bar) -->
-        <div id="game-dominance-bar-container" class="dominance-bar-container" title="World Territorial Dominance">
-          <div id="game-dominance-bar" class="dominance-bar"></div>
+        <!-- Global Dominance Meter (World Control Bar) — always expanded: Territory % / Income % -->
+        <div id="game-dominance-bar-container" class="dominance-bar-container">
+          <div class="dominance-rows">
+            <div class="dominance-row">
+              <div class="dominance-row-label"><i class="fa-solid fa-earth-americas"></i> Territory %</div>
+              <div id="game-dominance-bar" class="dominance-bar"></div>
+            </div>
+            <div class="dominance-row" id="dominance-income-row">
+              <div class="dominance-row-label dominance-row-label-income"><i class="fa-solid fa-coins"></i> Income % (Armies / Turn)</div>
+              <div id="game-dominance-income-bar" class="dominance-bar dominance-income-bar"></div>
+            </div>
+          </div>
+          <button type="button" id="btn-dominance-collapse" class="dominance-collapse-btn" title="Collapse dominance panel">
+            <i class="fa-solid fa-chevron-down"></i>
+          </button>
         </div>
 
         <!-- Dynamic Campaign Progress Chart for Timelapse Replays -->

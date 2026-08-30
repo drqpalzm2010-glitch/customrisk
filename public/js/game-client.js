@@ -361,6 +361,25 @@
         });
       }
 
+            // Dominance bar collapse toggle (remembers state across reloads)
+      const btnDominanceCollapse = document.getElementById('btn-dominance-collapse');
+      const dominanceContainer = document.getElementById('game-dominance-bar-container');
+      if (btnDominanceCollapse && dominanceContainer) {
+        const applyDominanceCollapsed = (collapsed) => {
+          dominanceContainer.classList.toggle('collapsed', collapsed);
+          btnDominanceCollapse.innerHTML = collapsed
+            ? '<i class="fa-solid fa-chevron-up"></i>'
+            : '<i class="fa-solid fa-chevron-down"></i>';
+          btnDominanceCollapse.title = collapsed ? 'Expand dominance panel' : 'Collapse dominance panel';
+        };
+        applyDominanceCollapsed(localStorage.getItem('dominance-collapsed') === 'true');
+        btnDominanceCollapse.addEventListener('click', () => {
+          const collapsed = !dominanceContainer.classList.contains('collapsed');
+          localStorage.setItem('dominance-collapsed', collapsed ? 'true' : 'false');
+          applyDominanceCollapsed(collapsed);
+        });
+      }
+
       // High-Performance Proximity & Shading System (Zero-Reflow O(1) Updates)
       let glowFramePending = false;
       let lastMoveX = 0;
@@ -2123,6 +2142,7 @@
 
     renderDominanceMeter() {
       const bar = document.getElementById('game-dominance-bar');
+      const incomeBar = document.getElementById('game-dominance-income-bar');
       if (!bar || !this.gameState || !this.gameState.territories) return;
 
       const totalTerritories = Object.keys(this.gameState.territories).length;
@@ -2135,36 +2155,79 @@
         counts[ownerId] = (counts[ownerId] || 0) + 1;
       });
 
+      // Per-player income (armies/turn): (territories / 3, minimum 3) + full
+      // continent bonuses. Recomputed on every state update, so it is highly
+      // dynamic — flipping a single continent visibly swings income share.
+      const mapData = window.SocketClient.mapData || this.gameState.mapData;
+      const continents = (mapData && Array.isArray(mapData.continents)) ? mapData.continents : [];
+      const incomes = {};
+      let totalIncome = 0;
+      (this.gameState.players || []).forEach(p => {
+        const count = counts[p.id] || 0;
+        let income = 0;
+        if (count > 0) {
+          income = Math.max(3, Math.floor(count / 3));
+          continents.forEach(cont => {
+            const ids = cont.territoryIds || [];
+            if (ids.length > 0 && ids.every(tid => {
+              const terr = this.gameState.territories[tid];
+              return terr && terr.ownerId === p.id;
+            })) {
+              income += cont.bonus || 0;
+            }
+          });
+        }
+        incomes[p.id] = income;
+        totalIncome += income;
+      });
+
+      const makeSeg = (parent, widthPct, color, title, text) => {
+        const seg = document.createElement('div');
+        seg.className = 'dominance-bar-segment';
+        seg.style.width = `${widthPct}%`;
+        seg.style.backgroundColor = color;
+        seg.title = title;
+        if (text) seg.textContent = text;
+        parent.appendChild(seg);
+      };
+
+      // Row 1: territory share of the world
       bar.innerHTML = '';
       (this.gameState.players || []).forEach(p => {
         const count = counts[p.id] || 0;
         if (count > 0) {
           const pct = Math.round((count / totalTerritories) * 100);
-          const seg = document.createElement('div');
-          seg.className = 'dominance-bar-segment';
-          seg.style.width = `${(count / totalTerritories) * 100}%`;
-          seg.style.backgroundColor = p.color || '#00e5ff';
-          seg.title = `${p.name}: ${count}/${totalTerritories} territories (${pct}%)`;
-          if (pct >= 8) {
-            seg.textContent = `${pct}%`;
-          }
-          bar.appendChild(seg);
+          makeSeg(bar, (count / totalTerritories) * 100, p.color || '#00e5ff',
+            `${p.name}: ${count}/${totalTerritories} territories (${pct}%)`,
+            pct >= 8 ? `${pct}%` : '');
         }
       });
 
-      // Neutral / Dummy territories
+      // Neutral / Dummy territories (hold land but earn no income)
       if (counts['dummy']) {
         const count = counts['dummy'];
         const pct = Math.round((count / totalTerritories) * 100);
-        const seg = document.createElement('div');
-        seg.className = 'dominance-bar-segment neutral';
-        seg.style.width = `${(count / totalTerritories) * 100}%`;
-        seg.style.backgroundColor = '#475569';
-        seg.title = `Neutral: ${count}/${totalTerritories} territories (${pct}%)`;
-        if (pct >= 8) {
-          seg.textContent = `${pct}%`;
+        makeSeg(bar, (count / totalTerritories) * 100, '#475569',
+          `Neutral: ${count}/${totalTerritories} territories (${pct}%)`,
+          pct >= 8 ? `${pct}%` : '');
+      }
+
+      // Row 2: income share of the world (row hidden until someone earns income)
+      const incomeRow = document.getElementById('dominance-income-row');
+      if (incomeRow) incomeRow.classList.toggle('no-income', totalIncome <= 0);
+      if (incomeBar) {
+        incomeBar.innerHTML = '';
+        if (totalIncome > 0) {
+          (this.gameState.players || []).forEach(p => {
+            const income = incomes[p.id] || 0;
+            if (income > 0) {
+              const pct = Math.round((income / totalIncome) * 100);
+              makeSeg(incomeBar, (income / totalIncome) * 100, p.color || '#00e5ff',
+                `${p.name}: +${income} armies/turn (${pct}% of world income)`,
+                pct >= 8 ? `${pct}%` : '');
+            }
+          });
         }
-        bar.appendChild(seg);
       }
     }
 

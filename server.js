@@ -45,6 +45,11 @@ function broadcastState(roomCode) {
   }
 }
 
+// Finished-game rooms are fully reaped after this long (frees the full
+// gameState + chat archive kept in memory for finished matches).
+RoomManager.startRoomCleanup();
+
+// Bootstrap AI watchdog behavior on first connection.
 io.on('connection', (socket) => {
   console.log(`User connected: ${socket.id}`);
   RoomManager.initAIWatchdog(io);

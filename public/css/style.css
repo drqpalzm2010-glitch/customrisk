@@ -2267,37 +2267,129 @@ svg.editor-canvas {
   100% { r: 65; stroke-width: 1; stroke-opacity: 0; }
 }
 
-/* Bottom World Dominance Progress Bar */
+/* Bottom World Dominance Progress Bar — always expanded, two stacked rows
+   (Territory % / Income %), each labeled on its own left edge */
 .dominance-bar-container {
   position: absolute;
   bottom: 12px;
   left: 50%;
   transform: translateX(-50%);
-  width: 90%;
-  max-width: 720px;
-  height: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 92%;
+  max-width: 840px;
   background: rgba(15, 23, 42, 0.75);
   border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 20px;
+  border-radius: 12px;
   z-index: 990;
-  overflow: hidden;
+  padding: 7px 4px 7px 0;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5), inset 0 1px 2px rgba(255, 255, 255, 0.1);
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   backdrop-filter: blur(10px);
 }
 
-.dominance-bar-container:hover {
-  height: 20px;
-  max-width: 780px;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.7), 0 0 12px rgba(0, 229, 255, 0.2);
+/* Collapse toggle — sits on the right edge, collapses the panel downward */
+.dominance-collapse-btn {
+  flex-shrink: 0;
+  align-self: stretch;
+  width: 26px;
+  border: none;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.dominance-collapse-btn:hover {
+  background: rgba(0, 229, 255, 0.15);
+  color: var(--primary);
+}
+
+.dominance-collapse-btn i {
+  transition: transform 0.3s;
+}
+
+/* Collapsed: the two bars slide down out of view, leaving a small pill */
+.dominance-bar-container.collapsed {
+  width: 52px;
+  max-width: 52px;
+  padding: 3px;
+  border-radius: 10px;
+}
+
+.dominance-bar-container.collapsed .dominance-collapse-btn {
+  width: auto;
+  align-self: auto;
+  height: 28px;
+}
+
+.dominance-bar-container.collapsed .dominance-collapse-btn i {
+  transform: rotate(180deg);
+}
+
+.dominance-rows {
+  flex: 1;
+  min-width: 0;
+  max-height: 200px;
+  opacity: 1;
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.dominance-bar-container.collapsed .dominance-rows {
+  max-height: 0;
+  opacity: 0;
+}
+
+.dominance-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 12px;
+}
+
+.dominance-row.no-income {
+  display: none;
+}
+
+/* Left-side labels so each bar is instantly identifiable */
+.dominance-row-label {
+  flex-shrink: 0;
+  width: 155px;
+  display: flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  line-height: 1.3;
+}
+
+.dominance-row-label i {
+  margin-right: 6px;
+  font-size: 11px;
+  color: var(--primary);
+}
+
+.dominance-row-label-income i {
+  color: #facc15;
 }
 
 .dominance-bar {
   display: flex;
-  width: 100%;
-  height: 100%;
-  border-radius: 20px;
+  flex: 1;
+  min-width: 0;
+  height: 12px;
+  border-radius: 6px;
   overflow: hidden;
+  background: rgba(0, 0, 0, 0.3);
 }
 
 .dominance-bar-segment {

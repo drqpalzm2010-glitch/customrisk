@@ -4,6 +4,36 @@ const { callLLMProvider } = require('./llm-provider');
 const { generateLLMPrompt } = require('./prompt-generator');
 
 const rooms = {};
+
+// Finished-game rooms are fully reaped after this long (frees the full
+// gameState + chat archive + history kept in memory for finished matches).
+const FINISHED_ROOM_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const ROOM_CLEANUP_INTERVAL_MS = 60 * 1000; // sweep once a minute
+
+// Delete rooms whose match has ended and whose victory screen has had ample
+// time to be viewed. Prevents a slow memory leak on long-running servers.
+function sweepFinishedRooms() {
+  const now = Date.now();
+  for (const code in rooms) {
+    const room = rooms[code];
+    if (!room) continue;
+    const gs = room.gameState;
+    if (!gs || gs.turnStage !== 'GAME_OVER') continue;
+
+    if (!room.gameEndedAt) {
+      // First sweep that sees the finished game: start the 5-minute clock
+      room.gameEndedAt = now;
+    } else if (now - room.gameEndedAt >= FINISHED_ROOM_TTL_MS) {
+      console.log(`[Room Cleanup] Deleting finished room ${code} (game over, ${Math.round((now - room.gameEndedAt) / 1000)}s old)`);
+      delete rooms[code];
+    }
+  }
+}
+
+function startRoomCleanup() {
+  setInterval(sweepFinishedRooms, ROOM_CLEANUP_INTERVAL_MS);
+  console.log('[Room Cleanup] Started finished-room sweeper (TTL: 5 min).');
+}
 // Helper to route and safely limit spontaneous AI chat messages to 4 per turn
 function sendAIChatMessage(room, io, aiPlayer, text, prefixSymbol = '💬', ignoreLimit = false, suffix = '[AI]') {
   if (!room || !room.gameState || !aiPlayer) return;
@@ -1730,5 +1760,7 @@ module.exports = {
   handleCombatDialogue,
   changeAIPersonality,
   getSanitizedGameState,
-  sendAIChatMessage
+  sendAIChatMessage,
+  sweepFinishedRooms,
+  startRoomCleanup
 };
