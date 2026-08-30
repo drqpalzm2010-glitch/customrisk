@@ -82,8 +82,8 @@
         this.playerName = e.target.value.trim() || 'Commander';
       });
 
-      // Bind Map Theme selectors across screens
-      ['select-menu-theme', 'select-game-theme', 'select-editor-theme'].forEach(id => {
+      // Bind Map Theme selectors across screens (added select-lobby-theme support)
+      ['select-menu-theme', 'select-game-theme', 'select-editor-theme', 'select-lobby-theme'].forEach(id => {
         const selectEl = document.getElementById(id);
         if (selectEl) {
           selectEl.value = this.mapTheme;
@@ -1030,20 +1030,36 @@
     }
 
     initAudio() {
-      const tracks = ['imagesandsounds/conflict1.mp3', 'imagesandsounds/conflict2.mp3'];
+      const defaultTracks = ['imagesandsounds/conflict1.mp3', 'imagesandsounds/conflict2.mp3'];
       let currentTrackIdx = 0;
       this.bgMusic = new Audio();
       this.bgMusic.volume = 0.2;
-      this.bgMusic.src = tracks[currentTrackIdx];
-      this.bgMusic.loop = false;
       this.isMusicMuted = true;
       this.isSFXMuted = false; // SFX plays by default!
 
+      this.updateBGMTrack = () => {
+        const isAnime = this.mapTheme === 'anime';
+        const targetSrc = isAnime ? 'imagesandsounds/animesong.mp3' : defaultTracks[currentTrackIdx];
+
+        if (!this.bgMusic.src.endsWith(targetSrc)) {
+          const wasPlaying = !this.bgMusic.paused;
+          this.bgMusic.src = targetSrc;
+          this.bgMusic.loop = isAnime; // Loop animesong continuously
+          if (wasPlaying && !this.isMusicMuted) {
+            this.bgMusic.play().catch(() => {});
+          }
+        }
+      };
+
+      this.updateBGMTrack();
+
       this.bgMusic.addEventListener('ended', () => {
-        currentTrackIdx = (currentTrackIdx + 1) % tracks.length;
-        this.bgMusic.src = tracks[currentTrackIdx];
-        if (!this.isMusicMuted) {
-          this.bgMusic.play().catch(err => console.log('Music ended playback blocked'));
+        if (this.mapTheme !== 'anime') {
+          currentTrackIdx = (currentTrackIdx + 1) % defaultTracks.length;
+          this.bgMusic.src = defaultTracks[currentTrackIdx];
+          if (!this.isMusicMuted) {
+            this.bgMusic.play().catch(err => console.log('Music ended playback blocked'));
+          }
         }
       });
 
@@ -1078,11 +1094,29 @@
       localStorage.setItem('map-theme', theme);
       document.body.setAttribute('data-map-theme', theme);
 
-      // Synchronize all theme selectors on the page
-      ['select-menu-theme', 'select-game-theme', 'select-editor-theme'].forEach(id => {
+      // Filter out and sanitize old map themes into premium replacements
+      const deprecatedThemes = new Set(['satellite', 'pastel', 'basiclight', 'light', 'molten', 'glacial']);
+      if (deprecatedThemes.has(theme)) {
+        theme = 'scifi'; // Redirect deprecated templates to Sci-Fi
+      }
+
+      // Synchronize all theme selectors on the page (added select-lobby-theme)
+      ['select-menu-theme', 'select-game-theme', 'select-editor-theme', 'select-lobby-theme'].forEach(id => {
         const select = document.getElementById(id);
         if (select) select.value = theme;
       });
+
+      // Force instant map re-render and card list redraw on theme swap
+      if (this.gameClient && this.gameClient.gameState && this.gameClient.renderer) {
+        this.gameClient.renderer.render(window.SocketClient.mapData || this.gameClient.gameState.mapData, this.gameClient.gameState);
+        this.gameClient.renderCards();
+      }
+
+      // Force instant lobby preview re-render if active
+      const lobbyPreview = document.getElementById('lobby-map-preview-container');
+      if (lobbyPreview && lobbyPreview.innerHTML !== '') {
+        this.renderLobbyPreview();
+      }
     }
   }
 

@@ -7,7 +7,7 @@
   <!-- Google Fonts: Inter & Outfit -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Cherry+Bomb+One&family=Courgette&family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=Share+Tech+Mono&display=swap" rel="stylesheet">
   <!-- FontAwesome Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <!-- Custom Stylesheet -->
@@ -23,50 +23,47 @@
   </div>
 
   <!-- ==================== SCREEN 1: MAIN MENU ==================== -->
-  <div id="screen-menu" class="screen active">
-    <div class="menu-container glass">
-      <div class="brand">
-        <i class="fa-solid fa-earth-americas brand-icon"></i>
-        <h1>FACTIONAL RISK</h1>
-        <p class="subtitle">Custom Battlegrounds & Turn-Based Diplomacy</p>
-      </div>
+          <div id="screen-menu" class="screen active">
+            <div class="menu-container glass scroll-container">
+              <div class="brand">
+                <i class="fa-solid fa-earth-americas brand-icon"></i>
+                <h1>FACTIONAL RISK</h1>
+                <p class="subtitle">Custom Battlegrounds & Turn-Based Diplomacy</p>
+              </div>
 
-      <div class="form-group">
-        <label for="input-player-name"><i class="fa-solid fa-user"></i> Player Name</label>
-        <input type="text" id="input-player-name" placeholder="Enter commander name..." value="Commander">
-      </div>
+              <div class="form-group">
+                <label for="input-player-name"><i class="fa-solid fa-user"></i> Player Name</label>
+                <input type="text" id="input-player-name" placeholder="Enter commander name..." value="Commander">
+              </div>
 
-      <div class="form-group">
-        <label><i class="fa-solid fa-palette"></i> Commander Theme Color</label>
-        <div class="color-presets-row">
-          <div class="color-presets">
-            <div class="color-preset active" style="background-color: #00e5ff;" data-color="#00e5ff"></div>
-            <div class="color-preset" style="background-color: #ff3366;" data-color="#ff3366"></div>
-            <div class="color-preset" style="background-color: #33ff66;" data-color="#33ff66"></div>
-            <div class="color-preset" style="background-color: #ffcc00;" data-color="#ffcc00"></div>
-            <div class="color-preset" style="background-color: #ff00ff;" data-color="#ff00ff"></div>
-            <div class="color-preset" style="background-color: #ffffff;" data-color="#ffffff"></div>
-          </div>
-          <div class="custom-color-picker-wrapper">
-            <span>Custom RGB:</span>
-            <input type="color" id="input-player-color" value="#00e5ff" class="color-picker-input">
-          </div>
-          <div style="margin-top: 12px; display: flex; align-items: center; justify-content: space-between; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 10px;">
-            <label for="select-menu-theme" style="font-weight: 500; font-size: 13px;">Map Theme:</label>
-            <select id="select-menu-theme" style="background: rgba(0,0,0,0.4); border: 1px solid var(--border-glass); color: #fff; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 13px;">
-              <option value="default">Default Dark</option>
-              <option value="futuristic">Futuristic Neon</option>
-              <option value="vintage">Old Map (Vintage)</option>
-              <option value="satellite">Satellite Image</option>
-              <option value="molten">Molten Magma</option>
-              <option value="glacial">Glacial Tundra</option>
-              <option value="light">Light Theme</option>
-              <option value="pastel">Pastel Colors</option>
-              <option value="basiclight">Basic Light</option>
-            </select>
-          </div>
-        </div>
-      </div>
+              <div class="form-group">
+                <label for="select-menu-theme"><i class="fa-solid fa-compass"></i> Interface Map Theme</label>
+                <select id="select-menu-theme" style="width: 100%; background: rgba(0,0,0,0.3); border: 1px solid var(--border-glass); color: #fff; padding: 12px; border-radius: 8px; cursor: pointer; font-size: 14px;">
+                  <option value="scifi" selected>Sci-Fi Cybernetic</option>
+                  <option value="default">Default Dark</option>
+                  <option value="napoleonic">Napoleonic Era</option>
+                  <option value="modern">Modern Warfare</option>
+                  <option value="anime">Anime Kawaii</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label><i class="fa-solid fa-palette"></i> Commander Theme Color</label>
+                <div class="color-presets-row">
+                  <div class="color-presets">
+                    <div class="color-preset active" style="background-color: #00e5ff;" data-color="#00e5ff"></div>
+                    <div class="color-preset" style="background-color: #ff3366;" data-color="#ff3366"></div>
+                    <div class="color-preset" style="background-color: #33ff66;" data-color="#33ff66"></div>
+                    <div class="color-preset" style="background-color: #ffcc00;" data-color="#ffcc00"></div>
+                    <div class="color-preset" style="background-color: #ff00ff;" data-color="#ff00ff"></div>
+                    <div class="color-preset" style="background-color: #ffffff;" data-color="#ffffff"></div>
+                  </div>
+                  <div class="custom-color-picker-wrapper">
+                    <span>Custom RGB:</span>
+                    <input type="color" id="input-player-color" value="#00e5ff" class="color-picker-input">
+                  </div>
+                </div>
+              </div>
 
       <div class="menu-actions">
         <button id="btn-create-lobby" class="btn primary-btn"><i class="fa-solid fa-plus"></i> Create Custom Campaign</button>
@@ -304,6 +301,18 @@
           </div>
 
           <div class="map-select-box" style="margin-top: 12px;">
+            <h3><i class="fa-solid fa-palette"></i> Map Theme</h3>
+            <select id="select-lobby-theme" style="width: 100%; background: rgba(0,0,0,0.4); border: 1px solid var(--border-glass); color: #fff; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 13px;">
+              <option value="scifi" selected>Sci-Fi Cybernetic</option>
+              <option value="default">Default Dark</option>
+              <option value="napoleonic">Napoleonic Era</option>
+              <option value="modern">Modern Warfare</option>
+              <option value="anime">Anime Kawaii</option>
+            </select>
+            <p class="map-hint">Select your preferred tactical interface theme.</p>
+          </div>
+
+          <div class="map-select-box" style="margin-top: 12px;">
             <h3><i class="fa-solid fa-layer-group"></i> Card Trade-in Rules
               <span class="info-tip" data-tip="PROGRESSIVE: Card trade values escalate with each trade-in across the match (4, 6, 8, 10, 12, 15, +5 per trade). FIXED: Card trade values depend strictly on card types (3 Infantry = 4, 3 Cavalry = 6, 3 Artillery = 8, 1 of Each / Mixed = 10).">ℹ</span>
             </h3>
@@ -426,10 +435,14 @@
 
   <!-- ==================== SCREEN 3: GAME BOARD ==================== -->
   <div id="screen-game" class="screen">
+    <!-- Sidebar Toggle Handles -->
+    <div id="btn-toggle-left-sidebar" class="sidebar-toggle-handle" title="Toggle Left Sidebar"><i class="fa-solid fa-chevron-left"></i></div>
+    <div id="btn-toggle-right-sidebar" class="sidebar-toggle-handle" title="Toggle Right Sidebar"><i class="fa-solid fa-chevron-right"></i></div>
+
     <div class="game-layout">
       <!-- Left sidebar: Phase, player cards, active pacts -->
-      <div class="game-sidebar glass">
-        <!-- Status card -->
+      <div id="game-left-sidebar" class="game-sidebar glass scroll-container">
+        <!-- Status card (Always pinned on top of both tabs) -->
         <div class="phase-card">
           <div class="turn-indicator">
             <span class="label">CURRENT TURN</span>
@@ -451,163 +464,176 @@
           <button id="btn-ask-ai-advisor" class="btn primary-btn w-full mt-2" style="background: linear-gradient(135deg, #a855f7, #6366f1); border: 1px solid rgba(255,255,255,0.2);"><i class="fa-solid fa-lightbulb"></i> Ask AI Advisor</button>
         </div>
 
-        <!-- Tactical Settings Panel -->
-        <div class="game-settings-section" style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 10px; padding: 12px; font-size: 12px; margin-top: 10px;">
-          <h3 style="font-size: 11px; text-transform: uppercase; margin-bottom: 8px; color: var(--primary); letter-spacing: 0.5px;">Tactical Toggles</h3>
-          <div class="flex items-center justify-between" style="margin-bottom: 6px;">
-            <label for="chk-auto-attack" style="cursor: pointer; font-weight: 500;">
-              Auto-Attack (Max Dice)
-              <span class="info-tip" data-tip="Dice rules: Attacker rolls 1-3 dice (needs 2+ armies to use 2 dice, 4+ armies for 3 dice). Defender rolls 1-2 dice. Each pair is compared highest-to-highest — higher wins. Ties go to the defender. More dice = more casualties on both sides.">ℹ</span>
-            </label>
-            <input type="checkbox" id="chk-auto-attack" checked style="cursor: pointer;">
-          </div>
-          <div class="flex items-center justify-between" style="margin-bottom: 10px;">
-            <label for="chk-auto-defend" style="cursor: pointer; font-weight: 500;">
-              Auto-Defend (Max Dice)
-              <span class="info-tip" data-tip="Defender can roll 1 die (always) or 2 dice (needs 2+ armies). Rolling 2 dice is almost always better for the defender — more dice = more chances to beat the attacker. Ties always favor the defender.">ℹ</span>
-            </label>
-            <input type="checkbox" id="chk-auto-defend" checked style="cursor: pointer;">
-          </div>
-          <div class="flex items-center justify-between" style="margin-bottom: 10px;">
-            <label for="chk-fight-to-death" style="cursor: pointer; font-weight: 500; color: var(--secondary);">
-              ⚔️ Fight to the Death (Blitz)
-              <span class="info-tip" data-tip="Auto-rolls consecutive rounds in the background using max dice until territory is conquered or attacker is reduced to 1 army.">ℹ</span>
-            </label>
-            <input type="checkbox" id="chk-fight-to-death" style="cursor: pointer;">
-          </div>
-          <div id="ai-blitz-toggle-container" class="flex items-center justify-between" style="margin-bottom: 10px; display: none;">
-            <label for="chk-ai-blitz" style="cursor: pointer; font-weight: 500; color: var(--primary);">
-              ⚡ AI Uses Blitz Attack
-              <span class="info-tip" data-tip="AI commanders will use Fight to the Death (Blitz) attacks to resolve combat instantly until conquest or exhaustion. Available for Host or AI Spectators.">ℹ</span>
-            </label>
-            <input type="checkbox" id="chk-ai-blitz" style="cursor: pointer;">
-          </div>
-          <div class="flex items-center justify-between" style="margin-bottom: 10px;">
-            <label for="chk-skip-other-battles" style="cursor: pointer; font-weight: 500;">
-              Skip Other Battles
-              <span class="info-tip" data-tip="If checked, you won't see the dice rolling overlay for battles where you are neither the attacker nor the defender. Great for spectating AI-only games!">ℹ</span>
-            </label>
-            <input type="checkbox" id="chk-skip-other-battles" style="cursor: pointer;">
-          </div>
-          <div id="game-ai-speed-container" class="flex items-center justify-between" style="margin-bottom: 10px;">
-            <label for="select-game-ai-speed" style="cursor: pointer; font-weight: 500; color: var(--primary);">
-              ⚡ AI Turn Speed
-              <span class="info-tip" data-tip="Adjust the execution speed of AI commanders during live campaign turns.">ℹ</span>
-            </label>
-            <select id="select-game-ai-speed" style="background: rgba(0,0,0,0.4); border: 1px solid var(--border-glass); color: #fff; padding: 4px 8px; border-radius: 6px; cursor: pointer; font-size: 11px;">
-              <option value="1000">Normal (1.0s)</option>
-              <option value="400" selected>Fast (0.4s)</option>
-              <option value="100">Blazing (0.1s)</option>
-              <option value="0">Instant Simulation</option>
-            </select>
-          </div>
-          <div class="flex items-center justify-between" style="border-top: 1px solid rgba(255,255,255,0.05); padding-top: 8px;">
-            <label for="select-game-theme" style="font-weight: 500;">Map Theme:</label>
-            <select id="select-game-theme" style="background: rgba(0,0,0,0.4); border: 1px solid var(--border-glass); color: #fff; padding: 4px 8px; border-radius: 6px; cursor: pointer; font-size: 11px;">
-              <option value="default">Default Dark</option>
-              <option value="futuristic">Futuristic Neon</option>
-              <option value="vintage">Old Map (Vintage)</option>
-              <option value="satellite">Satellite Image</option>
-              <option value="molten">Molten Magma</option>
-              <option value="glacial">Glacial Tundra</option>
-              <option value="light">Light Theme</option>
-              <option value="pastel">Pastel Colors</option>
-              <option value="basiclight">Basic Light</option>
-            </select>
-          </div>
+        <!-- Sidebar Tab Selectors -->
+        <div class="sidebar-tabs">
+          <div id="tab-btn-arsenal" class="sidebar-tab active"><i class="fa-solid fa-radiation"></i> Arsenal</div>
+          <div id="tab-btn-intel" class="sidebar-tab"><i class="fa-solid fa-chart-line"></i> Intel</div>
         </div>
 
-        <!-- Players summary list -->
-        <div class="game-players-section">
-          <h3>Commanders
-            <span class="info-tip" data-tip="Lists all active players. Elimination occurs when a player loses their final territory. Their hand of Risk cards is then inherited by the victor. Winning requires either total conquest or, in Capital Rush mode, simultaneous control of all enemy capitals.">ℹ</span>
-          </h3>
-          <div id="game-players-list">
-            <!-- Dynamic players status -->
-          </div>
-        </div>
-
-        <!-- Active Diplomacy Pacts -->
-        <div class="game-diplomacy-section">
-          <h3>Active Pacts & Alliances
-            <span class="info-tip" data-tip="Non-Aggression Pact: a mutual promise not to attack each other. Breaking it lowers the AI's trust in you permanently. Full Alliance: stronger — you can also fortify through allied territory (following connected paths). Both types can be cancelled anytime.">ℹ</span>
-          </h3>
-          <div id="game-active-pacts" class="active-pacts-list">
-            <!-- Dynamic active pacts list -->
-            <p class="empty-state">No active treaties.</p>
-          </div>
-          <button id="btn-open-diplomacy-modal" class="btn outline-btn w-full mt-3" style="position: relative;">
-            <i class="fa-solid fa-handshake"></i> Treaties & Pact proposals
-            <span id="diplomacy-badge" class="diplomacy-badge" style="display: none;">0</span>
-          </button>
-        </div>
-
-        <!-- Weapons Arsenal (Nukes) -->
-        <div class="game-nukes-section" id="game-nukes-panel" style="display: none; background: rgba(255,255,255,0.02); border: 1px solid var(--border-glass); border-radius: 10px; padding: 12px; margin-top: 10px;">
-          <h3 style="font-size: 11px; text-transform: uppercase; margin-bottom: 8px; color: #22c55e; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;"><i class="fa-solid fa-radiation"></i> Weapons Arsenal<span class="info-tip" data-tip="Your nuclear stockpile. Click a weapon, select one of your territories with 2+ armies as the Launch Pad Silo, then click any territory on the map to detonate. Missiles have unlimited range.">ℹ</span></h3>
-          <div class="nukes-status-row" style="display: flex; gap: 8px; margin-bottom: 8px;">
-            <div class="nuke-badge" id="btn-action-nuke" style="flex: 1; background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); padding: 6px; border-radius: 8px; text-align: center; cursor: pointer; transition: all 0.2s;" title="Select and Launch Tactical Nuke">
-              <span style="font-size: 16px;">☢️</span>
-              <div style="font-size: 10px; font-weight: 700; color: #22c55e; margin-top: 2px;">Tactical: <strong id="lbl-nuke-count">0</strong></div>
-              <span class="info-tip" data-tip="Tactical Nuke: wipes ALL armies on the target territory and leaves it radioactive and un-interactable for 1 full turn. Unlimited range.">ℹ</span>
+        <!-- TAB 1: ARSENAL CONTENTS -->
+        <div id="tab-pane-arsenal">
+          <!-- Weapons Arsenal (Nukes) -->
+          <div class="game-nukes-section" id="game-nukes-panel" style="display: none; background: rgba(255,255,255,0.02); border: 1px solid var(--border-glass); border-radius: 10px; padding: 12px; margin-top: 10px;">
+            <h3 style="font-size: 11px; text-transform: uppercase; margin-bottom: 8px; color: #22c55e; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;"><i class="fa-solid fa-radiation"></i> Weapons Arsenal<span class="info-tip" data-tip="Your nuclear stockpile. Click a weapon, select one of your territories with 2+ armies as the Launch Pad Silo, then click any territory on the map to detonate. Missiles have unlimited range.">ℹ</span></h3>
+            <div class="nukes-status-row" style="display: flex; gap: 8px; margin-bottom: 8px;">
+              <div class="nuke-badge" id="btn-action-nuke" style="flex: 1; background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); padding: 6px; border-radius: 8px; text-align: center; cursor: pointer; transition: all 0.2s;" title="Select and Launch Tactical Nuke">
+                <span style="font-size: 16px;">☢️</span>
+                <div style="font-size: 10px; font-weight: 700; color: #22c55e; margin-top: 2px;">Tactical: <strong id="lbl-nuke-count">0</strong></div>
+                <span class="info-tip" data-tip="Tactical Nuke: wipes ALL armies on the target territory and leaves it radioactive and un-interactable for 1 full turn. Unlimited range.">ℹ</span>
+              </div>
+              <div class="nuke-badge" id="btn-action-thermonuke" style="flex: 1; background: rgba(168, 85, 247, 0.1); border: 1px solid rgba(168, 85, 247, 0.3); padding: 6px; border-radius: 8px; text-align: center; cursor: pointer; transition: all 0.2s;" title="Select and Launch Thermonuclear Weapon">
+                <span style="font-size: 16px;">🚀</span>
+                <div style="font-size: 10px; font-weight: 700; color: #a855f7; margin-top: 2px;">Thermo: <strong id="lbl-thermonuke-count">0</strong></div>
+                <span class="info-tip" data-tip="Thermonuclear Weapon: wipes the target AND halves armies on all adjacent territories. Radioactive for 2 full turns. Unlimited range.">ℹ</span>
+              </div>
             </div>
-            <div class="nuke-badge" id="btn-action-thermonuke" style="flex: 1; background: rgba(168, 85, 247, 0.1); border: 1px solid rgba(168, 85, 247, 0.3); padding: 6px; border-radius: 8px; text-align: center; cursor: pointer; transition: all 0.2s;" title="Select and Launch Thermonuclear Weapon">
-              <span style="font-size: 16px;">🚀</span>
-              <div style="font-size: 10px; font-weight: 700; color: #a855f7; margin-top: 2px;">Thermo: <strong id="lbl-thermonuke-count">0</strong></div>
-              <span class="info-tip" data-tip="Thermonuclear Weapon: wipes the target AND halves armies on all adjacent territories. Radioactive for 2 full turns. Unlimited range.">ℹ</span>
+            <div style="display: flex; gap: 4px;" id="nuke-craft-buttons-row">
+              <button id="btn-craft-nuke" class="btn outline-btn btn-sm w-full" style="font-size: 11px; padding: 4px; border-color: #22c55e; color: #22c55e;" disabled><i class="fa-solid fa-hammer"></i> Craft Nuke<span class="info-tip" data-tip="Sacrifice any 3 Risk Cards to forge a Tactical Nuke. Crafting is only possible during your DRAFT phase and only if the host enabled nuclear crafting.">ℹ</span></button>
+              <button id="btn-craft-thermonuke" class="btn outline-btn btn-sm w-full" style="font-size: 11px; padding: 4px; border-color: #a855f7; color: #a855f7;" disabled><i class="fa-solid fa-atom"></i> Craft Thermo<span class="info-tip" data-tip="Sacrifice a valid 3-card set to forge a Thermonuclear Weapon. Crafting is only possible during your DRAFT phase and only if the host enabled nuclear crafting.">ℹ</span></button>
             </div>
           </div>
-          <div style="display: flex; gap: 4px;" id="nuke-craft-buttons-row">
-            <button id="btn-craft-nuke" class="btn outline-btn btn-sm w-full" style="font-size: 11px; padding: 4px; border-color: #22c55e; color: #22c55e;" disabled><i class="fa-solid fa-hammer"></i> Craft Nuke<span class="info-tip" data-tip="Sacrifice any 3 Risk Cards to forge a Tactical Nuke. Crafting is only possible during your DRAFT phase and only if the host enabled nuclear crafting.">ℹ</span></button>
-            <button id="btn-craft-thermonuke" class="btn outline-btn btn-sm w-full" style="font-size: 11px; padding: 4px; border-color: #a855f7; color: #a855f7;" disabled><i class="fa-solid fa-atom"></i> Craft Thermo<span class="info-tip" data-tip="Sacrifice a valid 3-card set to forge a Thermonuclear Weapon. Crafting is only possible during your DRAFT phase and only if the host enabled nuclear crafting.">ℹ</span></button>
+
+          <!-- Cards Panel -->
+          <div class="game-cards-section" style="margin-top: 10px;">
+            <h3>Cards & Logistics
+              <span class="info-tip" data-tip="You earn exactly 1 card at the end of your turn IF you conquered at least 1 territory. The deck has one card per territory (evenly split Infantry / Cavalry / Artillery) plus 2 Wildcards. If the deck runs out, traded-in cards are reshuffled back in.">ℹ</span>
+            </h3>
+            <div id="game-cards-list" class="cards-list">
+              <!-- Dynamic cards checklist -->
+            </div>
+            <div id="card-trade-status" class="card-trade-status" style="font-size: 11px; margin-top: 8px; font-weight: 600; text-align: center;"></div>
+            <div style="display: flex; gap: 4px; margin-top: 4px;">
+              <button id="btn-auto-select-cards" class="btn outline-btn btn-sm w-full" style="font-size: 11px; padding: 4px;"><i class="fa-solid fa-wand-magic-sparkles"></i> Auto-Select Set</button>
+              <button id="btn-trade-cards" class="btn secondary-btn w-full" disabled style="font-size: 11px; padding: 4px;">
+                <i class="fa-solid fa-arrows-rotate"></i> Trade Set
+              </button>
+            </div>
+            <button id="btn-trade-all-cards" class="btn primary-btn w-full mt-1" style="font-size: 11px; padding: 6px; background: linear-gradient(135deg, #10b981, #059669); border: 1px solid rgba(255,255,255,0.2);">
+              <i class="fa-solid fa-bolt"></i> Trade ALL Valid Sets
+            </button>
+            <div style="margin-top: 6px;">
+              <label for="select-card-target-territory" style="font-size: 10px; font-weight: 600; color: rgba(255,255,255,0.7); display: block; margin-bottom: 2px;">
+                <i class="fa-solid fa-location-crosshairs"></i> Auto-Deposit Armies To:
+              </label>
+              <select id="select-card-target-territory" style="width: 100%; background: rgba(0,0,0,0.5); border: 1px solid var(--border-glass); color: #fff; padding: 3px 6px; border-radius: 4px; font-size: 11px; cursor: pointer;">
+                <option value="">-- Draft Pool --</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Tactical Settings Panel (Moved inside Arsenal) -->
+          <div class="game-settings-section" style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 10px; padding: 12px; font-size: 12px; margin-top: 10px;">
+            <h3 style="font-size: 11px; text-transform: uppercase; margin-bottom: 8px; color: var(--primary); letter-spacing: 0.5px;">Tactical Toggles</h3>
+            <div class="flex items-center justify-between" style="margin-bottom: 6px;">
+              <label for="chk-auto-attack" style="cursor: pointer; font-weight: 500;">
+                Auto-Attack (Max Dice)
+              </label>
+              <input type="checkbox" id="chk-auto-attack" checked style="cursor: pointer;">
+            </div>
+            <div class="flex items-center justify-between" style="margin-bottom: 10px;">
+              <label for="chk-auto-defend" style="cursor: pointer; font-weight: 500;">
+                Auto-Defend (Max Dice)
+              </label>
+              <input type="checkbox" id="chk-auto-defend" checked style="cursor: pointer;">
+            </div>
+            <div class="flex items-center justify-between" style="margin-bottom: 10px;">
+              <label for="chk-fight-to-death" style="cursor: pointer; font-weight: 500; color: var(--secondary);">
+                ⚔️ Fight to the Death (Blitz)
+              </label>
+              <input type="checkbox" id="chk-fight-to-death" style="cursor: pointer;">
+            </div>
+            <div id="ai-blitz-toggle-container" class="flex items-center justify-between" style="margin-bottom: 10px; display: none;">
+              <label for="chk-ai-blitz" style="cursor: pointer; font-weight: 500; color: var(--primary);">
+                ⚡ AI Uses Blitz Attack
+              </label>
+              <input type="checkbox" id="chk-ai-blitz" style="cursor: pointer;">
+            </div>
+            <div class="flex items-center justify-between" style="margin-bottom: 10px;">
+              <label for="chk-skip-other-battles" style="cursor: pointer; font-weight: 500;">
+                Skip Other Battles
+              </label>
+              <input type="checkbox" id="chk-skip-other-battles" style="cursor: pointer;">
+            </div>
+            <div id="game-ai-speed-container" class="flex items-center justify-between" style="margin-bottom: 10px;">
+              <label for="select-game-ai-speed" style="cursor: pointer; font-weight: 500; color: var(--primary);">
+                ⚡ AI Turn Speed
+              </label>
+              <select id="select-game-ai-speed" style="background: rgba(0,0,0,0.4); border: 1px solid var(--border-glass); color: #fff; padding: 4px 8px; border-radius: 6px; cursor: pointer; font-size: 11px;">
+                <option value="1000">Normal (1.0s)</option>
+                <option value="400" selected>Fast (0.4s)</option>
+                <option value="100">Blazing (0.1s)</option>
+                <option value="0">Instant Simulation</option>
+              </select>
+            </div>
+            <div class="flex items-center justify-between" style="border-top: 1px solid rgba(255,255,255,0.05); padding-top: 8px;">
+              <label for="select-game-theme" style="font-weight: 500;">Map Theme:</label>
+              <select id="select-game-theme" style="background: rgba(0,0,0,0.4); border: 1px solid var(--border-glass); color: #fff; padding: 4px 8px; border-radius: 6px; cursor: pointer; font-size: 11px;">
+                <option value="scifi" selected>Sci-Fi Cybernetic</option>
+                <option value="default">Default Dark</option>
+                <option value="napoleonic">Napoleonic Era</option>
+                <option value="modern">Modern Warfare</option>
+                <option value="anime">Anime Kawaii</option>
+              </select>
+            </div>
           </div>
         </div>
 
-        <!-- Cards Panel -->
-        <div class="game-cards-section">
-          <h3>Risk Cards
-            <span class="info-tip" data-tip="You earn exactly 1 card at the end of your turn IF you conquered at least 1 territory. The deck has one card per territory (evenly split Infantry / Cavalry / Artillery) plus 2 Wildcards. If the deck runs out, traded-in cards are reshuffled back in.">ℹ</span>
-          </h3>
-          <div id="game-cards-list" class="cards-list">
-            <!-- Dynamic cards checklist -->
+        <!-- TAB 2: INTEL CONTENTS -->
+        <div id="tab-pane-intel" style="display: none;">
+          <!-- Players summary list -->
+          <div class="game-players-section">
+            <h3>Commanders
+              <span class="info-tip" data-tip="Lists all active players. Elimination occurs when a player loses their final territory. Their hand of Risk cards is then inherited by the victor. Winning requires either total conquest or, in Capital Rush mode, simultaneous control of all enemy capitals.">ℹ</span>
+            </h3>
+            <div id="game-players-list">
+              <!-- Dynamic players status -->
+            </div>
           </div>
-          <div id="card-trade-status" class="card-trade-status" style="font-size: 11px; margin-top: 8px; font-weight: 600; text-align: center;"></div>
-          <div style="display: flex; gap: 4px; margin-top: 4px;">
-            <button id="btn-auto-select-cards" class="btn outline-btn btn-sm w-full" style="font-size: 11px; padding: 4px;"><i class="fa-solid fa-wand-magic-sparkles"></i> Auto-Select Set</button>
-            <button id="btn-trade-cards" class="btn secondary-btn w-full" disabled style="font-size: 11px; padding: 4px;">
-              <i class="fa-solid fa-arrows-rotate"></i> Trade Set
+
+          <!-- Active Diplomacy Pacts -->
+          <div class="game-diplomacy-section" style="margin-top: 12px;">
+            <h3>Active Pacts & Alliances
+              <span class="info-tip" data-tip="Non-Aggression Pact: a mutual promise not to attack each other. Breaking it lowers the AI's trust in you permanently. Full Alliance: stronger — you can also fortify through allied territory (following connected paths). Both types can be cancelled anytime.">ℹ</span>
+            </h3>
+            <div id="game-active-pacts" class="active-pacts-list">
+              <!-- Dynamic active pacts list -->
+              <p class="empty-state">No active treaties.</p>
+            </div>
+            <button id="btn-open-diplomacy-modal" class="btn outline-btn w-full mt-3" style="position: relative;">
+              <i class="fa-solid fa-handshake"></i> Treaties & Pact proposals
+              <span id="diplomacy-badge" class="diplomacy-badge" style="display: none;">0</span>
             </button>
           </div>
-          <button id="btn-trade-all-cards" class="btn primary-btn w-full mt-1" style="font-size: 11px; padding: 6px; background: linear-gradient(135deg, #10b981, #059669); border: 1px solid rgba(255,255,255,0.2);">
-            <i class="fa-solid fa-bolt"></i> Trade ALL Valid Sets
-          </button>
-          <div style="margin-top: 6px;">
-            <label for="select-card-target-territory" style="font-size: 10px; font-weight: 600; color: rgba(255,255,255,0.7); display: block; margin-bottom: 2px;">
-              <i class="fa-solid fa-location-crosshairs"></i> Auto-Deposit Armies To:
-            </label>
-            <select id="select-card-target-territory" style="width: 100%; background: rgba(0,0,0,0.5); border: 1px solid var(--border-glass); color: #fff; padding: 3px 6px; border-radius: 4px; font-size: 11px; cursor: pointer;">
-              <option value="">-- Draft Pool --</option>
-            </select>
+
+          <!-- Continents Legend -->
+          <div class="game-continents-section" style="margin-top: 12px;">
+            <h3>Continents Legend
+              <span class="info-tip" data-tip="Control all territories in a continent at the start of your turn to receive its reinforcement troop bonus. Hover over a continent to highlight its territories on the map!">ℹ</span>
+            </h3>
+            <div id="game-continents-list" class="continents-list">
+              <!-- Dynamic continents list -->
+            </div>
           </div>
         </div>
 
-        <!-- Continents Legend -->
-        <div class="game-continents-section">
-          <h3>Continents Legend
-            <span class="info-tip" data-tip="Control all territories in a continent at the start of your turn to receive its reinforcement troop bonus. Hover over a continent to highlight its territories on the map!">ℹ</span>
-          </h3>
-          <div id="game-continents-list" class="continents-list">
-            <!-- Dynamic continents list -->
-          </div>
+        <!-- Sidebar footer options -->
+        <div style="margin-top: auto; display: flex; flex-direction: column; gap: 6px;">
+          <button id="btn-show-victory" class="btn primary-btn w-full mt-3" style="display: none; background: linear-gradient(135deg, #eab308, #a855f7); border: 1px solid rgba(255,255,255,0.2);"><i class="fa-solid fa-trophy"></i> Reopen Victory Stats</button>
+          <button id="btn-save-game" class="btn outline-btn w-full" style="border-color: #33ff66; color: #33ff66;"><i class="fa-solid fa-floppy-disk"></i> Save Campaign State</button>
+          <button id="btn-quit-game" class="btn outline-btn w-full"><i class="fa-solid fa-sign-out-alt"></i> Quit Game</button>
         </div>
 
-        <button id="btn-show-victory" class="btn primary-btn w-full mt-3" style="display: none; background: linear-gradient(135deg, #eab308, #a855f7); border: 1px solid rgba(255,255,255,0.2);"><i class="fa-solid fa-trophy"></i> Reopen Victory Stats</button>
-        <button id="btn-save-game" class="btn outline-btn w-full mt-3" style="border-color: #33ff66; color: #33ff66;"><i class="fa-solid fa-floppy-disk"></i> Save Campaign State</button>
-        <button id="btn-quit-game" class="btn outline-btn w-full mt-2"><i class="fa-solid fa-sign-out-alt"></i> Quit Game</button>
+        <!-- Anime Theme Bottom Mascot Image (Flush to bottom with AAA overlay) -->
+        <div class="anime-sidebar-bottom-easteregg">
+          <div class="anime-easteregg-wrapper">
+            <img src="imagesandsounds/yes.png" alt="Anime Mascot">
+            <div class="anime-aaa-text">Why are you trying to scroll?</div>
+          </div>
+        </div>
       </div>
 
       <!-- Center: Map view area -->
-      <div class="game-viewport">
+      <div class="game-viewport" style="flex: 1;">
         <div class="viewport-header glass" style="flex-direction: column; gap: 6px; padding: 10px 16px;">
           <div class="instructions" id="game-instruction-banner">
             Click on an empty territory to claim it.
@@ -695,18 +721,18 @@
         </div>
       </div>
 
-      <!-- Right sidebar: Logs & chat -->
-      <div class="game-right-sidebar glass">
+      <!-- Right sidebar: Integrated Chat & Log -->
+      <div id="game-right-sidebar" class="game-right-sidebar glass scroll-container">
         <!-- Live Action Log -->
-        <div class="game-log-panel">
+        <div class="game-log-panel" style="flex: 1; display: flex; flex-direction: column; height: 45%;">
           <h3>Campaign Log</h3>
-          <div id="game-log" class="chat-messages">
+          <div id="game-log" class="chat-messages" style="flex: 1;">
             <!-- Dynamic actions -->
           </div>
         </div>
 
         <!-- Chat Panel with Message Builder Integration -->
-        <div class="game-chat-panel" style="height: 380px;">
+        <div class="game-chat-panel" style="height: 380px; display: flex; flex-direction: column; margin-top: 15px;">
           <h3>Global Chat & Message Builder</h3>
           <div id="game-chat-messages" class="chat-messages" style="height: 180px;">
             <!-- Chat logs -->
@@ -783,15 +809,11 @@
             <div class="form-group mt-2">
               <label>Preview Theme</label>
               <select id="select-editor-theme" style="width: 100%; background: rgba(0,0,0,0.3); border: 1px solid var(--border-glass); color: #fff; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 13px;">
+                <option value="scifi" selected>Sci-Fi Cybernetic</option>
                 <option value="default">Default Dark</option>
-                <option value="futuristic">Futuristic Neon</option>
-                <option value="vintage">Old Map (Vintage)</option>
-                <option value="satellite">Satellite Image</option>
-                <option value="molten">Molten Magma</option>
-                <option value="glacial">Glacial Tundra</option>
-                <option value="light">Light Theme</option>
-                <option value="pastel">Pastel Colors</option>
-                <option value="basiclight">Basic Light</option>
+                <option value="napoleonic">Napoleonic Era</option>
+                <option value="modern">Modern Warfare</option>
+                <option value="anime">Anime Kawaii</option>
               </select>
             </div>
           </div>

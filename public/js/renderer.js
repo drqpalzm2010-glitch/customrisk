@@ -47,6 +47,13 @@
       this.svg.setAttribute("class", this.options.isEditor ? "editor-canvas" : "game-map");
       this.container.appendChild(this.svg);
 
+      // Ensure SVG defs container exists
+      let defs = this.svg.querySelector('defs');
+      if (!defs) {
+        defs = document.createElementNS(svgNamespace, "defs");
+        this.svg.appendChild(defs);
+      }
+
       // Create main transform group that will contain all map drawings for pan/zoom
       this.transformGroup = document.createElementNS(svgNamespace, "g");
       this.transformGroup.setAttribute("id", "map-transform-group");
@@ -316,9 +323,11 @@
           }
         }
 
-        // Blizzard and Radiation modifications
+        // Blizzard and Radiation modifications (synchronized to prevent pre-detonation spoilers)
         const isBlizzard = gameState && gameState.blizzards && gameState.blizzards.includes(terr.id);
-        const isRadioactive = gameState && gameState.radiation && gameState.radiation[terr.id] > 0;
+        const isPendingImpact = this.pendingImpactTerritories && this.pendingImpactTerritories.has(terr.id);
+        const isRadioactive = !isPendingImpact && gameState && gameState.radiation && gameState.radiation[terr.id] > 0;
+        const isNukeRuins = !isPendingImpact && gameState && gameState.territories[terr.id] && gameState.territories[terr.id].ownerId === null && gameState.territories[terr.id].armies === 0 && gameState.territories[terr.id].nuked;
 
         if (isBlizzard) {
           polygon.style.fill = '#cbd5e1'; // Frozen white/light gray
@@ -329,7 +338,7 @@
           polygon.style.fill = '#22c55e'; // Toxic glowing green
           polygon.style.fillOpacity = '0.45';
           polygon.classList.add('pulsing-glow');
-        } else if (gameState && gameState.territories[terr.id] && gameState.territories[terr.id].ownerId === null && gameState.territories[terr.id].armies === 0 && gameState.territories[terr.id].nuked) {
+        } else if (isNukeRuins) {
           polygon.style.fill = '#475569'; // Ash gray for unclaimed nuke-devastated land
           polygon.style.fillOpacity = '0.8';
         } else {
@@ -576,17 +585,26 @@
           g.appendChild(ruinsGroup);
         }
 
+        // Check active theme for custom unit vector illustrations
+        const theme = document.body.getAttribute('data-map-theme') || 'default';
+        const isSciFi = theme === 'scifi';
+        const isModern = theme === 'modern';
+        const isAnime = theme === 'anime';
+
         const nameText = document.createElementNS(svgNamespace, "text");
         nameText.setAttribute("x", terr.center[0]);
         nameText.setAttribute("y", terr.center[1] - 22);
-        nameText.setAttribute("font-family", "Outfit");
-        nameText.setAttribute("font-size", "11px");
-        nameText.setAttribute("font-weight", "600");
-        nameText.setAttribute("fill", "#9ca3af");
+        nameText.setAttribute("font-family", isSciFi ? "Share Tech Mono, monospace" : "Outfit");
+        nameText.setAttribute("font-size", isSciFi ? "10.5px" : "11px");
+        nameText.setAttribute("font-weight", isSciFi ? "500" : "600");
+        nameText.setAttribute("letter-spacing", isSciFi ? "1.5" : "0");
+        nameText.setAttribute("fill", isSciFi ? "#7fd4e6" : "#9ca3af");
         nameText.setAttribute("text-anchor", "middle");
-        nameText.textContent = terr.name;
+        nameText.textContent = isSciFi ? terr.name.toUpperCase() : terr.name;
         nameText.style.pointerEvents = 'none';
-        nameText.style.textShadow = '0px 1px 3px rgba(0,0,0,0.8)';
+        nameText.style.textShadow = isSciFi
+          ? '0 0 6px rgba(0, 240, 255, 0.35), 0px 1px 3px rgba(0,0,0,0.9)'
+          : '0px 1px 3px rgba(0,0,0,0.8)';
         g.appendChild(nameText);
 
         // Render infantry, cavalry, artillery icons under the badge based on troop count
@@ -603,60 +621,190 @@
 
             let iconIdx = 0;
 
-            // 1. Draw Artillery (Cannons - worth 10)
-            for (let i = 0; i < artilleryCount; i++) {
-              const cx = startX + iconIdx * spacing;
-              
-              // Cannon Wheel
-              const w = document.createElementNS(svgNamespace, "circle");
-              w.setAttribute("cx", (cx - 1).toString());
-              w.setAttribute("cy", (iconY + 1).toString());
-              w.setAttribute("r", "1.8");
-              w.setAttribute("fill", "#f59e0b");
-              g.appendChild(w);
+            if (isSciFi) {
+              for (let i = 0; i < artilleryCount; i++) {
+                const cx = startX + iconIdx * spacing;
+                const fighter = document.createElementNS(svgNamespace, "path");
+                fighter.setAttribute("d", `M ${cx} ${iconY - 4} L ${cx + 4} ${iconY + 2} L ${cx + 1} ${iconY + 1} L ${cx} ${iconY + 3} L ${cx - 1} ${iconY + 1} L ${cx - 4} ${iconY + 2} Z`);
+                fighter.setAttribute("fill", "#ff00aa");
+                g.appendChild(fighter);
+                iconIdx++;
+              }
+              for (let i = 0; i < cavalryCount; i++) {
+                const cx = startX + iconIdx * spacing;
+                const tank = document.createElementNS(svgNamespace, "path");
+                tank.setAttribute("d", `M ${cx - 4} ${iconY + 2} L ${cx - 4} ${iconY - 1} L ${cx - 2} ${iconY - 3} L ${cx + 2} ${iconY - 3} L ${cx + 4} ${iconY - 1} L ${cx + 4} ${iconY + 2} Z`);
+                tank.setAttribute("fill", "#00ffcc");
+                g.appendChild(tank);
+                const barrel = document.createElementNS(svgNamespace, "line");
+                barrel.setAttribute("x1", cx.toString());
+                barrel.setAttribute("y1", (iconY - 1).toString());
+                barrel.setAttribute("x2", cx.toString());
+                barrel.setAttribute("y2", (iconY - 5).toString());
+                barrel.setAttribute("stroke", "#00ffcc");
+                barrel.setAttribute("stroke-width", "1.2");
+                g.appendChild(barrel);
+                iconIdx++;
+              }
+              for (let i = 0; i < infantryCount; i++) {
+                const cx = startX + iconIdx * spacing;
+                const hVisor = document.createElementNS(svgNamespace, "rect");
+                hVisor.setAttribute("x", (cx - 1.8).toString());
+                hVisor.setAttribute("y", (iconY - 3).toString());
+                hVisor.setAttribute("width", "3.6");
+                hVisor.setAttribute("height", "2");
+                hVisor.setAttribute("rx", "0.5");
+                hVisor.setAttribute("fill", "#00f0ff");
+                g.appendChild(hVisor);
+                const body = document.createElementNS(svgNamespace, "path");
+                body.setAttribute("d", `M ${cx - 2.5} ${iconY + 2.5} L ${cx - 1.5} ${iconY - 0.5} L ${cx + 1.5} ${iconY - 0.5} L ${cx + 2.5} ${iconY + 2.5} Z`);
+                body.setAttribute("fill", "#00f0ff");
+                g.appendChild(body);
+                iconIdx++;
+              }
+            } else if (isModern) {
+              // Modern Artillery (MLRS / Mobile Howitzer)
+              for (let i = 0; i < artilleryCount; i++) {
+                const cx = startX + iconIdx * spacing;
+                const art = document.createElementNS(svgNamespace, "path");
+                art.setAttribute("d", `M ${cx - 4} ${iconY + 2} L ${cx + 4} ${iconY + 2} L ${cx + 3} ${iconY - 1} L ${cx - 3} ${iconY - 1} Z`);
+                art.setAttribute("fill", "#f59e0b");
+                g.appendChild(art);
+                const barrel = document.createElementNS(svgNamespace, "line");
+                barrel.setAttribute("x1", (cx - 1).toString());
+                barrel.setAttribute("y1", (iconY - 1).toString());
+                barrel.setAttribute("x2", (cx + 5).toString());
+                barrel.setAttribute("y2", (iconY - 6).toString());
+                barrel.setAttribute("stroke", "#f59e0b");
+                barrel.setAttribute("stroke-width", "1.6");
+                g.appendChild(barrel);
+                iconIdx++;
+              }
+              // Modern Tank
+              for (let i = 0; i < cavalryCount; i++) {
+                const cx = startX + iconIdx * spacing;
+                const tank = document.createElementNS(svgNamespace, "path");
+                tank.setAttribute("d", `M ${cx - 4} ${iconY + 2} L ${cx + 4} ${iconY + 2} L ${cx + 3} ${iconY - 1} L ${cx - 3} ${iconY - 1} Z`);
+                tank.setAttribute("fill", "#38bdf8");
+                g.appendChild(tank);
+                const turret = document.createElementNS(svgNamespace, "rect");
+                turret.setAttribute("x", (cx - 2).toString());
+                turret.setAttribute("y", (iconY - 3).toString());
+                turret.setAttribute("width", "4");
+                turret.setAttribute("height", "2");
+                turret.setAttribute("fill", "#38bdf8");
+                g.appendChild(turret);
+                const barrel = document.createElementNS(svgNamespace, "line");
+                barrel.setAttribute("x1", cx.toString());
+                barrel.setAttribute("y1", (iconY - 2).toString());
+                barrel.setAttribute("x2", (cx + 5).toString());
+                barrel.setAttribute("y2", (iconY - 4).toString());
+                barrel.setAttribute("stroke", "#38bdf8");
+                barrel.setAttribute("stroke-width", "1.4");
+                g.appendChild(barrel);
+                iconIdx++;
+              }
+              // Modern Infantry with Helmet
+              for (let i = 0; i < infantryCount; i++) {
+                const cx = startX + iconIdx * spacing;
+                const helmet = document.createElementNS(svgNamespace, "path");
+                helmet.setAttribute("d", `M ${cx - 2.2} ${iconY - 1} C ${cx - 2.5} ${iconY - 4.5} ${cx + 2.5} ${iconY - 4.5} ${cx + 2.2} ${iconY - 1} Z`);
+                helmet.setAttribute("fill", "#10b981");
+                g.appendChild(helmet);
+                const bd = document.createElementNS(svgNamespace, "path");
+                bd.setAttribute("d", `M ${cx - 2.5} ${iconY + 2.5} L ${cx - 1.5} ${iconY} L ${cx + 1.5} ${iconY} L ${cx + 2.5} ${iconY + 2.5} Z`);
+                bd.setAttribute("fill", "#10b981");
+                g.appendChild(bd);
+                iconIdx++;
+              }
+            } else if (isAnime) {
+              // Anime: Maho Star Wand / Mega Sparkler
+              for (let i = 0; i < artilleryCount; i++) {
+                const cx = startX + iconIdx * spacing;
+                const star = document.createElementNS(svgNamespace, "polygon");
+                star.setAttribute("points", `${cx},${iconY - 5} ${cx + 1.5},${iconY - 1} ${cx + 5},${iconY - 1} ${cx + 2},${iconY + 1} ${cx + 3.5},${iconY + 5} ${cx},${iconY + 2.5} ${cx - 3.5},${iconY + 5} ${cx - 2},${iconY + 1} ${cx - 5},${iconY - 1} ${cx - 1.5},${iconY - 1}`);
+                star.setAttribute("fill", "#fde047");
+                g.appendChild(star);
+                iconIdx++;
+              }
+              // Anime: Mecha Bunny / Cat Suit
+              for (let i = 0; i < cavalryCount; i++) {
+                const cx = startX + iconIdx * spacing;
+                const mecha = document.createElementNS(svgNamespace, "path");
+                mecha.setAttribute("d", `M ${cx - 3} ${iconY + 3} L ${cx - 3} ${iconY} L ${cx - 4} ${iconY - 4} L ${cx - 1.5} ${iconY - 1} L ${cx + 1.5} ${iconY - 1} L ${cx + 4} ${iconY - 4} L ${cx + 3} ${iconY} L ${cx + 3} ${iconY + 3} Z`);
+                mecha.setAttribute("fill", "#c084fc");
+                g.appendChild(mecha);
+                iconIdx++;
+              }
+              // Anime: Chibi Magical Girl with Twin-tails
+              for (let i = 0; i < infantryCount; i++) {
+                const cx = startX + iconIdx * spacing;
+                const hair = document.createElementNS(svgNamespace, "path");
+                hair.setAttribute("d", `M ${cx - 3.5} ${iconY - 3} L ${cx - 2} ${iconY + 1} M ${cx + 3.5} ${iconY - 3} L ${cx + 2} ${iconY + 1}`);
+                hair.setAttribute("stroke", "#ff77a9");
+                hair.setAttribute("stroke-width", "1.2");
+                g.appendChild(hair);
+                const hd = document.createElementNS(svgNamespace, "circle");
+                hd.setAttribute("cx", cx.toString());
+                hd.setAttribute("cy", (iconY - 2).toString());
+                hd.setAttribute("r", "1.8");
+                hd.setAttribute("fill", "#ff77a9");
+                g.appendChild(hd);
+                const dress = document.createElementNS(svgNamespace, "polygon");
+                dress.setAttribute("points", `${cx},${iconY} ${cx + 2.5},${iconY + 3} ${cx - 2.5},${iconY + 3}`);
+                dress.setAttribute("fill", "#ff77a9");
+                g.appendChild(dress);
+                iconIdx++;
+              }
+            } else {
+              // 1. Draw Artillery (Cannons - worth 10)
+              for (let i = 0; i < artilleryCount; i++) {
+                const cx = startX + iconIdx * spacing;
+                const w = document.createElementNS(svgNamespace, "circle");
+                w.setAttribute("cx", (cx - 1).toString());
+                w.setAttribute("cy", (iconY + 1).toString());
+                w.setAttribute("r", "1.8");
+                w.setAttribute("fill", "#f59e0b");
+                g.appendChild(w);
 
-              // Cannon Barrel
-              const b = document.createElementNS(svgNamespace, "path");
-              b.setAttribute("d", `M ${cx - 3} ${iconY} L ${cx + 3} ${iconY - 3}`);
-              b.setAttribute("stroke", "#f59e0b");
-              b.setAttribute("stroke-width", "1.6");
-              b.setAttribute("stroke-linecap", "round");
-              g.appendChild(b);
+                const b = document.createElementNS(svgNamespace, "path");
+                b.setAttribute("d", `M ${cx - 3} ${iconY} L ${cx + 3} ${iconY - 3}`);
+                b.setAttribute("stroke", "#f59e0b");
+                b.setAttribute("stroke-width", "1.6");
+                b.setAttribute("stroke-linecap", "round");
+                g.appendChild(b);
 
-              iconIdx++;
-            }
+                iconIdx++;
+              }
 
-            // 2. Draw Cavalry (Horses - worth 5)
-            for (let i = 0; i < cavalryCount; i++) {
-              const cx = startX + iconIdx * spacing;
+              // 2. Draw Cavalry (Horses - worth 5)
+              for (let i = 0; i < cavalryCount; i++) {
+                const cx = startX + iconIdx * spacing;
+                const h = document.createElementNS(svgNamespace, "path");
+                h.setAttribute("d", `M ${cx - 2.5} ${iconY + 2.5} C ${cx - 3.5} ${iconY - 0.5} ${cx - 1.5} ${iconY - 3} ${cx + 1} ${iconY - 3} C ${cx + 2} ${iconY - 3} ${cx + 2.5} ${iconY - 2} ${cx + 1.5} ${iconY} C ${cx + 0.5} ${iconY + 1.5} ${cx + 2} ${iconY + 2.5} ${cx + 2} ${iconY + 2.5} Z`);
+                h.setAttribute("fill", "#38bdf8");
+                g.appendChild(h);
 
-              const h = document.createElementNS(svgNamespace, "path");
-              h.setAttribute("d", `M ${cx - 2.5} ${iconY + 2.5} C ${cx - 3.5} ${iconY - 0.5} ${cx - 1.5} ${iconY - 3} ${cx + 1} ${iconY - 3} C ${cx + 2} ${iconY - 3} ${cx + 2.5} ${iconY - 2} ${cx + 1.5} ${iconY} C ${cx + 0.5} ${iconY + 1.5} ${cx + 2} ${iconY + 2.5} ${cx + 2} ${iconY + 2.5} Z`);
-              h.setAttribute("fill", "#38bdf8");
-              g.appendChild(h);
+                iconIdx++;
+              }
 
-              iconIdx++;
-            }
+              // 3. Draw Infantry (Soldiers - worth 1)
+              for (let i = 0; i < infantryCount; i++) {
+                const cx = startX + iconIdx * spacing;
+                const hd = document.createElementNS(svgNamespace, "circle");
+                hd.setAttribute("cx", cx.toString());
+                hd.setAttribute("cy", (iconY - 2.5).toString());
+                hd.setAttribute("r", "1.8");
+                hd.setAttribute("fill", "#a7f3d0");
+                g.appendChild(hd);
 
-            // 3. Draw Infantry (Soldiers - worth 1)
-            for (let i = 0; i < infantryCount; i++) {
-              const cx = startX + iconIdx * spacing;
+                const bd = document.createElementNS(svgNamespace, "path");
+                bd.setAttribute("d", `M ${cx - 2.5} ${iconY + 2.5} C ${cx - 2.5} ${iconY} ${cx + 2.5} ${iconY} ${cx + 2.5} ${iconY + 2.5} Z`);
+                bd.setAttribute("fill", "#a7f3d0");
+                g.appendChild(bd);
 
-              // Head
-              const hd = document.createElementNS(svgNamespace, "circle");
-              hd.setAttribute("cx", cx.toString());
-              hd.setAttribute("cy", (iconY - 2.5).toString());
-              hd.setAttribute("r", "1.8");
-              hd.setAttribute("fill", "#a7f3d0");
-              g.appendChild(hd);
-
-              // Body
-              const bd = document.createElementNS(svgNamespace, "path");
-              bd.setAttribute("d", `M ${cx - 2.5} ${iconY + 2.5} C ${cx - 2.5} ${iconY} ${cx + 2.5} ${iconY} ${cx + 2.5} ${iconY + 2.5} Z`);
-              bd.setAttribute("fill", "#a7f3d0");
-              g.appendChild(bd);
-
-              iconIdx++;
+                iconIdx++;
+              }
             }
           }
         }
@@ -833,23 +981,48 @@
       const cx = mx + nx * (arcHeight * 0.35);
       const cy = my + ny * (arcHeight * 0.35) - arcHeight;
 
+      const theme = document.body.getAttribute('data-map-theme') || 'default';
+      const isSciFi = theme === 'scifi';
+
       // Projectile Shell element
       const projectileGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
       projectileGroup.style.pointerEvents = "none";
 
-      const projectileGlow = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      projectileGlow.setAttribute("r", "6");
-      projectileGlow.setAttribute("fill", "#ff4400");
-      projectileGlow.setAttribute("fill-opacity", "0.7");
-      projectileGlow.setAttribute("filter", "drop-shadow(0 0 6px #ffcc00)");
-      projectileGroup.appendChild(projectileGlow);
+      if (isSciFi) {
+        const boltGlow = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        boltGlow.setAttribute("r", "8");
+        boltGlow.setAttribute("fill", "#00ffcc");
+        boltGlow.setAttribute("fill-opacity", "0.85");
+        boltGlow.setAttribute("filter", "drop-shadow(0 0 8px #00ffcc)");
+        projectileGroup.appendChild(boltGlow);
 
-      const projectileCore = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      projectileCore.setAttribute("r", "3.5");
-      projectileCore.setAttribute("fill", "#ffeedd");
-      projectileCore.setAttribute("stroke", "#ffffff");
-      projectileCore.setAttribute("stroke-width", "1");
-      projectileGroup.appendChild(projectileCore);
+        const boltCore = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        boltCore.setAttribute("r", "3");
+        boltCore.setAttribute("fill", "#ffffff");
+        projectileGroup.appendChild(boltCore);
+      } else if (theme === 'anime') {
+        // Anime: Sparkling Magical Heart/Star Energy Bolt
+        const star = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+        star.setAttribute("points", "0,-7 2,-2 7,-2 3,1 5,6 0,3 -5,6 -3,1 -7,-2 -2,-2");
+        star.setAttribute("fill", "#fde047");
+        star.setAttribute("stroke", "#ff77a9");
+        star.setAttribute("stroke-width", "1");
+        projectileGroup.appendChild(star);
+      } else {
+        const projectileGlow = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        projectileGlow.setAttribute("r", "6");
+        projectileGlow.setAttribute("fill", "#ff4400");
+        projectileGlow.setAttribute("fill-opacity", "0.7");
+        projectileGlow.setAttribute("filter", "drop-shadow(0 0 6px #ffcc00)");
+        projectileGroup.appendChild(projectileGlow);
+
+        const projectileCore = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        projectileCore.setAttribute("r", "3.5");
+        projectileCore.setAttribute("fill", "#ffeedd");
+        projectileCore.setAttribute("stroke", "#ffffff");
+        projectileCore.setAttribute("stroke-width", "1");
+        projectileGroup.appendChild(projectileCore);
+      }
 
       this.transformGroup.appendChild(projectileGroup);
 
@@ -1023,29 +1196,66 @@
         { perp: -7, delay: 50 }
       ];
 
+      const theme = document.body.getAttribute('data-map-theme') || 'default';
+      const isNapoleonic = theme === 'napoleonic';
+
       const vehicleElements = vehicleOffsets.map((cfg) => {
         const tg = document.createElementNS("http://www.w3.org/2000/svg", "g");
         tg.style.pointerEvents = "none";
         
         if (isSea) {
-          // Render military warships / naval boats
-          tg.innerHTML = `
-            <polygon points="-12,0 -4,-4 10,-3 14,0 10,3 -4,4" fill="#0f172a" opacity="0.6"/>
-            <polygon points="-11,0 -3,-3 9,-2 13,0 9,2 -3,3" fill="${conquerorColor}" stroke="#0f172a" stroke-width="1"/>
-            <rect x="-4" y="-2" width="8" height="4" rx="1" fill="#1e293b" stroke="#0f172a" stroke-width="0.8"/>
-            <circle cx="4" cy="0" r="2" fill="#0f172a"/>
-            <line x1="4" y1="0" x2="10" y2="0" stroke="#0f172a" stroke-width="1.5" stroke-linecap="round"/>
-          `;
-        } else {
-          // Render land tanks
-          tg.innerHTML = `
-            <rect x="-10" y="-7" width="20" height="3" rx="1" fill="#0f172a"/>
-            <rect x="-10" y="4" width="20" height="3" rx="1" fill="#0f172a"/>
-            <rect x="-9" y="-5" width="18" height="10" rx="2" fill="${conquerorColor}" stroke="#0f172a" stroke-width="1.2"/>
-            <circle cx="-1" cy="0" r="3.5" fill="#0f172a" stroke="${conquerorColor}" stroke-width="1"/>
-            <line x1="0" y1="0" x2="11" y2="0" stroke="#0f172a" stroke-width="2.5" stroke-linecap="round"/>
-          `;
-        }
+            if (isNapoleonic) {
+              tg.innerHTML = `
+                <path d="M-12,-2 C-9,-6 6,-6 12,-3 L10,3 C6,6 -9,6 -12,2 Z" fill="#4d3b2c" stroke="#23170e" stroke-width="1"/>
+                <line x1="-3" y1="0" x2="-3" y2="-9" stroke="#23170e" stroke-width="1.2"/>
+                <path d="M-3,-9 C-0.5,-8 -0.5,-3 -3,-1 Z" fill="${conquerorColor}" stroke="#23170e" stroke-width="0.8"/>
+                <line x1="3" y1="0" x2="3" y2="-11" stroke="#23170e" stroke-width="1.2"/>
+                <path d="M3,-11 C7,-9 7,-4 3,-1 Z" fill="${conquerorColor}" stroke="#23170e" stroke-width="0.8"/>
+              `;
+            } else if (theme === 'anime') {
+              // Anime: Swan Boat / Magical Cruiser
+              tg.innerHTML = `
+                <path d="M-10,1 C-7,-3 5,-3 10,0 L8,4 C4,6 -6,6 -10,3 Z" fill="${conquerorColor}" stroke="#ffffff" stroke-width="1"/>
+                <path d="M6,0 C7,-5 9,-5 10,-3" stroke="#ffffff" stroke-width="1.5" fill="none"/>
+                <polygon points="0,-4 3,-8 -3,-8" fill="#fde047"/>
+              `;
+            } else {
+              // Modern / Default Military Warship
+              tg.innerHTML = `
+                <polygon points="-12,0 -4,-4 10,-3 14,0 10,3 -4,4" fill="#0f172a" opacity="0.6"/>
+                <polygon points="-11,0 -3,-3 9,-2 13,0 9,2 -3,3" fill="${conquerorColor}" stroke="#0f172a" stroke-width="1"/>
+                <rect x="-4" y="-2" width="8" height="4" rx="1" fill="#1e293b" stroke="#0f172a" stroke-width="0.8"/>
+                <circle cx="4" cy="0" r="2" fill="#0f172a"/>
+                <line x1="4" y1="0" x2="10" y2="0" stroke="#0f172a" stroke-width="1.5" stroke-linecap="round"/>
+              `;
+            }
+          } else {
+            if (isNapoleonic) {
+              tg.innerHTML = `
+                <path d="M-4,1 L-6,6 M-1,2 L-2,7 M1,2 L2,7 M4,1 L6,5" stroke="#23170e" stroke-width="1.2" stroke-linecap="round"/>
+                <path d="M-7,1 C-6,-2 -3,-5 0,-5 C2,-5 4,-3 5,-6 C6,-4 6,-2 4,0 C3,2 4,4 2,5 C0,5 -2,3 -4,3 C-6,3 -7,2 -7,1 Z" fill="${conquerorColor}" stroke="#23170e" stroke-width="1"/>
+                <circle cx="2" cy="-5" r="1.8" fill="#4d3b2c" stroke="#23170e" stroke-width="0.6"/>
+              `;
+            } else if (theme === 'anime') {
+              // Anime: Cute Chibi Mecha / Walker
+              tg.innerHTML = `
+                <rect x="-6" y="-5" width="12" height="8" rx="3" fill="${conquerorColor}" stroke="#ffffff" stroke-width="1"/>
+                <circle cx="-2" cy="-2" r="1.5" fill="#ffffff"/>
+                <circle cx="2" cy="-2" r="1.5" fill="#ffffff"/>
+                <line x1="-3" y1="3" x2="-4" y2="7" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round"/>
+                <line x1="3" y1="3" x2="4" y2="7" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round"/>
+              `;
+            } else {
+              // Modern / Default Tank
+              tg.innerHTML = `
+                <rect x="-10" y="-7" width="20" height="3" rx="1" fill="#0f172a"/>
+                <rect x="-10" y="4" width="20" height="3" rx="1" fill="#0f172a"/>
+                <rect x="-9" y="-5" width="18" height="10" rx="2" fill="${conquerorColor}" stroke="#0f172a" stroke-width="1.2"/>
+                <circle cx="-1" cy="0" r="3.5" fill="#0f172a" stroke="${conquerorColor}" stroke-width="1"/>
+                <line x1="0" y1="0" x2="11" y2="0" stroke="#0f172a" stroke-width="2.5" stroke-linecap="round"/>
+              `;
+            }
+          }
 
         this.transformGroup.appendChild(tg);
         return { el: tg, cfg };
@@ -1361,10 +1571,18 @@
       const clientX = event.clientX;
       const clientY = event.clientY;
 
+      // Clamp tooltip position so it never overflows off the right or bottom of the screen
+      const tooltipW = 210;
+      const tooltipH = 110;
+      let left = clientX + 15;
+      let top = clientY + 15;
+      if (left + tooltipW > window.innerWidth) left = clientX - tooltipW - 10;
+      if (top + tooltipH > window.innerHeight) top = clientY - tooltipH - 10;
+
       this.tooltip.style.position = 'fixed'; 
       this.tooltip.style.display = 'block';
-      this.tooltip.style.left = `${clientX + 15}px`;
-      this.tooltip.style.top = `${clientY + 15}px`;
+      this.tooltip.style.left = `${Math.max(10, left)}px`;
+      this.tooltip.style.top = `${Math.max(10, top)}px`;
 
       this.tooltip.innerHTML = `
         <div class="tooltip-title">${terr.name}</div>
@@ -1560,8 +1778,7 @@
       }
     }
 
-  // Ballistic High-Tech Missile Launch & Mushroom Cloud Impact Animation
-    fireNuclearMissile(sourceCenter, targetCenter, isThermo, onImpact) {
+  fireNuclearMissile(sourceCenter, targetCenter, isThermo, onImpact) {
       if (!this.transformGroup || !sourceCenter || !targetCenter) return;
 
       const [x1, y1] = sourceCenter;
@@ -1575,78 +1792,305 @@
         else x2 += mapWidth;
       }
 
-      // 1. Create Launch Pad Silo
-      const silo = document.createElementNS("http://www.w3.org/2000/svg", "g");
-      silo.style.pointerEvents = "none";
-      silo.setAttribute("transform", `translate(${x1}, ${y1})`);
-      silo.innerHTML = `
-        <rect x="-8" y="-4" width="16" height="8" rx="2" fill="#1e293b" stroke="#e2e8f0" stroke-width="1.2"/>
-        <line x1="-8" y1="-4" x2="8" y2="4" stroke="#ff3333" stroke-width="0.8"/>
-        <line x1="8" y1="-4" x2="-8" y2="4" stroke="#ff3333" stroke-width="0.8"/>
-        <circle cx="0" cy="0" r="3" fill="#ff3333"/>
-      `;
-      this.transformGroup.appendChild(silo);
-
-      // Play launch alarm sound
-      if (window.MainController) {
-        window.MainController.playSFX('imagesandsounds/conflict1.mp3');
+      // Block target's radioactive rendering style until the animation is complete (the impact triggers!)
+      const targetTerr = this.mapData.territories.find(t => t.center && t.center[0] === targetCenter[0] && t.center[1] === targetCenter[1]);
+      const targetId = targetTerr ? targetTerr.id : null;
+      if (targetId) {
+        this.pendingImpactTerritories = this.pendingImpactTerritories || new Set();
+        this.pendingImpactTerritories.add(targetId);
       }
 
-      // 2. Render Missile Object
-      const missile = document.createElementNS("http://www.w3.org/2000/svg", "g");
-      missile.style.pointerEvents = "none";
-      missile.innerHTML = `
-        <!-- High-tech payload fins and rocket fuselage -->
-        <path d="M-3,5 L3,5 L2,-12 L0,-20 L-2,-12 Z" fill="#94a3b8" stroke="#0f172a" stroke-width="1.2"/>
-        <polygon points="-5,5 -3,5 -3,1 L-5,1" fill="#ef4444"/>
-      <polygon points="5,5 3,5 3,1 5,1" fill="#ef4444"/>
-      <polygon points="-2,-12 2,-12 0,-20" fill="${isThermo ? '#dc2626' : '#facc15'}"/>
-        <!-- Jet Engine Fire particle thrust -->
-        <circle cx="0" cy="8" r="4.5" fill="#f97316" opacity="0.8" style="animation: pulse 0.1s infinite alternate;"/>
-        <circle cx="0" cy="11" r="3" fill="#eab308" opacity="0.9" style="animation: pulse 0.08s infinite alternate;"/>
-      `;
-      this.transformGroup.appendChild(missile);
-
-      // Compute Parabolic Flight Coordinates
-      const dist = Math.hypot(x2 - x1, y2 - y1) || 1;
-      const arcHeight = Math.min(260, Math.max(90, dist * 0.42));
-      const mx = (x1 + x2) / 2;
-      const my = (y1 + y2) / 2;
-      const cx = mx;
-      const cy = my - arcHeight;
-
-      const flightDuration = Math.min(1800, Math.max(1100, dist * 2.2));
-      const startTime = performance.now();
-
-      const animateMissile = (now) => {
-        const elapsed = now - startTime;
-        const t = Math.min(1, elapsed / flightDuration);
-
-        // Quadratic Bezier Flight Path
-        const invT = 1 - t;
-        const curX = invT * invT * x1 + 2 * invT * t * cx + t * t * x2;
-        const curY = invT * invT * y1 + 2 * invT * t * cy + t * t * y2;
-
-        // Calculate pitch angle to rotate missile nosecone toward vector direction
-        const nextT = Math.min(1, t + 0.01);
-        const invNextT = 1 - nextT;
-        const nextX = invNextT * invNextT * x1 + 2 * invNextT * nextT * cx + nextT * nextT * x2;
-        const nextY = invNextT * invNextT * y1 + 2 * invNextT * nextT * cy + nextT * nextT * y2;
-        const angle = Math.atan2(nextY - curY, nextX - curX) * (180 / Math.PI) + 90; // offset 90 so nose points up originally
-
-        missile.setAttribute("transform", `translate(${curX}, ${curY}) rotate(${angle})`);
-
-        if (t < 1) {
-          requestAnimationFrame(animateMissile);
-        } else {
-          missile.remove();
-          silo.remove();
-          // Execute Detonation
-          this.triggerNuclearExplosion([x2, y2], isThermo, onImpact);
+      const wrappedOnImpact = () => {
+        if (targetId) {
+          this.pendingImpactTerritories.delete(targetId);
+          // Rerender instantly on impact to display the correct radiation/ash styling!
+          this.render(this.mapData, this.gameState);
+        }
+        if (typeof onImpact === 'function') {
+          onImpact();
         }
       };
 
-      requestAnimationFrame(animateMissile);
+      const theme = document.body.getAttribute('data-map-theme') || 'default';
+      const isSciFi = theme === 'scifi';
+      const isNapoleonic = theme === 'napoleonic';
+      const isAnime = theme === 'anime';
+
+      if (isAnime) {
+        // --- ANIME: SUPER NOVA MAGICAL STAR BURST FX ---
+        if (window.MainController) {
+          window.MainController.playSFX('imagesandsounds/conflict1.mp3');
+        }
+
+        const magicCircle = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        magicCircle.style.pointerEvents = "none";
+        magicCircle.setAttribute("transform", `translate(${x1}, ${y1 - 50}) scale(0.9)`);
+        magicCircle.innerHTML = `
+          <circle cx="0" cy="0" r="22" fill="none" stroke="#ff77a9" stroke-width="2" stroke-dasharray="4 4"/>
+          <circle cx="0" cy="0" r="14" fill="none" stroke="#fde047" stroke-width="1.5"/>
+          <polygon points="0,-12 3,-3 12,-3 5,2 8,11 0,6 -8,11 -5,2 -12,-3 -3,-3" fill="#ff77a9" opacity="0.8"/>
+        `;
+        this.transformGroup.appendChild(magicCircle);
+
+        const slideDuration = 1100;
+        const startTime = performance.now();
+
+        const animateMagicCircle = (now) => {
+          const elapsed = now - startTime;
+          const t = Math.min(1, elapsed / slideDuration);
+
+          const curX = x1 + (x2 - x1) * t;
+          const curY = (y1 - 50) + ((y2 - 110) - (y1 - 50)) * t;
+
+          magicCircle.setAttribute("transform", `translate(${curX}, ${curY}) rotate(${t * 360})`);
+
+          if (t < 1) {
+            requestAnimationFrame(animateMagicCircle);
+          } else {
+            // Drop celestial star beam
+            const beam = document.createElementNS("http://www.w3.org/2000/svg", "line");
+            beam.setAttribute("x1", curX.toString());
+            beam.setAttribute("y1", curY.toString());
+            beam.setAttribute("x2", curX.toString());
+            beam.setAttribute("y2", (curY + 110).toString());
+            beam.setAttribute("stroke", "#ffffff");
+            beam.setAttribute("stroke-width", isThermo ? "22" : "14");
+            beam.style.filter = "drop-shadow(0 0 16px #ff77a9)";
+            this.transformGroup.appendChild(beam);
+
+            const mapContainer = document.getElementById('game-map-container');
+            if (mapContainer) mapContainer.classList.add('shake-active');
+
+            setTimeout(() => {
+              beam.remove();
+              magicCircle.remove();
+              if (mapContainer) mapContainer.classList.remove('shake-active');
+              this.triggerNuclearExplosion([x2, y2], isThermo, wrappedOnImpact);
+            }, 360);
+          }
+        };
+
+        requestAnimationFrame(animateMagicCircle);
+      } else if (isSciFi) {
+        // --- SCI-FI: ORBITAL KINETIC LASER STRIKE FX ---
+        if (window.MainController) {
+          window.MainController.playSFX('imagesandsounds/conflict1.mp3');
+        }
+
+        // 1. Spawn high-tech satellite above launching territory
+        const satellite = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        satellite.style.pointerEvents = "none";
+        satellite.setAttribute("transform", `translate(${x1}, ${y1 - 60}) scale(0.9)`);
+        satellite.innerHTML = `
+          <!-- Central lens core & solar panels -->
+          <rect x="-24" y="-3" width="16" height="6" fill="#1e293b" stroke="#00f0ff" stroke-width="1" opacity="0.8"/>
+          <rect x="8" y="-3" width="16" height="6" fill="#1e293b" stroke="#00f0ff" stroke-width="1" opacity="0.8"/>
+          <rect x="-6" y="-12" width="12" height="24" rx="2" fill="#0f172a" stroke="#00f0ff" stroke-width="1.5"/>
+          <circle cx="0" cy="0" r="4.5" fill="#ffffff" filter="drop-shadow(0 0 6px #00f0ff)"/>
+          <!-- Scanning target reticle -->
+          <circle cx="0" cy="0" r="14" fill="none" stroke="#00f0ff" stroke-width="1.2" stroke-dasharray="3 3"/>
+        `;
+        this.transformGroup.appendChild(satellite);
+
+        // Slide the satellite horizontally from Launchpad to Target Orbit over 1200ms
+        const slideDuration = 1200;
+        const startTime = performance.now();
+
+        const animateSatellite = (now) => {
+          const elapsed = now - startTime;
+          const t = Math.min(1, elapsed / slideDuration);
+
+          const curX = x1 + (x2 - x1) * t;
+          const curY = (y1 - 60) + ((y2 - 120) - (y1 - 60)) * t; // hovers exactly 120px above target
+
+          satellite.setAttribute("transform", `translate(${curX}, ${curY})`);
+
+          if (t < 1) {
+            requestAnimationFrame(animateSatellite);
+          } else {
+            // 2. Lock-on completed: Fire massive kinetic beam straight down from satellite
+            const laser = document.createElementNS("http://www.w3.org/2000/svg", "line");
+            laser.setAttribute("x1", curX.toString());
+            laser.setAttribute("y1", curY.toString());
+            laser.setAttribute("x2", curX.toString());
+            laser.setAttribute("y2", (curY + 120).toString()); // descends directly onto target
+            laser.setAttribute("stroke", "#ffffff");
+            laser.setAttribute("stroke-width", isThermo ? "20" : "12");
+            laser.style.filter = "drop-shadow(0 0 15px #00f0ff)";
+            this.transformGroup.appendChild(laser);
+
+            // Shudder the screen slightly during laser fire
+            const mapContainer = document.getElementById('game-map-container');
+            if (mapContainer) mapContainer.classList.add('shake-active');
+
+            setTimeout(() => {
+              laser.remove();
+              satellite.remove();
+              if (mapContainer) mapContainer.classList.remove('shake-active');
+              // Trigger final toxic implosion on surface
+              this.triggerNuclearExplosion([x2, y2], isThermo, wrappedOnImpact);
+            }, 380);
+          }
+        };
+
+        requestAnimationFrame(animateSatellite);
+      } else if (isNapoleonic) {
+        // --- NAPOLEONIC: ARTILLERY BARRAGE (BUNCH OF CANNONS SIMULTANEOUSLY FIRING AT TARGET) ---
+        if (window.MainController) {
+          window.MainController.playSFX('imagesandsounds/conflict1.mp3');
+        }
+
+        const numCannons = isThermo ? 8 : 5;
+        const mapWidth = (this.mapData && this.mapData.width) || 1200;
+        let completedCount = 0;
+
+        for (let i = 0; i < numCannons; i++) {
+          // Calculate origin positions on a circle surrounding the target zone
+          const angle = (i / numCannons) * Math.PI * 2 + (Math.random() * 0.4 - 0.2);
+          const radius = 230 + Math.random() * 70;
+          const cx1 = x2 + Math.cos(angle) * radius;
+          const cy1 = y2 + Math.sin(angle) * radius;
+
+          // Render temporary firing cannons facing the target
+          const cannonAngle = Math.atan2(y2 - cy1, x2 - cx1) * (180 / Math.PI);
+          const cannonGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+          cannonGroup.style.pointerEvents = "none";
+          cannonGroup.setAttribute("transform", `translate(${cx1}, ${cy1}) rotate(${cannonAngle})`);
+          cannonGroup.innerHTML = `
+            <circle cx="-5" cy="-7" r="4" fill="#5c4e3f" stroke="#2c1e0f" stroke-width="1.2"/>
+            <circle cx="-5" cy="7" r="4" fill="#5c4e3f" stroke="#2c1e0f" stroke-width="1.2"/>
+            <rect x="-10" y="-5" width="13" height="10" rx="2" fill="#8b765d" stroke="#2c1e0f" stroke-width="1.2"/>
+            <rect x="-3" y="-4" width="19" height="8" rx="2" fill="#c29d6d" stroke="#2c1e0f" stroke-width="1.5"/>
+            <circle cx="18" cy="0" r="8" fill="#ffcca3" stroke="#ff4500" stroke-width="2.5" class="cannon-muzzle-flare"/>
+          `;
+          this.transformGroup.appendChild(cannonGroup);
+
+          setTimeout(() => {
+            cannonGroup.style.transition = "opacity 0.4s ease-out";
+            cannonGroup.style.opacity = "0";
+            setTimeout(() => cannonGroup.remove(), 450);
+          }, 400);
+
+          // Animate the heavy iron cannonball shell trajectories
+          const projectile = document.createElementNS("http://www.w3.org/2000/svg", "g");
+          projectile.style.pointerEvents = "none";
+          projectile.innerHTML = `
+            <circle r="7.5" fill="#2c251e" stroke="#8b765d" stroke-width="1.5"/>
+            <circle r="4" fill="#ff4500" opacity="0.8" style="animation: pulse 0.1s infinite alternate;"/>
+          `;
+          this.transformGroup.appendChild(projectile);
+
+          const dist = Math.hypot(x2 - cx1, y2 - cy1) || 1;
+          const flightDuration = 700 + Math.random() * 300;
+          const startTime = performance.now();
+
+          // High parabolic arc offset calculations
+          const mx = (cx1 + x2) / 2;
+          const my = (cy1 + y2) / 2;
+          const arcHeight = 50 + Math.random() * 40;
+          const bx = mx;
+          const by = my - arcHeight;
+
+          const animateCannonball = (now) => {
+            const elapsed = now - startTime;
+            const t = Math.min(1, elapsed / flightDuration);
+
+            const invT = 1 - t;
+            const curX = invT * invT * cx1 + 2 * invT * t * bx + t * t * x2;
+            const curY = invT * invT * cy1 + 2 * invT * t * by + t * t * y2;
+
+            projectile.setAttribute("transform", `translate(${curX}, ${curY})`);
+
+            if (t < 1) {
+              requestAnimationFrame(animateCannonball);
+            } else {
+              projectile.remove();
+              completedCount++;
+              if (completedCount === numCannons) {
+                // Shudder the screen slightly on final impacts
+                const mapContainer = document.getElementById('game-map-container');
+                if (mapContainer) {
+                  mapContainer.classList.add('shake-active');
+                  setTimeout(() => mapContainer.classList.remove('shake-active'), 500);
+                }
+                this.triggerNuclearExplosion([x2, y2], isThermo, onImpact);
+              } else {
+                this.triggerExplosionEffect([x2, y2], false);
+              }
+            }
+          };
+
+          // Stagger firing times slightly to simulate an organic barrage
+          setTimeout(() => {
+            requestAnimationFrame(animateCannonball);
+          }, i * 110);
+        }
+      } else {
+        // --- CLASSIC: RE-USE THE STANDARD BALLISTIC MISSILE STRIKE FOR OTHER THEMES ---
+        const silo = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        silo.style.pointerEvents = "none";
+        silo.setAttribute("transform", `translate(${x1}, ${y1})`);
+        silo.innerHTML = `
+          <rect x="-8" y="-4" width="16" height="8" rx="2" fill="#1e293b" stroke="#e2e8f0" stroke-width="1.2"/>
+          <line x1="-8" y1="-4" x2="8" y2="4" stroke="#ff3333" stroke-width="0.8"/>
+          <line x1="8" y1="-4" x2="-8" y2="4" stroke="#ff3333" stroke-width="0.8"/>
+          <circle cx="0" cy="0" r="3" fill="#ff3333"/>
+        `;
+        this.transformGroup.appendChild(silo);
+
+        if (window.MainController) {
+          window.MainController.playSFX('imagesandsounds/conflict1.mp3');
+        }
+
+        const missile = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        missile.style.pointerEvents = "none";
+        missile.innerHTML = `
+          <path d="M-3,5 L3,5 L2,-12 L0,-20 L-2,-12 Z" fill="#94a3b8" stroke="#0f172a" stroke-width="1.2"/>
+          <polygon points="-5,5 -3,5 -3,1 L-5,1" fill="#ef4444"/>
+          <polygon points="5,5 3,5 3,1 5,1" fill="#ef4444"/>
+          <polygon points="-2,-12 2,-12 0,-20" fill="${isThermo ? '#dc2626' : '#facc15'}"/>
+          <circle cx="0" cy="8" r="4.5" fill="#f97316" opacity="0.8" style="animation: pulse 0.1s infinite alternate;"/>
+          <circle cx="0" cy="11" r="3" fill="#eab308" opacity="0.9" style="animation: pulse 0.08s infinite alternate;"/>
+        `;
+        this.transformGroup.appendChild(missile);
+
+        const dist = Math.hypot(x2 - x1, y2 - y1) || 1;
+        const arcHeight = Math.min(260, Math.max(90, dist * 0.42));
+        const mx = (x1 + x2) / 2;
+        const my = (y1 + y2) / 2;
+        const cx = mx;
+        const cy = my - arcHeight;
+
+        const flightDuration = Math.min(1800, Math.max(1100, dist * 2.2));
+        const startTime = performance.now();
+
+        const animateMissile = (now) => {
+          const elapsed = now - startTime;
+          const t = Math.min(1, elapsed / flightDuration);
+
+          const invT = 1 - t;
+          const curX = invT * invT * x1 + 2 * invT * t * cx + t * t * x2;
+          const curY = invT * invT * y1 + 2 * invT * t * cy + t * t * y2;
+
+          const nextT = Math.min(1, t + 0.01);
+          const invNextT = 1 - nextT;
+          const nextX = invNextT * invNextT * x1 + 2 * invNextT * nextT * cx + nextT * nextT * x2;
+          const nextY = invNextT * invNextT * y1 + 2 * invNextT * nextT * cy + nextT * nextT * y2;
+          const angle = Math.atan2(nextY - curY, nextX - curX) * (180 / Math.PI) + 90;
+
+          missile.setAttribute("transform", `translate(${curX}, ${curY}) rotate(${angle})`);
+
+          if (t < 1) {
+            requestAnimationFrame(animateMissile);
+          } else {
+            missile.remove();
+            silo.remove();
+            this.triggerNuclearExplosion([x2, y2], isThermo, onImpact);
+          }
+        };
+
+        requestAnimationFrame(animateMissile);
+      }
     }
 
     // Atomic / Toxic Mushroom Cloud Impact Explosion
@@ -1663,19 +2107,37 @@
     nukeGroup.style.pointerEvents = "none";
     nukeGroup.setAttribute("transform", `translate(${tx}, ${ty})`);
 
-    // Realistic color palettes: white-hot plasma, fire orange/red, ash gray/black
-    const fireColor = isThermo ? '#ff2a00' : '#ff5500';
-    const plasmaColor = isThermo ? '#ff9f00' : '#ffcc00';
-    const smokeColor = isThermo ? '#1c1917' : '#3c3836';
+    const theme = document.body.getAttribute('data-map-theme') || 'default';
+    const isAnime = theme === 'anime';
+
+    // Color palettes: Anime magical starburst vs realistic thermal plasma
+    const fireColor = isAnime ? '#ff77a9' : (isThermo ? '#ff2a00' : '#ff5500');
+    const plasmaColor = isAnime ? '#fde047' : (isThermo ? '#ff9f00' : '#ffcc00');
+    const smokeColor = isAnime ? '#c084fc' : (isThermo ? '#1c1917' : '#3c3836');
 
     // 1. Initial blinding thermal flash ring
     const flash = document.createElementNS("http://www.w3.org/2000/svg", "circle");
     flash.setAttribute("r", "5");
     flash.setAttribute("fill", "#ffffff");
     flash.setAttribute("stroke", plasmaColor);
-    flash.setAttribute("stroke-width", "8");
-    flash.style.filter = "drop-shadow(0 0 15px #ffffff)";
+    flash.setAttribute("stroke-width", isAnime ? "12" : "8");
+    flash.style.filter = isAnime ? "drop-shadow(0 0 20px #ff77a9)" : "drop-shadow(0 0 15px #ffffff)";
     nukeGroup.appendChild(flash);
+
+    // Anime Theme: Sparkling Star & Heart Particles
+    const animeSparks = [];
+    if (isAnime) {
+      const sparkCount = 8;
+      for (let i = 0; i < sparkCount; i++) {
+        const star = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+        star.setAttribute("points", "0,-9 2.5,-2.5 9,-2.5 4,1.5 6.5,8 0,4 -6.5,8 -4,1.5 -9,-2.5 -2.5,-2.5");
+        star.setAttribute("fill", i % 2 === 0 ? "#fde047" : "#ff77a9");
+        star.setAttribute("stroke", "#ffffff");
+        star.setAttribute("stroke-width", "1");
+        nukeGroup.appendChild(star);
+        animeSparks.push({ el: star, angle: (i / sparkCount) * Math.PI * 2, maxDist: 60 + Math.random() * 40 });
+      }
+    }f
 
     // 2. Thermodynamic expanding blast wave rings
     const wave1 = document.createElementNS("http://www.w3.org/2000/svg", "circle");
@@ -1769,6 +2231,17 @@
       stem.setAttribute("d", d);
       stem.setAttribute("fill", transitionColor);
       stem.setAttribute("fill-opacity", currentOpacity.toString());
+
+      // Animate Anime Starburst particles
+      if (isAnime && animeSparks.length > 0) {
+        animeSparks.forEach(s => {
+          const sDist = s.maxDist * Math.sin((p * Math.PI) / 2);
+          const sx = Math.cos(s.angle) * sDist;
+          const sy = Math.sin(s.angle) * sDist;
+          s.el.setAttribute("transform", `translate(${sx}, ${sy}) rotate(${p * 720}) scale(${1 - p * 0.5})`);
+          s.el.setAttribute("opacity", (invP * 1.1).toString());
+        });
+      }
 
       // Mushroom Cloud Billowing Cap Expansion
       bubbles.forEach(b => {

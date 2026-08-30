@@ -34,6 +34,66 @@
   padding: 0;
 }
 
+/* 'Share Tech Mono' (Sci-Fi HUD font) is loaded via the Google Fonts <link> in index.html */
+
+/* --- SCI-FI THEME (CHAMFERED HUD, GLOWING GRADIENTS) --- */
+[data-map-theme="scifi"] {
+  --bg-dark: #02040a;
+  --bg-dark-panel: rgba(6, 10, 24, 0.85);
+  --bg-glass: rgba(5, 12, 28, 0.75);
+  --border-glass: rgba(0, 240, 255, 0.25);
+  --border-glow: rgba(0, 240, 255, 0.6);
+  
+  --primary: #00f0ff;
+  --primary-hover: #00b8d4;
+  --secondary: #9d4edd;
+  --secondary-hover: #7b2cbf;
+  --success: #00ff66;
+  --success-hover: #00cc52;
+  --danger: #ff0055;
+  --danger-hover: #cc0044;
+  --warning: #ffaa00;
+
+  --text-main: #e2f1f8;
+  --text-muted: #6b8c9c;
+  
+  --font-display: 'Share Tech Mono', monospace;
+  --font-body: 'Share Tech Mono', monospace;
+  
+  --shadow-neon: 0 0 20px rgba(0, 240, 255, 0.45);
+}
+
+/* Custom styled scrollbars for Sci-Fi Theme */
+[data-map-theme="scifi"] ::-webkit-scrollbar-thumb {
+  background: rgba(0, 240, 255, 0.25);
+  border: 1px solid rgba(0, 240, 255, 0.4);
+}
+[data-map-theme="scifi"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 240, 255, 0.5);
+}
+
+/* Tactical HUD framing coordinates */
+[data-map-theme="scifi"] .game-viewport::before,
+[data-map-theme="scifi"] .game-viewport::after {
+  content: '';
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  border-color: var(--primary);
+  border-style: solid;
+  pointer-events: none;
+  z-index: 995;
+  opacity: 0.6;
+}
+[data-map-theme="scifi"] .game-viewport::before {
+  top: 15px; left: 15px;
+  border-width: 2px 0 0 2px;
+}
+[data-map-theme="scifi"] .game-viewport::after {
+  bottom: 15px; right: 15px;
+  border-width: 0 2px 2px 0;
+}
+
 body {
   font-family: var(--font-body);
   background-color: var(--bg-dark);
@@ -221,15 +281,19 @@ body.dark-mode {
 #screen-menu {
   align-items: center;
   justify-content: center;
+  padding: 24px;
+  overflow-y: auto;
 }
 
 .menu-container {
   width: 480px;
-  padding: 40px;
+  max-height: 95vh;
+  padding: 32px;
   display: flex;
   flex-direction: column;
   border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: 0 20px 50px rgba(0,0,0,0.6);
+  overflow-y: auto;
 }
 
 .brand {
@@ -708,22 +772,319 @@ body.dark-mode {
 
 /* ==================== SCREEN 3: GAME BOARD SCREEN ==================== */
 .game-layout {
-  display: grid;
-  grid-template-columns: 340px 1fr 340px;
+  display: flex;
   width: 100vw;
   height: 100vh;
+  position: relative;
+  overflow: hidden;
 }
 
+/* Collapsible sidebars styling with full vertical scrollability */
 .game-sidebar {
+  width: 320px;
+  min-width: 320px;
   padding: 20px;
   display: flex;
   flex-direction: column;
   gap: 15px;
-  height: 100%;
+  height: 100vh !important;
+  max-height: 100vh !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  box-sizing: border-box !important;
   border-radius: 0;
   border-left: none;
   border-top: none;
   border-bottom: none;
+  z-index: 10;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), margin-left 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.game-sidebar.collapsed {
+  margin-left: -320px;
+  transform: translateX(-100%);
+}
+
+.game-right-sidebar {
+  width: 320px;
+  min-width: 320px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  height: 100vh !important;
+  max-height: 100vh !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  box-sizing: border-box !important;
+  border-radius: 0;
+  border-right: none;
+  border-top: none;
+  border-bottom: none;
+  z-index: 10;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), margin-right 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Anime Theme Bottom Mascot Image (Zero-gap flush bottom) */
+.anime-sidebar-bottom-easteregg {
+  display: none;
+}
+
+[data-map-theme="anime"] .anime-sidebar-bottom-easteregg {
+  display: block !important;
+  width: calc(100% + 40px) !important;
+  margin: 15px -20px -20px -20px !important; /* Bleeds flush through sidebar padding */
+  padding: 0 !important;
+  text-align: center;
+  position: relative;
+}
+
+[data-map-theme="anime"] .anime-easteregg-wrapper {
+  position: relative;
+  width: 100%;
+  display: block;
+  overflow: hidden;
+}
+
+[data-map-theme="anime"] .anime-sidebar-bottom-easteregg img {
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 0;
+  padding: 0;
+  border-radius: 0;
+  pointer-events: none;
+}
+
+/* Red AAA Text that appears over the image when scrolled to the bottom */
+.anime-aaa-text {
+  display: none;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.85);
+  color: #ff0000 !important;
+  font-family: 'Cherry Bomb One', cursive, sans-serif;
+  font-size: 32px;
+  font-weight: 900;
+  letter-spacing: 4px;
+  text-shadow: 0 0 4px rgba(255, 0, 0, 0.95), 0 2px 8px #000000;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease, transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  z-index: 10;
+}
+
+.anime-aaa-text.show {
+  display: block !important;
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.game-right-sidebar.collapsed {
+  margin-right: -320px;
+  transform: translateX(100%);
+}
+
+/* 3D Dice Perspective Wrapper & Cube Structure */
+.dice-container-3d {
+  width: 50px;
+  height: 50px;
+  position: relative;
+  perspective: 400px;
+  display: inline-block;
+  margin: 6px;
+  vertical-align: middle;
+}
+
+.cube-3d {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  transform-style: preserve-3d;
+  transition: transform 0.8s cubic-bezier(0.2, 0.8, 0.25, 1.15); /* Snaps cleanly into face */
+}
+
+.cube-face-3d {
+  position: absolute;
+  width: 50px;
+  height: 50px;
+  border: 1px solid rgba(0, 240, 255, 0.35);
+  border-radius: 8px;
+  background: #02040a;
+  box-shadow: inset 0 0 10px rgba(0, 240, 255, 0.3), 0 4px 8px rgba(0,0,0,0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backface-visibility: hidden;
+}
+
+.cube-face-3d img {
+  width: 80%;
+  height: 80%;
+  pointer-events: none;
+}
+
+/* Face positioning using 3D transforms */
+.face-1 { transform: rotateY(0deg) translateZ(25px); }
+.face-2 { transform: rotateY(180deg) translateZ(25px); }
+.face-3 { transform: rotateY(90deg) translateZ(25px); }
+.face-4 { transform: rotateY(-90deg) translateZ(25px); }
+.face-5 { transform: rotateX(90deg) translateZ(25px); }
+.face-6 { transform: rotateX(-90deg) translateZ(25px); }
+
+/* Rotating states */
+.cube-3d.rolling {
+  animation: spin3dCube 0.6s infinite linear;
+}
+
+@keyframes spin3dCube {
+  0%   { transform: rotateX(0deg) rotateY(0deg) rotateZ(0deg); }
+  100% { transform: rotateX(360deg) rotateY(360deg) rotateZ(360deg); }
+}
+
+/* Face target angles */
+.cube-3d.show-1 { transform: rotateX(0deg) rotateY(0deg) rotateZ(0deg); }
+.cube-3d.show-2 { transform: rotateX(0deg) rotateY(180deg) rotateZ(0deg); }
+.cube-3d.show-3 { transform: rotateX(0deg) rotateY(-90deg) rotateZ(0deg); }
+.cube-3d.show-4 { transform: rotateX(0deg) rotateY(90deg) rotateZ(0deg); }
+.cube-3d.show-5 { transform: rotateX(-90deg) rotateY(0deg) rotateZ(0deg); }
+.cube-3d.show-6 { transform: rotateX(90deg) rotateY(0deg) rotateZ(0deg); }
+
+/* Interactive Sidebar Toggle Handles */
+.sidebar-toggle-handle {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 60px;
+  background: var(--bg-glass);
+  border: 1px solid var(--border-glass);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-main);
+  cursor: pointer;
+  z-index: 990;
+  transition: var(--transition-smooth);
+}
+
+.sidebar-toggle-handle:hover {
+  background: rgba(0, 240, 255, 0.15);
+  border-color: var(--primary);
+  color: var(--primary);
+  box-shadow: var(--shadow-neon);
+}
+
+#btn-toggle-left-sidebar {
+  left: 320px;
+  border-left: none;
+  border-radius: 0 8px 8px 0;
+  transition: left 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+#btn-toggle-left-sidebar.collapsed {
+  left: 0;
+}
+
+#btn-toggle-right-sidebar {
+  right: 320px;
+  border-right: none;
+  border-radius: 8px 0 0 8px;
+  transition: right 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+#btn-toggle-right-sidebar.collapsed {
+  right: 0;
+}
+
+/* Tab selectors inside left sidebar */
+.sidebar-tabs {
+  display: flex;
+  gap: 6px;
+  border-bottom: 1px solid var(--border-glass);
+  padding-bottom: 10px;
+}
+.sidebar-tab {
+  flex: 1;
+  padding: 8px 4px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-glass);
+  color: var(--text-muted);
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: center;
+  transition: var(--transition-smooth);
+}
+.sidebar-tab.active {
+  background: rgba(0, 240, 255, 0.12);
+  border-color: var(--primary);
+  color: var(--primary);
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.15);
+}
+
+/* Hover-glow tracking system + button tactile feedback */
+.btn, .tool-btn, .sidebar-tab {
+  transform: scale(1);
+  transition: transform 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.15), var(--transition-smooth);
+}
+.btn:active, .tool-btn:active, .sidebar-tab:active {
+  transform: scale(0.94);
+}
+
+/* Cursor neon tracking overlay */
+[data-map-theme="scifi"] .btn,
+[data-map-theme="scifi"] .sidebar-tab,
+[data-map-theme="scifi"] .tool-btn {
+  position: relative;
+  overflow: hidden;
+}
+
+[data-map-theme="scifi"] .btn::after,
+[data-map-theme="scifi"] .sidebar-tab::after,
+[data-map-theme="scifi"] .tool-btn::after {
+  content: '';
+  position: absolute;
+  top: var(--mouse-y, 50%);
+  left: var(--mouse-x, 50%);
+  width: 130px;
+  height: 130px;
+  background: radial-gradient(circle, rgba(0, 240, 255, var(--glow-opacity, 0)) 0%, transparent 65%);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  mix-blend-mode: screen;
+  transition: opacity 0.1s ease;
+}
+
+/* 3D Dice rotation and physics animation classes */
+.dice-img.rolling-3d {
+  animation: roll3dDice 0.6s cubic-bezier(0.25, 0.8, 0.25, 1) infinite alternate;
+  transform-style: preserve-3d;
+  perspective: 1000px;
+}
+
+@keyframes roll3dDice {
+  0% { transform: scale(0.85) rotateX(0deg) rotateY(0deg) rotateZ(0deg) translateZ(10px); filter: drop-shadow(0 4px 6px rgba(0,0,0,0.5)); }
+  50% { transform: scale(1.15) rotateX(180deg) rotateY(180deg) rotateZ(90deg) translateZ(-15px); filter: drop-shadow(0 15px 20px rgba(0,0,0,0.7)); }
+  100% { transform: scale(0.95) rotateX(360deg) rotateY(360deg) rotateZ(360deg) translateZ(10px); filter: drop-shadow(0 6px 8px rgba(0,0,0,0.5)); }
+}
+
+/* Cybernetic scanlines + noise overlay */
+[data-map-theme="scifi"] .glass::before {
+  content: " ";
+  display: block;
+  position: absolute;
+  top: 0; left: 0; bottom: 0; right: 0;
+  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), 
+              linear-gradient(90deg, rgba(0, 240, 255, 0.04), rgba(0, 0, 0, 0), rgba(157, 78, 221, 0.04));
+  background-size: 100% 4px, 6px 100%;
+  pointer-events: none;
+  opacity: 0.15;
+  z-index: 1;
 }
 
 .phase-card {
@@ -824,7 +1185,7 @@ body.dark-mode {
 }
 
 .continents-list {
-  max-height: 120px;
+  max-height: 220px; /* Made slightly taller */
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -1352,6 +1713,323 @@ body.dark-mode {
   --map-badge-stroke: #000000;
   --map-badge-text: #ffffff;
 }
+/* --- THEME: MODERN WARFARE (TACTICAL INTER SANS) --- */
+[data-map-theme="modern"] {
+  --bg-dark: #090d16;
+  --bg-dark-panel: rgba(15, 23, 42, 0.88);
+  --bg-glass: rgba(15, 23, 42, 0.75);
+  --border-glass: rgba(148, 163, 184, 0.18);
+  --border-glow: rgba(59, 130, 246, 0.5);
+
+  --primary: #38bdf8;
+  --primary-hover: #0ea5e9;
+  --secondary: #64748b;
+  --secondary-hover: #475569;
+  --success: #22c55e;
+  --success-hover: #16a34a;
+  --danger: #ef4444;
+  --danger-hover: #dc2626;
+  --warning: #f59e0b;
+
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+
+  --font-display: 'Inter', sans-serif;
+  --font-body: 'Inter', sans-serif;
+
+  --shadow-neon: 0 0 15px rgba(56, 189, 248, 0.3);
+}
+
+[data-map-theme="modern"] svg.game-map,
+[data-map-theme="modern"] svg.editor-canvas {
+  background-color: #0b1120;
+  background-image:
+    radial-gradient(circle at 50% 50%, #0f172a 0%, #020617 100%),
+    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 100% 100%, 40px 40px, 40px 40px;
+}
+
+[data-map-theme="modern"] .territory-poly {
+  fill: #1e293b;
+  fill-opacity: 0.7;
+  stroke: #475569;
+  stroke-width: 1.5;
+}
+
+[data-map-theme="modern"] .territory-poly:hover {
+  fill: #334155;
+  filter: brightness(1.2);
+}
+
+/* --- THEME: ANIME KAWAII (PASTEL PINK & CHERRY BOMB ONE) --- */
+[data-map-theme="anime"] {
+  --bg-dark: #2a1b2d;
+  --bg-dark-panel: rgba(56, 28, 60, 0.92);
+  --bg-glass: rgba(68, 34, 72, 0.82);
+  --border-glass: rgba(255, 182, 193, 0.35);
+  --border-glow: rgba(255, 105, 180, 0.65);
+
+  --primary: #ff77a9;
+  --primary-hover: #ff5290;
+  --secondary: #c084fc;
+  --secondary-hover: #a855f7;
+  --success: #6ee7b7;
+  --success-hover: #34d399;
+  --danger: #fb7185;
+  --danger-hover: #f43f5e;
+  --warning: #fde047;
+
+  --text-main: #fff0f5;
+  --text-muted: #e9d5ff;
+
+  --font-display: 'Cherry Bomb One', cursive, sans-serif;
+  --font-body: 'Cherry Bomb One', cursive, sans-serif;
+
+  --shadow-neon: 0 0 16px rgba(255, 119, 169, 0.5);
+}
+
+[data-map-theme="anime"] svg.game-map,
+[data-map-theme="anime"] svg.editor-canvas {
+  background-color: #3b1e3f;
+  background-image:
+    radial-gradient(circle at 20% 30%, rgba(255, 182, 193, 0.25) 0%, transparent 40%),
+    radial-gradient(circle at 80% 70%, rgba(192, 132, 252, 0.2) 0%, transparent 50%),
+    radial-gradient(circle, #2d1530 0%, #1a0a1c 100%);
+}
+
+[data-map-theme="anime"] .territory-poly {
+  fill: #4c2852;
+  fill-opacity: 0.72;
+  stroke: #ff94c2;
+  stroke-width: 1.8;
+}
+
+[data-map-theme="anime"] .territory-poly:hover {
+  fill: #613369;
+  filter: brightness(1.25) drop-shadow(0 0 8px rgba(255, 119, 169, 0.5));
+}
+
+[data-map-theme="anime"] .primary-btn {
+  background: linear-gradient(135deg, #ff77a9 0%, #ff5290 100%) !important;
+  color: #fff !important;
+  box-shadow: 0 4px 15px rgba(255, 119, 169, 0.35) !important;
+}
+
+[data-map-theme="anime"] .secondary-btn {
+  background: linear-gradient(135deg, #c084fc 0%, #a855f7 100%) !important;
+  color: #fff !important;
+}
+
+[data-map-theme="anime"] .phase-card {
+  background: linear-gradient(135deg, rgba(255, 119, 169, 0.2) 0%, rgba(192, 132, 252, 0.15) 100%) !important;
+  border-color: rgba(255, 182, 193, 0.4) !important;
+}
+
+/* --- THEME 10: NAPOLEONIC (CLASSIC PARCHMENT / WATERCOLOR) --- */
+    [data-map-theme="napoleonic"] {
+      --bg-dark: #1b1611;
+      --bg-dark-panel: rgba(43, 34, 25, 0.9);
+      --bg-glass: rgba(56, 44, 32, 0.8);
+      --border-glass: rgba(139, 115, 85, 0.4);
+      --border-glow: rgba(139, 115, 85, 0.7);
+      
+      --primary: #c29d6d;
+      --primary-hover: #a87e50;
+      --secondary: #a04030;
+      --secondary-hover: #803020;
+      --success: #3c6e47;
+      --success-hover: #2d5236;
+      --danger: #b22d19;
+      --danger-hover: #8f2212;
+      --warning: #cc8800;
+
+      --text-main: #f5efe6;
+      --text-muted: #a89a87;
+      
+      --font-display: 'Courgette', cursive, serif;
+      --font-body: 'Courgette', cursive, serif;
+      
+      --shadow-neon: 0 0 15px rgba(139, 115, 85, 0.35);
+    }
+
+    /* Napoleonic Theme - Warm Crimson & Vintage Gold Gradients */
+    [data-map-theme="napoleonic"] .primary-btn {
+      background: linear-gradient(135deg, #c29d6d 0%, #8c6a3a 100%) !important;
+      color: #1b1611 !important;
+      box-shadow: 0 4px 15px rgba(194, 157, 109, 0.25) !important;
+    }
+    [data-map-theme="napoleonic"] .primary-btn:hover:not(:disabled) {
+      box-shadow: 0 6px 20px rgba(194, 157, 109, 0.4) !important;
+    }
+
+    [data-map-theme="napoleonic"] .secondary-btn {
+      background: linear-gradient(135deg, #a04030 0%, #6e1a12 100%) !important;
+      color: #fff !important;
+      box-shadow: 0 4px 15px rgba(160, 64, 48, 0.25) !important;
+    }
+    [data-map-theme="napoleonic"] .secondary-btn:hover:not(:disabled) {
+      box-shadow: 0 6px 20px rgba(160, 64, 48, 0.4) !important;
+    }
+
+    [data-map-theme="napoleonic"] .sidebar-tab.active {
+      background: rgba(194, 157, 109, 0.18) !important;
+      border-color: #c29d6d !important;
+      color: #c29d6d !important;
+      box-shadow: 0 0 10px rgba(194, 157, 109, 0.2) !important;
+    }
+
+    [data-map-theme="napoleonic"] .phase-card {
+      background: linear-gradient(135deg, rgba(160, 64, 48, 0.15) 0%, rgba(194, 157, 109, 0.08) 100%) !important;
+      border-color: rgba(194, 157, 109, 0.25) !important;
+      box-shadow: 0 0 15px rgba(194, 157, 109, 0.05) !important;
+    }
+
+    [data-map-theme="napoleonic"] #btn-ask-ai-advisor {
+      background: linear-gradient(135deg, #a04030, #c29d6d) !important;
+      border-color: rgba(194, 157, 109, 0.3) !important;
+      color: #fff !important;
+    }
+
+    [data-map-theme="napoleonic"] #btn-show-victory {
+      background: linear-gradient(135deg, #c29d6d, #a04030) !important;
+      border-color: rgba(194, 157, 109, 0.4) !important;
+      color: #fff !important;
+    }
+
+    [data-map-theme="napoleonic"] #btn-action-thermonuke {
+      background: rgba(160, 64, 48, 0.15) !important;
+      border-color: rgba(160, 64, 48, 0.4) !important;
+    }
+    [data-map-theme="napoleonic"] #btn-action-thermonuke div {
+      color: #c29d6d !important;
+    }
+
+    [data-map-theme="napoleonic"] #btn-craft-thermonuke {
+      border-color: #a04030 !important;
+      color: #c29d6d !important;
+    }
+
+    /* Small soft smudge shadow following pointer on the map container */
+    [data-map-theme="napoleonic"] .svg-container {
+      position: relative;
+    }
+    [data-map-theme="napoleonic"] .svg-container::after {
+      content: '';
+      position: absolute;
+      top: var(--map-mouse-y, 50%);
+      left: var(--map-mouse-x, 50%);
+      width: 140px;
+      height: 140px;
+      background: radial-gradient(circle, rgba(27, 22, 17, 0.4) 0%, transparent 70%);
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      z-index: 10;
+      mix-blend-mode: multiply;
+      opacity: var(--map-mouse-opacity, 0);
+      transition: opacity 0.15s ease;
+    }
+
+    /* Zero-lag hardware-accelerated antique paper texture */
+    [data-map-theme="napoleonic"] svg.game-map,
+    [data-map-theme="napoleonic"] svg.editor-canvas {
+      background-color: #d6caa9;
+      background-image: 
+        radial-gradient(circle at 50% 50%, transparent 40%, rgba(35, 25, 15, 0.38) 100%),
+        linear-gradient(rgba(100, 80, 55, 0.08) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(100, 80, 55, 0.08) 1px, transparent 1px);
+      background-size: 100% 100%, 36px 36px, 36px 36px;
+    }
+
+    /* Organic ink/watercolor territory lines with zero GPU filter overhead */
+    [data-map-theme="napoleonic"] .territory-poly {
+      fill: #eae0cd;
+      fill-opacity: 0.72;
+      stroke: #4d3b28;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    [data-map-theme="napoleonic"] .territory-poly:hover {
+      fill: #dfd4bf;
+      fill-opacity: 0.88;
+      stroke-width: 2.2;
+    }
+
+    [data-map-theme="napoleonic"] .connection-line {
+      stroke: rgba(92, 74, 55, 0.42);
+      stroke-dasharray: 4 4;
+    }
+
+    [data-map-theme="napoleonic"] .connection-line.sea-route {
+      stroke: #5c4e3f;
+      animation: none;
+    }
+
+/* --- SCI-FI THEME: HOLOGRAPHIC TACTICAL WARGAME --- */
+[data-map-theme="scifi"] {
+  --map-bg: radial-gradient(circle, #060d1f 0%, #010308 100%);
+  --map-land-fill: #0a1326;
+  --map-land-stroke: rgba(0, 240, 255, 0.38);
+  --map-land-hover: #12263f;
+  --map-land-selected: #0d2f4a;
+  --map-connection-stroke: rgba(0, 240, 255, 0.28);
+  --map-sea-stroke: #00f0ff;
+  --map-badge-bg: #02070f;
+  --map-badge-stroke: #00f0ff;
+  --map-badge-text: #dff6ff;
+}
+
+/* --- SCI-FI MAP FX: HOLO-GRID BACKDROP, RETICLE SELECTION, NEON BADGES --- */
+[data-map-theme="scifi"] svg.game-map,
+[data-map-theme="scifi"] svg.editor-canvas {
+  background-color: #010308;
+  background-image:
+    linear-gradient(rgba(0, 240, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 240, 255, 0.045) 1px, transparent 1px),
+    radial-gradient(circle at 24% 30%, rgba(0, 240, 255, 0.08) 0%, transparent 42%),
+    radial-gradient(circle at 74% 66%, rgba(157, 78, 221, 0.07) 0%, transparent 48%),
+    radial-gradient(circle at 86% 16%, rgba(0, 255, 102, 0.04) 0%, transparent 30%);
+  background-size: 44px 44px, 44px 44px, 100% 100%, 100% 100%, 100% 100%;
+  background-position: 0 0, 0 0, 0 0, 0 0, 0 0;
+}
+
+/* Sci-Fi territory hover: cyan hologram sweep */
+[data-map-theme="scifi"] .territory-poly:hover {
+  filter: brightness(1.4) saturate(1.25) drop-shadow(0 0 7px rgba(0, 240, 255, 0.4));
+}
+
+/* Sci-Fi selection: pulsing targeting-lock reticle */
+[data-map-theme="scifi"] .territory-poly.selected {
+  stroke: #00f0ff !important;
+  stroke-width: 2.5px;
+  animation: scifiTargetPulse 1.15s ease-in-out infinite;
+}
+
+@keyframes scifiTargetPulse {
+  0%, 100% { filter: drop-shadow(0 0 4px rgba(0, 240, 255, 0.35)); }
+  50%      { filter: drop-shadow(0 0 16px rgba(0, 240, 255, 0.75)); }
+}
+
+/* Sci-Fi army badges: streamlined for 60fps on high territory counts */
+[data-map-theme="scifi"] .army-badge-bg {
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6));
+  stroke: rgba(0, 240, 255, 0.65);
+}
+[data-map-theme="scifi"] .army-badge-container:hover .army-badge-bg {
+  stroke: #00f0ff;
+  stroke-width: 3px;
+  filter: drop-shadow(0 0 8px rgba(0, 240, 255, 0.6));
+}
+
+/* Sci-Fi connection lines: faint data-links */
+[data-map-theme="scifi"] .connection-line {
+  stroke: rgba(0, 240, 255, 0.28);
+}
+[data-map-theme="scifi"] .connection-line.sea-route {
+  stroke: rgba(0, 240, 255, 0.5);
+}
 
 /* --- THEME 2: FUTURISTIC (NEON CYBERPUNK) --- */
 [data-map-theme="futuristic"] {
@@ -1829,23 +2507,66 @@ svg.editor-canvas {
   gap: 8px;
 }
 
-/* Tooltip Styles */
+/* Tooltip Styles (Prevents clipping and off-screen overflow) */
 .tooltip {
-  position: absolute;
-  z-index: 200;
-  background: #111827;
-  border: 1px solid rgba(255,255,255,0.15);
-  border-radius: 6px;
+  position: fixed;
+  z-index: 99999;
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
   padding: 8px 12px;
-  font-size: 11px;
+  font-size: 13px;
   pointer-events: none;
-  box-shadow: var(--shadow-heavy);
+  box-shadow: 0 10px 25px rgba(0,0,0,0.7);
   line-height: 1.4;
+  backdrop-filter: blur(8px);
+}
+
+/* Fix sidebar info-tip hover boxes clipping into the map or shooting off-screen */
+.game-sidebar .info-tip::after,
+.lobby-sidebar .info-tip::after,
+.editor-sidebar .info-tip::after {
+  left: auto;
+  right: -8px;
+  transform: none;
+  max-width: 210px;
+}
+.game-sidebar .info-tip::before,
+.lobby-sidebar .info-tip::before,
+.editor-sidebar .info-tip::before {
+  left: auto;
+  right: 3px;
+  transform: none;
+}
+
+/* Prevent tooltips near the top of the sidebar/cards from going above the screen */
+.phase-card .info-tip::after,
+.phase-indicator .info-tip::after,
+.turn-indicator .info-tip::after,
+.viewport-header .info-tip::after {
+  bottom: auto !important;
+  top: calc(100% + 8px) !important;
+  left: 0 !important;
+  right: auto !important;
+  transform: none !important;
+}
+
+.phase-card .info-tip::before,
+.phase-indicator .info-tip::before,
+.turn-indicator .info-tip::before,
+.viewport-header .info-tip::before {
+  bottom: auto !important;
+  top: calc(100% + 2px) !important;
+  left: 4px !important;
+  transform: none !important;
+  border-top-color: transparent !important;
+  border-bottom-color: rgba(0, 229, 255, 0.25) !important;
 }
 
 .tooltip-title {
   font-weight: 700;
   font-family: var(--font-display);
+  font-size: 15px; /* Slightly increased size */
   color: var(--primary);
   margin-bottom: 4px;
 }

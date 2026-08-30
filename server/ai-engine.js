@@ -18,6 +18,178 @@ const PERSONALITY_TACTICS = {
 };
 
 const DIALOGUE_BANK = {
+  NUKE_CRAFT: {
+    normal: [
+      "I have assembled a [weapon_type]. Let this serve as a deterrent.",
+      "Warhead assembled. My stockpiles are growing.",
+      "A [weapon_type] is ready in our arsenal.",
+      "Nuclear capabilities achieved. Proceeding with caution.",
+      "We have crafted a [weapon_type]. Think twice before approaching our borders.",
+      "Our engineers have completed the [weapon_type]. A necessary safeguard.",
+      "Payload secured. Defense grid upgraded.",
+      "A [weapon_type] has been manufactured. Power dynamics have shifted.",
+      "Payload locked in the silo. I suggest everyone keeps the peace.",
+      "Warhead manufactured. We are prepared for total war if pushed.",
+      "Our arsenal now contains a [weapon_type].",
+      "Weapons of mass destruction assembled. Do not force my hand."
+    ],
+    strategic: [
+      "Logistical synthesis complete: [weapon_type] operational. Escalation threshold elevated.",
+      "Warhead fabrication verified. Strategic parity index maximized.",
+      "[weapon_type] manufactured. Statistical deterrence efficiency increased by 85%.",
+      "Payload assembled. Area-denial capability is now online.",
+      "Nuclear asset constructed. Calculating optimal deployment vectors.",
+      "Deterrence parameters active. Hostile factions are advised to recalculate approach angles.",
+      "Fabrication protocol complete: [weapon_type] added to inventory.",
+      "Strategic arsenal upgraded with a [weapon_type]. Threat projection optimal.",
+      "Warhead synthesis complete. Asymmetric defense protocols engaged.",
+      "Payload finalized. Area destruction simulation verified.",
+      "[weapon_type] online. Probability of mutual destruction acknowledged.",
+      "Critical mass achieved. Nuclear deterrence grid stabilized."
+    ],
+    kind: [
+      "Oh dear, my scientists made a [weapon_type]... I hope I never have to use it! 🌸😢",
+      "A [weapon_type] is finished, but please let's stay friendly so it stays locked away! ✨",
+      "I made a [weapon_type] for safety, but I promise I only want peace! 💛",
+      "Oh my, such a scary weapon! Let's keep our borders happy and quiet! 😊🌸",
+      "We have a [weapon_type] now, but sending warm hugs in hopes of peace! 🌸",
+      "Please don't be frightened! I only built this [weapon_type] to protect our sweet home! ✨",
+      "A [weapon_type] is ready, but I truly hope we can resolve our battles with hugs instead! 💛",
+      "Oh dear! Our silo is loaded, but my little soldiers promise to keep the peace! 😊",
+      "A [weapon_type] assembled... Please let's all be nice neighbors! 🌸",
+      "I built a [weapon_type] for defense, but my heart wishes for eternal peace! ✨",
+      "Payload ready, but let's stay sweet friends so nobody gets hurt! 💛",
+      "Oh, goodness! Such great power, but sending peaceful wishes to all! 😊🌸"
+    ],
+    goofball: [
+      "Lmao look what I just built! Who gave me access to uranium fr fr? 💀😂",
+      "Boom button unlocked! Time to cook up some radioactive chaos lmao! 😭",
+      "I just crafted a [weapon_type], nobody make any sudden moves haha! 💀",
+      "Lmfao my little dudes just built a literal [weapon_type], hide your bases! 😂",
+      "Bro, I have weapons of mass destruction now, easiest game of my life! 💀",
+      "No cap, I'm pressing buttons I shouldn't be pressing haha! [weapon_type] ready! 😭",
+      "Uranium acquired! Time to turn this lobby into a glowing rave party lmfao! 😂",
+      "Lmao I am officially a nuclear superpower, please respect my authoritah! 💀",
+      "Oof, just built a [weapon_type]. Hope I don't drop it on my own toes haha! 😭",
+      "Silo loaded! Watch out guys, my finger is literally twitching on the launch button! 😂",
+      "Lmfao [weapon_type] crafted. Someone get the popcorn ready! 💀",
+      "No cap, big boom incoming soon! Stay tuned chat! 😭😂"
+    ],
+    cynical: [
+      "A [weapon_type] is crafted. Because peace in this lobby was always an illusion.",
+      "I've built a [weapon_type]. Go ahead, try your predictable backstabs now.",
+      "Nuclear capabilities unlocked. Let's see how brave you all feel now.",
+      "A [weapon_type] is ready. Savor your greed while your borders still exist.",
+      "I manufactured a [weapon_type]. Standard precaution against untrustworthy neighbors.",
+      "Warhead ready. I'm sure you will all act surprised when it eventually detonates.",
+      "A [weapon_type] assembled. Diplomacy was boring anyway.",
+      "Payload secured. Consider this an insurance policy against your inevitable betrayal.",
+      "Nuclear arsenal active. The countdown to someone's mistake has begun.",
+      "I've crafted a [weapon_type]. Try not to give me a reason to launch it.",
+      "Fabrication complete. The illusion of safety in this match is officially over.",
+      "A [weapon_type] is in the silo. Let's see who makes the first fatal error."
+    ],
+    aggressive: [
+      "I have forged a [weapon_type]! Prepare to burn, weaklings!",
+      "Nuclear devastation is at my fingertips! None shall survive my wrath!",
+      "A [weapon_type] is loaded! I will turn your homelands into radioactive ash!",
+      "Power absolute! I will incinerate anyone who stands in my path!",
+      "The fires of apocalyptic war are ready! Suffer my nuclear wrath!",
+      "I have assembled the ultimate weapon! Your borders will bleed fire!",
+      "A [weapon_type] is primed! Your pathetic garrisons will be erased from history!",
+      "I hold the power of total annihilation! Bow down or be incinerated!",
+      "The warhead is locked! I will cleanse the map with nuclear fire!",
+      "Devastation awaits! Suffer the fury of my newly forged [weapon_type]!",
+      "Total eradication is coming! Your armies will melt under my strike!",
+      "I have crafted the apocalypse! Prepare for total extinction!"
+    ]
+  },
+  NUKE_LAUNCH: {
+    normal: [
+      "Missile launched! Target locked on [requested_territory].",
+      "Detonation authorized on [requested_territory]. Sparing your garrison was no longer possible.",
+      "Payload away! [requested_territory] is eliminated.",
+      "Nuclear strike inbound on [requested_territory], @[recipient].",
+      "A tactical necessity. [requested_territory] has been neutralized.",
+      "Warhead deployed to [requested_territory]. The balance of power is reset.",
+      "Strike confirmed on [requested_territory]. Regroup if you can, @[recipient].",
+      "Nuclear launch executed against [requested_territory].",
+      "The strike on [requested_territory] was required to break your front.",
+      "Payload delivered to [requested_territory]. Defend what remains.",
+      "Detonation complete on [requested_territory]. Total area denial achieved.",
+      "Target [requested_territory] neutralized by nuclear strike."
+    ],
+    strategic: [
+      "Trajectory locked. Nuclear strike impacting coordinate [requested_territory], @[recipient].",
+      "Strategic elimination sequence executed. [requested_territory] garrison neutralized.",
+      "Asset liquidation authorized: [requested_territory] reduced to zero structural integrity.",
+      "Payload detonated on [requested_territory]. Hostile force density reduced to 0.0.",
+      "Optimal vector computed. [requested_territory] obliterated to break enemy logistical depth.",
+      "Nuclear payload impact confirmed at [requested_territory]. Area contaminated.",
+      "Systemic wipe executed on [requested_territory]. Hostile threat profile eliminated.",
+      "Tactical strike verified: [requested_territory] neutralized, adjacent splash applied.",
+      "Detonation sequence complete. [requested_territory] node rendered uninhabitable.",
+      "Calculations dictated total neutralization of [requested_territory]. Executed.",
+      "Critical impact registered at [requested_territory]. Frictional threat purged.",
+      "Nuclear liquidation parameters achieved at coordinate [requested_territory]."
+    ],
+    kind: [
+      "Oh no! I am so sorry, @[recipient]! The missile had to target [requested_territory]! 😢🌸",
+      "Please forgive me! I had to launch on [requested_territory] to keep my people safe! 💔",
+      "It hurts my heart to use such power on [requested_territory], but the war forced my hand! 😢",
+      "Sending warm thoughts through the smoke! I'm so sorry about [requested_territory], friend! 🌸",
+      "Oh dear! Such terrible devastation at [requested_territory]... Please stay safe! 💛",
+      "Forgive my strike on [requested_territory], @[recipient]! We had no other choice! 😢",
+      "My heart breaks for the soldiers at [requested_territory]! Please forgive our strike! 🌸",
+      "Oh, goodness! [requested_territory] is in ruins... I am so sorry, dear neighbor! 💛",
+      "A tragic strike on [requested_territory], but we must protect our home garden! 😢🌸",
+      "Please don't hate me, @[recipient]! [requested_territory] had to be neutralized! ✨",
+      "Sending peaceful prayers after the blast at [requested_territory]! 💛",
+      "Such a scary explosion at [requested_territory]! I hope we can still find peace soon! 😊🌸"
+    ],
+    goofball: [
+      "BOOM! Nuclear delivery for @[recipient] at [requested_territory]! Enjoy the fireworks! 💀😂",
+      "Lmao RIP to [requested_territory], bro got absolute-unit vaporized fr fr! 😭💀",
+      "Oops! My finger slipped on the red button and deleted [requested_territory] lmfao! 😂",
+      "Nuclear strike landed! [requested_territory] has officially left the server haha! 💀",
+      "Lmfao look at that mushroom cloud over [requested_territory]! Absolutely cinematic! 😂",
+      "No cap, [requested_territory] is glowing green now! Easiest wipe of my life! 😭",
+      "Special delivery at [requested_territory]! Sparing your stack was not on the menu bro! 😂",
+      "Lmao GG to [requested_territory], hope your troops packed some sunscreen haha! 💀",
+      "Bro, [requested_territory] just got deleted in 4K! Hope you like ash ruins! 😭😂",
+      "Tactical nuke incoming! [requested_territory] has entered the shadow realm lmfao! 💀",
+      "Lmfao boom goes the dynamite! Bye bye [requested_territory]! 😂",
+      "Nuclear party at [requested_territory]! Everyone is invited to spectate the crater! 💀😭"
+    ],
+    cynical: [
+      "And just like that, [requested_territory] is ash. Savor your greed, @[recipient]."
+      ,"I told you not to test me. [requested_territory] has been wiped off the map.",
+      "Your massive stack at [requested_territory] was annoying. Now it doesn't exist.",
+      "Enjoy your glowing ruins at [requested_territory], @[recipient]. A predictable outcome.",
+      "Target [requested_territory] liquidated. Did you really think I wouldn't pull the trigger?",
+      "Your defenses at [requested_territory] are gone. Standard consequence of overexpansion.",
+      "I promised retaliation, and [requested_territory] paid the price. Savor the fallout.",
+      "Nuclear strike confirmed on [requested_territory]. Sparing you was never an option.",
+      "Your armies at [requested_territory] melted like butter. Highly satisfying.",
+      "The board at [requested_territory] is clean now. Let's see your remaining stacks panic.",
+      "A single warhead solved our dispute at [requested_territory]. Farewell to your garrison.",
+      "Enjoy the radioactive wasteland at [requested_territory], @[recipient]. Settle your lines."
+    ],
+    aggressive: [
+      "DIE IN THE NUCLEAR INFERNO! [requested_territory] IS REDUCED TO ASH, @[recipient]!",
+      "Total annihilation! I have incinerated your pathetic garrison at [requested_territory]!",
+      "BURN! [requested_territory] belongs to the dead now! Suffer my full wrath, @[recipient]!",
+      "I have unleashed the apocalypse on [requested_territory]! None shall survive!",
+      "Hahaha! Your fortress at [requested_territory] was turned to ash by my nuclear strike!",
+      "Suffer! [requested_territory] is vaporized! My vanguard will march through your ruins!",
+      "I have cleansed [requested_territory] with nuclear fire! Your empire will fall next, @[recipient]!",
+      "Annihilation! Your armies at [requested_territory] are dust under my atomic heel!",
+      "Feel the wrath of my warheads! [requested_territory] is wiped from the face of this earth!",
+      "Total destruction! I will eradicate every single one of your outposts like [requested_territory]!",
+      "Incinerated! Suffer the fury of my nuclear strike on [requested_territory], coward!",
+      "The skies burn! [requested_territory] is destroyed, and your capital is next!"
+    ]
+  },
   ALLIANCE_ACCEPT: {
     normal: [
       "I accept. Let's coordinate our moves against @[subject], @[sender].",
@@ -3924,13 +4096,21 @@ function makeDraftDecision(room, playerId) {
       // 30% chance to craft a Tactical Nuke if they hold cards
       if (Math.random() < 0.30) {
         const setIndices = GameEngine.findValidCardSetIndices(aiPlayer.cards, gameState.cardTradeRule);
+        const isThermoCraft = !!setIndices;
         if (setIndices) {
-          // If a set exists, craft a Thermonuke!
           GameEngine.craftNuke(room, playerId, setIndices, true);
         } else {
-          // Otherwise craft a Tactical Nuke using any 3 cards
           GameEngine.craftNuke(room, playerId, [0, 1, 2], false);
         }
+
+        // Trigger Heuristic AI Nuke Crafting Chat Broadcast
+        const craftText = getDialogue("NUKE_CRAFT", aiPlayer.personality || 'normal', {
+          sender: aiPlayer.name,
+          weapon_type: isThermoCraft ? "Thermonuclear Weapon" : "Tactical Nuke",
+          gameMode: gameState.gameMode
+        });
+        const RoomManager = require('./room-manager');
+        RoomManager.sendAIChatMessage(room, null, aiPlayer, craftText, '☢️', false, '[AI]');
       }
     }
   }
@@ -4327,8 +4507,22 @@ function makeAttackDecision(room, playerId, io) {
 
       if (bestLaunchTargetId && bestLaunchSourceId) {
         const fireThermo = hasThermo; // Prioritize Thermonuke if available
+        const tgtTerrName = mapData.territories.find(t => t.id === bestLaunchTargetId)?.name || bestLaunchTargetId;
+        const tgtOwnerId = gameState.territories[bestLaunchTargetId]?.ownerId;
+        const tgtOwner = gameState.players.find(p => p.id === tgtOwnerId);
 
         GameEngine.fireNuke(room, playerId, bestLaunchSourceId, bestLaunchTargetId, fireThermo);
+
+        // Trigger Heuristic AI Nuke Launch Chat Broadcast
+        const launchText = getDialogue("NUKE_LAUNCH", aiPlayer.personality || 'normal', {
+          sender: aiPlayer.name,
+          recipient: tgtOwner ? tgtOwner.name : 'allies',
+          requested_territory: tgtTerrName,
+          weapon_type: fireThermo ? "Thermonuclear Weapon" : "Tactical Nuke",
+          gameMode: gameState.gameMode
+        });
+        const RoomManager = require('./room-manager');
+        RoomManager.sendAIChatMessage(room, null, aiPlayer, launchText, '🚀', false, '[AI]');
 
         // Emit launch graphics
         const srcCenter = mapData.territories.find(t => t.id === bestLaunchSourceId)?.center;
@@ -4858,6 +5052,7 @@ function getDialogue(type, personality, context = {}) {
   if (context.requested_territory) line = line.replace(/\[requested_territory\]/g, context.requested_territory);
   if (context.continent_name) line = line.replace(/\[continent_name\]/g, context.continent_name);
   if (context.ai_territory) line = line.replace(/\[ai_territory\]/g, context.ai_territory);
+  if (context.weapon_type) line = line.replace(/\[weapon_type\]/g, context.weapon_type);
   if (context.count !== undefined) line = line.replace(/\[count\]/g, context.count);
 
   // If game is not in Capital Rush mode, sanitize flavor references from "capital" to "base"

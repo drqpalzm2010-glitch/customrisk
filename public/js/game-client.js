@@ -140,6 +140,115 @@
 
       this.initUI();
       this.initTimelapseConverterUI();
+      this.initAnimeEvents();
+    }
+
+    initAnimeEvents() {
+      // Preload anime images, mascot, and audio into device memory cache so there is 0 network delay
+      ['imagesandsounds/anime1.png', 'imagesandsounds/anime2.png', 'imagesandsounds/dance1.gif', 'imagesandsounds/dance2.gif', 'imagesandsounds/dance3.gif', 'imagesandsounds/yes.png'].forEach(src => {
+        const img = new Image();
+        img.src = src;
+      });
+      new Audio('imagesandsounds/anime.mp3');
+      new Audio('imagesandsounds/animesong.mp3');
+
+      // Detect when left sidebar is scrolled all the way to the bottom to trigger red AAA text
+      const leftSidebar = document.getElementById('game-left-sidebar');
+      if (leftSidebar) {
+        leftSidebar.addEventListener('scroll', () => {
+          const theme = document.body.getAttribute('data-map-theme') || 'default';
+          if (theme !== 'anime') return;
+
+          const isAtBottom = (leftSidebar.scrollHeight - leftSidebar.scrollTop - leftSidebar.clientHeight) <= 8;
+          const aaaText = document.querySelector('.anime-aaa-text');
+          if (aaaText) {
+            aaaText.classList.toggle('show', isAtBottom);
+          }
+        });
+      }
+
+      // 1-minute dance GIF timer (10% total chance every 60 seconds)
+      if (this.animeDanceInterval) clearInterval(this.animeDanceInterval);
+      this.animeDanceInterval = setInterval(() => {
+        const theme = document.body.getAttribute('data-map-theme') || 'default';
+        if (theme !== 'anime') return;
+
+        if (Math.random() < 0.10) {
+          const dances = ['dance1.gif', 'dance2.gif', 'dance3.gif'];
+          const chosen = dances[Math.floor(Math.random() * dances.length)];
+
+          const img = document.createElement('img');
+          img.src = `imagesandsounds/${chosen}`;
+          
+          const maxLeft = Math.max(20, window.innerWidth - 180);
+          const maxTop = Math.max(20, window.innerHeight - 180);
+          const randX = Math.floor(Math.random() * maxLeft);
+          const randY = Math.floor(Math.random() * maxTop);
+
+          img.style.cssText = `
+            position: fixed;
+            left: ${randX}px;
+            top: ${randY}px;
+            width: 140px;
+            height: 140px;
+            object-fit: contain;
+            z-index: 999998;
+            pointer-events: none;
+          `;
+          document.body.appendChild(img);
+
+          setTimeout(() => {
+            img.remove();
+          }, 500); // 0.5s duration with no fade
+        }
+      }, 60000);
+    }
+
+    triggerAnimeAttackJumpscare() {
+      const theme = document.body.getAttribute('data-map-theme') || 'default';
+      if (theme !== 'anime') return;
+
+      const rand = Math.random();
+      if (rand < 0.01) { // 1% total chance
+        // Play jumpscare audio SFX
+        if (window.MainController) {
+          window.MainController.playSFX('imagesandsounds/anime.mp3');
+        }
+
+        const imgSrc = rand < 0.005 ? 'imagesandsounds/anime1.png' : 'imagesandsounds/anime2.png';
+        let overlay = document.getElementById('anime-flash-overlay');
+
+        if (!overlay) {
+          overlay = document.createElement('div');
+          overlay.id = 'anime-flash-overlay';
+          overlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            z-index: 999999;
+            pointer-events: none;
+            opacity: 1;
+            transition: opacity 0.05s ease-out;
+          `;
+          document.body.appendChild(overlay);
+        }
+
+        overlay.style.backgroundImage = `url('${imgSrc}')`;
+        overlay.style.opacity = '1';
+        overlay.style.display = 'block';
+
+        setTimeout(() => {
+          overlay.style.opacity = '0';
+          setTimeout(() => {
+            overlay.style.display = 'none';
+          }, 50); // 0.05s fade out
+        }, 100); // 0.1s display time
+      }
     }
 
     initLLMControlsUI() {
@@ -175,6 +284,106 @@
     }
 
     initUI() {
+      // Tab panel switching for Left Sidebar
+      const btnArsenal = document.getElementById('tab-btn-arsenal');
+      const btnIntel = document.getElementById('tab-btn-intel');
+      const paneArsenal = document.getElementById('tab-pane-arsenal');
+      const paneIntel = document.getElementById('tab-pane-intel');
+
+      if (btnArsenal && btnIntel && paneArsenal && paneIntel) {
+        btnArsenal.addEventListener('click', () => {
+          btnArsenal.classList.add('active');
+          btnIntel.classList.remove('active');
+          paneArsenal.style.display = 'block';
+          paneIntel.style.display = 'none';
+        });
+
+        btnIntel.addEventListener('click', () => {
+          btnIntel.classList.add('active');
+          btnArsenal.classList.remove('active');
+          paneIntel.style.display = 'block';
+          paneArsenal.style.display = 'none';
+        });
+      }
+
+      // Tab panel switching for Right Sidebar removed — reverted to merged panel layout
+
+      // Sidebar Collapsing/Drawer handles
+      const btnToggleLeft = document.getElementById('btn-toggle-left-sidebar');
+      const leftSidebar = document.getElementById('game-left-sidebar');
+      if (btnToggleLeft && leftSidebar) {
+        btnToggleLeft.addEventListener('click', () => {
+          const collapsed = leftSidebar.classList.toggle('collapsed');
+          btnToggleLeft.classList.toggle('collapsed', collapsed);
+          btnToggleLeft.innerHTML = collapsed ? '<i class="fa-solid fa-chevron-right"></i>' : '<i class="fa-solid fa-chevron-left"></i>';
+          // Force resize/render adjustments
+          setTimeout(() => {
+            const svg = document.querySelector('svg');
+            if (svg && svg.__renderer) {
+              svg.__renderer.applyTransform();
+            }
+          }, 310);
+        });
+      }
+
+      const btnToggleRight = document.getElementById('btn-toggle-right-sidebar');
+      const rightSidebar = document.getElementById('game-right-sidebar');
+      if (btnToggleRight && rightSidebar) {
+        btnToggleRight.addEventListener('click', () => {
+          const collapsed = rightSidebar.classList.toggle('collapsed');
+          btnToggleRight.classList.toggle('collapsed', collapsed);
+          btnToggleRight.innerHTML = collapsed ? '<i class="fa-solid fa-chevron-left"></i>' : '<i class="fa-solid fa-chevron-right"></i>';
+          setTimeout(() => {
+            const svg = document.querySelector('svg');
+            if (svg && svg.__renderer) {
+              svg.__renderer.applyTransform();
+            }
+          }, 310);
+        });
+      }
+
+      // High-Performance Proximity & Shading System (Zero-Reflow O(1) Updates)
+      let glowFramePending = false;
+      let lastMoveX = 0;
+      let lastMoveY = 0;
+
+      document.addEventListener('mousemove', (e) => {
+        lastMoveX = e.clientX;
+        lastMoveY = e.clientY;
+        if (glowFramePending) return;
+
+        glowFramePending = true;
+        requestAnimationFrame(() => {
+          glowFramePending = false;
+          const theme = document.body.getAttribute('data-map-theme') || 'default';
+
+          if (theme === 'scifi') {
+            // Target only the element directly beneath the cursor to avoid page-wide layout recalculations
+            const target = document.elementFromPoint(lastMoveX, lastMoveY);
+            const btn = target ? target.closest('.btn, .sidebar-tab, .tool-btn, .color-picker-input, .lobby-color-picker') : null;
+            if (btn) {
+              const rect = btn.getBoundingClientRect();
+              btn.style.setProperty('--mouse-x', `${lastMoveX - rect.left}px`);
+              btn.style.setProperty('--mouse-y', `${lastMoveY - rect.top}px`);
+              btn.style.setProperty('--glow-opacity', '1');
+            }
+          } else if (theme === 'napoleonic') {
+            const container = document.getElementById('game-map-container') || document.querySelector('.svg-container');
+            if (container) {
+              const rect = container.getBoundingClientRect();
+              const inside = lastMoveX >= rect.left && lastMoveX <= rect.right && lastMoveY >= rect.top && lastMoveY <= rect.bottom;
+              if (inside) {
+                container.style.setProperty('--map-mouse-x', `${lastMoveX - rect.left}px`);
+                container.style.setProperty('--map-mouse-y', `${lastMoveY - rect.top}px`);
+                container.style.setProperty('--map-mouse-opacity', '1');
+              } else {
+                container.style.setProperty('--map-mouse-opacity', '0');
+              }
+            }
+          }
+        });
+      });
+
       // End Phase button
       this.btnEndPhase.addEventListener('click', () => {
         window.SocketClient.endPhase((res) => {
@@ -361,6 +570,7 @@
       const selectAttackDice = (diceCount) => {
         if (this.attackDiceModal) this.attackDiceModal.classList.remove('active');
         if (this.selectedSourceId && this.selectedTargetId) {
+          this.triggerAnimeAttackJumpscare();
           window.SocketClient.attack(this.selectedSourceId, this.selectedTargetId, diceCount, (res) => {
             if (res.error) {
               alert(res.error);
@@ -844,18 +1054,21 @@
       const lblTherCount = document.getElementById('lbl-thermonuke-count');
 
       const isGenerative = !!this.gameState.generativeAIMode || !!window.SocketClient.spectatorMode;
-
       const mePlayer = this.gameState.players.find(p => p.id === window.SocketClient.socket.id);
-      const hasWeapons = !!(mePlayer && ((mePlayer.nukes || 0) > 0 || (mePlayer.thermonukes || 0) > 0));
 
-      // Show the Arsenal on the left sidebar whenever crafting is enabled OR the player holds any weapons
-      if (nukesPanel && ((this.gameState.allowCrafting && !isGenerative) || hasWeapons)) {
+      // Only show nuclear arsenal & controls if: at least one player has a nuke OR crafting is enabled
+      const isCraftingEnabled = !!this.gameState.allowCrafting;
+      const anyoneHasNukes = (this.gameState.players || []).some(pl => (pl.nukes || 0) > 0 || (pl.thermonukes || 0) > 0);
+      const shouldShowNukes = isCraftingEnabled || anyoneHasNukes;
+
+      if (nukesPanel && shouldShowNukes) {
         nukesPanel.style.display = 'block';
         
-        if (lblTactCount && mePlayer) lblTactCount.textContent = mePlayer.nukes || 0;
-        if (lblTherCount && mePlayer) lblTherCount.textContent = mePlayer.thermonukes || 0;
+        if (lblTactCount) lblTactCount.textContent = mePlayer ? (mePlayer.nukes || 0) : 0;
+        if (lblTherCount) lblTherCount.textContent = mePlayer ? (mePlayer.thermonukes || 0) : 0;
 
-        if (isMyTurn && stage === 'DRAFT' && this.gameState.allowCrafting && !isGenerative) {
+        // Crafting buttons row only shows if crafting is enabled and it's the player's draft stage
+        if (isMyTurn && stage === 'DRAFT' && isCraftingEnabled && !isGenerative) {
           document.getElementById('nuke-craft-buttons-row').style.display = 'flex';
           
           // Crafting validation: 3 cards of any type for Tactical Nuke
@@ -1351,7 +1564,52 @@
       }
     }
 
+    applyAnimeFilter(text) {
+      if (!text || typeof text !== 'string') return text;
+      const emoticons = [' (◕‿◕✿)', ' (⁄ ⁄>⁄ ▽ ⁄<⁄ ⁄)', ' (ﾉ◕ヮ◕)ﾉ*:･ﾟ✧', ' (づ｡◕‿‿◕｡)づ', ' (≧◡≦)', ' (*^ω^)', ' (o^▽^o)'];
+      
+      // Rule: Replace 'l'/'L' with 'w'/'W' unless at the end of a word or second-to-last before a consonant
+      let converted = text.replace(/\b[a-zA-Z]+\b/g, (word) => {
+        let res = '';
+        for (let i = 0; i < word.length; i++) {
+          const ch = word[i];
+          if (ch.toLowerCase() === 'l') {
+            const isLast = (i === word.length - 1);
+            const isSecondToLast = (i === word.length - 2);
+            const nextCh = !isLast ? word[i + 1] : '';
+            const isNextConsonant = nextCh && !/[aeiouy]/i.test(nextCh);
+
+            if (isLast || (isSecondToLast && isNextConsonant)) {
+              res += ch;
+            } else {
+              res += ch === 'L' ? 'W' : 'w';
+            }
+          } else {
+            res += ch;
+          }
+        }
+        return res;
+      });
+
+      return converted;
+    }
+
     getInstructionText(isMyTurn, stage) {
+      const theme = document.body.getAttribute('data-map-theme') || 'default';
+      
+      // Top of map instruction banners for Anime Theme (Replace these 3 strings with your custom text)
+      if (theme === 'anime') {
+        if (stage === 'DRAFT') {
+          return 'Pwease draft anywhere u want (^ω^)';
+        }
+        if (stage === 'ATTACK') {
+          return 'U should attack me-I mean a territory using your big cannon of yours (❤ω❤)';
+        }
+        if (stage === 'FORTIFY') {
+          return 'UwU';
+        }
+      }
+
       if (!isMyTurn) {
         if (stage === 'CAPITAL_SELECTION') {
           const myCapital = this.gameState.capitals[window.SocketClient.socket.id];
@@ -1603,6 +1861,7 @@
           } else {
             const autoAttack = this.chkAutoAttack ? this.chkAutoAttack.checked : true;
             if (autoAttack) {
+              this.triggerAnimeAttackJumpscare();
               window.SocketClient.attack(this.selectedSourceId, this.selectedTargetId, maxDice, (res) => {
                 if (res.error) {
                   alert(res.error);
@@ -1752,8 +2011,11 @@
           selectHtml = p.isAI ? `<span class="personality-badge ${p.isLLM ? 'llm' : (p.personality || 'normal')}">${p.isLLM ? 'LLM' : (p.personality || 'normal').toUpperCase()}</span>` : '';
         }
 
-        // Show every player's nuke stockpile when crafting is enabled or anyone holds weapons
-        const arsenalVisible = this.gameState.allowCrafting || this.gameState.players.some(pl => (pl.nukes || 0) > 0 || (pl.thermonukes || 0) > 0);
+        // Show every player's nuke stockpile ONLY if crafting is enabled OR at least one player holds a nuke
+        const isCraftingEnabled = !!this.gameState.allowCrafting;
+        const anyoneHasNukes = (this.gameState.players || []).some(pl => (pl.nukes || 0) > 0 || (pl.thermonukes || 0) > 0);
+        const arsenalVisible = isCraftingEnabled || anyoneHasNukes;
+
         const nukeCountsHtml = arsenalVisible
           ? '<span style="font-size: 10px; font-weight: 700; margin-top: 1px;"><span style="color: #22c55e;"><i class="fa-solid fa-radiation"></i> ' + (p.nukes || 0) + '</span> <span style="color: #a855f7;"><i class="fa-solid fa-rocket"></i> ' + (p.thermonukes || 0) + '</span></span>'
           : '';
@@ -2102,17 +2364,41 @@
         return;
       }
 
+      // Check current map theme
+      const theme = document.body.getAttribute('data-map-theme') || 'default';
+      const isSciFi = theme === 'scifi';
+      const isModern = theme === 'modern';
+      const isAnime = theme === 'anime';
+
       me.cards.forEach((card, idx) => {
         const item = document.createElement('label');
         item.setAttribute('class', 'card-item');
 
         const mapData = window.SocketClient.mapData || this.gameState.mapData;
-        const terrName = card.territoryId ? this.getTerritoryName(card.territoryId) : 'Wildcard';
+        let terrName = card.territoryId ? this.getTerritoryName(card.territoryId) : 'Wildcard';
 
+        let displayName = card.type;
         let icon = 'fa-person-rifle';
-        if (card.type === 'Cavalry') icon = 'fa-horse';
-        else if (card.type === 'Artillery') icon = 'fa-cannon';
-        else if (card.type === 'Wild') icon = 'fa-star';
+
+        if (isSciFi) {
+          if (card.type === 'Infantry') { displayName = 'Cyber-Soldier'; icon = 'fa-user-ninja'; }
+          else if (card.type === 'Cavalry') { displayName = 'Hyper-Tank'; icon = 'fa-shield-halved'; }
+          else if (card.type === 'Artillery') { displayName = 'Star-Fighter'; icon = 'fa-jet-fighter-up'; }
+          else if (card.type === 'Wild') { displayName = 'Wildcard'; icon = 'fa-star'; }
+        } else if (isModern) {
+          if (card.type === 'Infantry') { displayName = 'Infantry'; icon = 'fa-person-military-pointing'; }
+          else if (card.type === 'Cavalry') { displayName = 'Tank'; icon = 'fa-truck-monster'; }
+          else if (card.type === 'Artillery') { displayName = 'Artillery'; icon = 'fa-cannon'; }
+        } else if (isAnime) {
+          if (card.type === 'Infantry') { displayName = 'Chibi Idol (◕‿◕✿)'; icon = 'fa-wand-magic-sparkles'; }
+          else if (card.type === 'Cavalry') { displayName = 'Mecha Suit (≧◡≦)'; icon = 'fa-robot'; }
+          else if (card.type === 'Artillery') { displayName = 'Maho Cannon (*^ω^)'; icon = 'fa-star'; }
+          terrName = this.applyAnimeFilter(terrName);
+        } else {
+          if (card.type === 'Cavalry') icon = 'fa-horse';
+          else if (card.type === 'Artillery') icon = 'fa-cannon';
+          else if (card.type === 'Wild') icon = 'fa-star';
+        }
 
         const isChecked = this.selectedCardIndices.includes(idx);
         const miniSvgHtml = this.generateTerritoryMiniSVG(card.territoryId);
@@ -2121,7 +2407,7 @@
           <input type="checkbox" data-index="${idx}" ${isChecked ? 'checked' : ''}>
           ${miniSvgHtml}
           <div class="card-details">
-            <span class="card-type"><i class="fa-solid ${icon}"></i> ${card.type}</span>
+            <span class="card-type"><i class="fa-solid ${icon}"></i> ${displayName}</span>
             <span class="card-terr-name">${terrName}</span>
           </div>
         `;
@@ -2234,6 +2520,9 @@
       const safeName = escapeHTML(msg.senderName);
       const safeText = escapeHTML(msg.text);
 
+      const theme = document.body.getAttribute('data-map-theme') || 'default';
+      const displaySafeText = theme === 'anime' ? this.applyAnimeFilter(safeText) : safeText;
+
       if (msg.senderName === 'SYSTEM') {
         div.style.fontStyle = 'italic';
         div.style.color = '#e2e8f0';
@@ -2245,7 +2534,7 @@
         div.innerHTML = `
           <span class="time">${escapeHTML(msg.timestamp)}</span>
           <strong style="color: ${msg.senderColor || '#ffcc00'}">${safeName}:</strong>
-          <span>${safeText}</span>
+          <span>${displaySafeText}</span>
         `;
         
         if (msg.text.includes('disconnected')) {
@@ -2257,7 +2546,7 @@
         div.innerHTML = `
           <span class="time">${escapeHTML(msg.timestamp)}</span>
           <strong style="color: ${msg.senderColor}">${safeName}:</strong>
-          <span>${safeText}</span>
+          <span>${displaySafeText}</span>
         `;
       }
       
@@ -2306,6 +2595,7 @@
     }
 
     executeBlitzAttack(sourceId, targetId) {
+      this.triggerAnimeAttackJumpscare();
       window.SocketClient.blitzAttack(sourceId, targetId, (res) => {
         if (res.error) {
           alert(res.error);
@@ -2619,44 +2909,47 @@
         }
       }
 
+      // Generates absolute 3D CSS transform cube markup
+      const make3dDiceHTML = (isRolling, finalValue = 6) => {
+        return `
+          <div class="dice-container-3d">
+            <div class="cube-3d ${isRolling ? 'rolling' : 'show-' + finalValue}">
+              <div class="cube-face-3d face-1"><img src="imagesandsounds/dice-six-faces-one.png"></div>
+              <div class="cube-face-3d face-2"><img src="imagesandsounds/dice-six-faces-two.png"></div>
+              <div class="cube-face-3d face-3"><img src="imagesandsounds/dice-six-faces-three.png"></div>
+              <div class="cube-face-3d face-4"><img src="imagesandsounds/dice-six-faces-four.png"></div>
+              <div class="cube-face-3d face-5"><img src="imagesandsounds/dice-six-faces-five.png"></div>
+              <div class="cube-face-3d face-6"><img src="imagesandsounds/dice-six-faces-six.png"></div>
+            </div>
+          </div>
+        `;
+      };
+
       // Shaking dice placeholders & reveal timers
       if (shouldShowOverlay) {
-        const diceNames = ['one', 'two', 'three', 'four', 'five', 'six'];
-        
+        attDiceCup.innerHTML = '';
+        defDiceCup.innerHTML = '';
+
         for (let i = 0; i < roll.attackerRolls.length; i++) {
-          const img = document.createElement('img');
-          img.src = `imagesandsounds/dice-six-faces-six.png`;
-          img.className = 'dice-img rolling';
-          attDiceCup.appendChild(img);
+          attDiceCup.innerHTML += make3dDiceHTML(true);
         }
 
         const defenderDiceCount = roll.defenderRolls.length;
         for (let i = 0; i < defenderDiceCount; i++) {
-          const img = document.createElement('img');
-          img.src = `imagesandsounds/dice-six-faces-six.png`;
-          img.className = 'dice-img rolling';
-          defDiceCup.appendChild(img);
+          defDiceCup.innerHTML += make3dDiceHTML(true);
         }
 
         // After 1000ms, reveal results
         this.combatRevealTimeout = setTimeout(() => {
-          // Stop shaking & load actual dice faces
+          // Stop shaking & rotate actual 3D face to viewport
           attDiceCup.innerHTML = '';
           roll.attackerRolls.forEach(val => {
-            const name = diceNames[val - 1];
-            const img = document.createElement('img');
-            img.src = `imagesandsounds/dice-six-faces-${name}.png`;
-            img.className = 'dice-img';
-            attDiceCup.appendChild(img);
+            attDiceCup.innerHTML += make3dDiceHTML(false, val);
           });
 
           defDiceCup.innerHTML = '';
           roll.defenderRolls.forEach(val => {
-            const name = diceNames[val - 1];
-            const img = document.createElement('img');
-            img.src = `imagesandsounds/dice-six-faces-${name}.png`;
-            img.className = 'dice-img';
-            defDiceCup.appendChild(img);
+            defDiceCup.innerHTML += make3dDiceHTML(false, val);
           });
 
           // Show casualties
