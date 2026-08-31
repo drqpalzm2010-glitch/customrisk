@@ -266,47 +266,54 @@
       }
 
       // 3. Draw Territory Polygons
+      const localId = window.SocketClient?.socket?.id;
+      const visibleTerritories = this.getVisibleTerritories(gameState, mapData, localId);
+
       mapData.territories.forEach(terr => {
         if (!terr.points || terr.points.length === 0) return;
+
+        const isFogged = visibleTerritories !== null && !visibleTerritories.has(terr.id);
 
         const polygon = document.createElementNS(svgNamespace, "polygon");
         const pointsString = terr.points.map(p => p.join(',')).join(' ');
         polygon.setAttribute("points", pointsString);
-        polygon.setAttribute("class", "territory-poly");
+        polygon.setAttribute("class", isFogged ? "territory-poly fog-shrouded" : "territory-poly");
         polygon.setAttribute("id", `poly-${terr.id}`);
 
         // Base styling or game styling
         let ownerColor = '#1f2937'; // default dark grey
         let ownerName = 'Neutral';
 
-        if (gameState && gameState.territories[terr.id]) {
-          const tState = gameState.territories[terr.id];
-          if (tState.ownerId === 'dummy') {
-            ownerColor = '#475569'; // neutral slate
-            ownerName = 'Neutral Forces (Dummy)';
-          } else {
-            const owner = gameState.players.find(p => p.id === tState.ownerId || p.selectedNationId === tState.ownerId || p.nationId === tState.ownerId);
-            if (owner) {
-              ownerColor = owner.color;
-              ownerName = owner.name;
-            } else if (mapData.nations) {
-              const nation = mapData.nations.find(n => n.id === tState.ownerId);
+        if (!isFogged) {
+          if (gameState && gameState.territories[terr.id]) {
+            const tState = gameState.territories[terr.id];
+            if (tState.ownerId === 'dummy') {
+              ownerColor = '#475569'; // neutral slate
+              ownerName = 'Neutral Forces (Dummy)';
+            } else {
+              const owner = gameState.players.find(p => p.id === tState.ownerId || p.selectedNationId === tState.ownerId || p.nationId === tState.ownerId);
+              if (owner) {
+                ownerColor = owner.color;
+                ownerName = owner.name;
+              } else if (mapData.nations) {
+                const nation = mapData.nations.find(n => n.id === tState.ownerId);
+                if (nation) {
+                  ownerColor = nation.color;
+                  ownerName = nation.name;
+                }
+              }
+            }
+          } else if (mapData.isScenario || (mapData.nations && mapData.nations.length > 0)) {
+            if (terr.startingOwnerId && terr.startingOwnerId !== 'dummy') {
+              const nation = (mapData.nations || []).find(n => n.id === terr.startingOwnerId);
               if (nation) {
                 ownerColor = nation.color;
                 ownerName = nation.name;
               }
+            } else {
+              ownerColor = '#475569';
+              ownerName = 'Dummy / Neutral Nation';
             }
-          }
-        } else if (mapData.isScenario || (mapData.nations && mapData.nations.length > 0)) {
-          if (terr.startingOwnerId && terr.startingOwnerId !== 'dummy') {
-            const nation = (mapData.nations || []).find(n => n.id === terr.startingOwnerId);
-            if (nation) {
-              ownerColor = nation.color;
-              ownerName = nation.name;
-            }
-          } else {
-            ownerColor = '#475569';
-            ownerName = 'Dummy / Neutral Nation';
           }
         }
 
@@ -318,37 +325,39 @@
           if (cont) {
             continentColor = cont.color;
             continentName = cont.name;
-            polygon.style.stroke = continentColor;
+            polygon.style.stroke = isFogged ? 'rgba(255,255,255,0.08)' : continentColor;
             polygon.style.strokeWidth = '2px';
           }
         }
 
-        // Blizzard and Radiation modifications (synchronized to prevent pre-detonation spoilers)
-        const isBlizzard = gameState && gameState.blizzards && gameState.blizzards.includes(terr.id);
+        // Blizzard and Radiation modifications
+        const isBlizzard = !isFogged && gameState && gameState.blizzards && gameState.blizzards.includes(terr.id);
         const isPendingImpact = this.pendingImpactTerritories && this.pendingImpactTerritories.has(terr.id);
-        const isRadioactive = !isPendingImpact && gameState && gameState.radiation && gameState.radiation[terr.id] > 0;
-        const isNukeRuins = !isPendingImpact && gameState && gameState.territories[terr.id] && gameState.territories[terr.id].ownerId === null && gameState.territories[terr.id].armies === 0 && gameState.territories[terr.id].nuked;
+        const isRadioactive = !isFogged && !isPendingImpact && gameState && gameState.radiation && gameState.radiation[terr.id] > 0;
+        const isNukeRuins = !isFogged && !isPendingImpact && gameState && gameState.territories[terr.id] && gameState.territories[terr.id].ownerId === null && gameState.territories[terr.id].armies === 0 && gameState.territories[terr.id].nuked;
 
-        if (isBlizzard) {
-          polygon.style.fill = '#cbd5e1'; // Frozen white/light gray
+        if (isFogged) {
+          polygon.style.fill = '#090d16';
+          polygon.style.fillOpacity = '0.92';
+        } else if (isBlizzard) {
+          polygon.style.fill = '#cbd5e1';
           polygon.style.fillOpacity = '0.9';
           polygon.style.stroke = '#94a3b8';
           polygon.style.strokeWidth = '2px';
         } else if (isRadioactive) {
-          polygon.style.fill = '#22c55e'; // Toxic glowing green
+          polygon.style.fill = '#22c55e';
           polygon.style.fillOpacity = '0.45';
           polygon.classList.add('pulsing-glow');
         } else if (isNukeRuins) {
-          polygon.style.fill = '#475569'; // Ash gray for unclaimed nuke-devastated land
+          polygon.style.fill = '#475569';
           polygon.style.fillOpacity = '0.8';
         } else {
           polygon.style.fill = ownerColor;
           polygon.style.fillOpacity = '0.55';
         }
 
-        // Check if territory is Battlescarred (SINGLE-TURN casualties >= fortressThreshold, within 2 turns)
-        const polyRecentCas = (gameState && gameState.territories && gameState.territories[terr.id] && gameState.territories[terr.id].recentBattleCasualties) || 0;
-        const polyCurrentCas = (gameState && gameState.territories && gameState.territories[terr.id] && gameState.territories[terr.id].currentTurnCasualties) || 0;
+        const polyRecentCas = (!isFogged && gameState && gameState.territories && gameState.territories[terr.id] && gameState.territories[terr.id].recentBattleCasualties) || 0;
+        const polyCurrentCas = (!isFogged && gameState && gameState.territories && gameState.territories[terr.id] && gameState.territories[terr.id].currentTurnCasualties) || 0;
         if (Math.max(polyRecentCas, polyCurrentCas) >= fortressThreshold && !this.options.isEditor) {
           polygon.classList.add('battlescarred-poly');
         }
@@ -377,61 +386,55 @@
       mapData.territories.forEach(terr => {
         if (!terr.center) return;
 
+        const isFogged = visibleTerritories !== null && !visibleTerritories.has(terr.id);
+
         const g = document.createElementNS(svgNamespace, "g");
-        g.setAttribute("class", "army-badge-container");
+        g.setAttribute("class", isFogged ? "army-badge-container fog-badge" : "army-badge-container");
         g.setAttribute("id", `badge-group-${terr.id}`);
 
         let isNeutral = true;
         let ownerColor = '#4b5563';
         let ownerName = 'Neutral';
-        let troopCount = 0;
+        let troopCount = isFogged ? '?' : 0;
 
-        if (gameState && gameState.territories[terr.id]) {
-          const tState = gameState.territories[terr.id];
-          troopCount = tState.armies;
-          if (tState.ownerId === 'dummy') {
-            ownerColor = '#475569';
-            ownerName = 'Neutral Forces (Dummy)';
-            isNeutral = true;
-          } else {
-            const owner = gameState.players.find(p => p.id === tState.ownerId || p.selectedNationId === tState.ownerId || p.nationId === tState.ownerId);
-            if (owner) {
-              ownerColor = owner.color;
-              ownerName = owner.name;
-              isNeutral = false;
-            } else if (mapData.nations) {
-              const nation = mapData.nations.find(n => n.id === tState.ownerId);
+        if (!isFogged) {
+          if (gameState && gameState.territories[terr.id]) {
+            const tState = gameState.territories[terr.id];
+            troopCount = tState.armies;
+            if (tState.ownerId === 'dummy') {
+              ownerColor = '#475569';
+              ownerName = 'Neutral Forces (Dummy)';
+              isNeutral = true;
+            } else {
+              const owner = gameState.players.find(p => p.id === tState.ownerId || p.selectedNationId === tState.ownerId || p.nationId === tState.ownerId);
+              if (owner) {
+                ownerColor = owner.color;
+                ownerName = owner.name;
+                isNeutral = false;
+              } else if (mapData.nations) {
+                const nation = mapData.nations.find(n => n.id === tState.ownerId);
+                if (nation) {
+                  ownerColor = nation.color;
+                  ownerName = nation.name;
+                  isNeutral = false;
+                }
+              }
+            }
+          } else if (mapData.isScenario || (mapData.nations && mapData.nations.length > 0)) {
+            const defaultDummyArmies = (mapData.scenarioSettings && mapData.scenarioSettings.defaultDummyArmies) || 1;
+            troopCount = terr.startingArmies !== undefined ? terr.startingArmies : defaultDummyArmies;
+            if (terr.startingOwnerId && terr.startingOwnerId !== 'dummy') {
+              const nation = (mapData.nations || []).find(n => n.id === terr.startingOwnerId);
               if (nation) {
                 ownerColor = nation.color;
                 ownerName = nation.name;
                 isNeutral = false;
               }
+            } else {
+              ownerColor = '#475569';
+              ownerName = 'Dummy / Neutral Nation';
+              isNeutral = true;
             }
-          }
-        } else if (mapData.isScenario || (mapData.nations && mapData.nations.length > 0)) {
-          const defaultDummyArmies = (mapData.scenarioSettings && mapData.scenarioSettings.defaultDummyArmies) || 1;
-          troopCount = terr.startingArmies !== undefined ? terr.startingArmies : defaultDummyArmies;
-          if (terr.startingOwnerId && terr.startingOwnerId !== 'dummy') {
-            const nation = (mapData.nations || []).find(n => n.id === terr.startingOwnerId);
-            if (nation) {
-              ownerColor = nation.color;
-              ownerName = nation.name;
-              isNeutral = false;
-            }
-          } else {
-            ownerColor = '#475569';
-            ownerName = 'Dummy / Neutral Nation';
-            isNeutral = true;
-          }
-        }
-
-        let continentName = 'None';
-        let continentColor = null;
-        if (mapData.continents) {
-          const cont = mapData.continents.find(c => c.territoryIds.includes(terr.id));
-          if (cont) {
-            continentColor = cont.color;
-            continentName = cont.name;
           }
         }
 
@@ -439,22 +442,23 @@
         const circle = document.createElementNS(svgNamespace, "circle");
         circle.setAttribute("cx", terr.center[0]);
         circle.setAttribute("cy", terr.center[1]);
-        circle.setAttribute("r", "16");
+        circle.setAttribute("r", isFogged ? "12" : "16");
         circle.setAttribute("class", "army-badge-bg");
-        circle.setAttribute("fill", isNeutral ? '#334155' : ownerColor);
-        circle.setAttribute("stroke", '#ffffff');
-        circle.setAttribute("stroke-width", '2');
+        circle.setAttribute("fill", isFogged ? '#1e293b' : (isNeutral ? '#334155' : ownerColor));
+        circle.setAttribute("stroke", isFogged ? 'rgba(255,255,255,0.2)' : '#ffffff');
+        circle.setAttribute("stroke-width", isFogged ? '1.5' : '2');
         g.appendChild(circle);
 
-        // Draw a glowing golden outer ring if it is designated as a Capital in Capital Rush mode!
         let isCapital = false;
-        if (gameState) {
-          if (gameState.gameMode === 'capital_rush' && gameState.capitals) {
-            isCapital = Object.values(gameState.capitals).includes(terr.id);
-          }
-        } else if (this.options.isEditor || (mapData && mapData.scenarioSettings && mapData.scenarioSettings.capitalRush)) {
-          if (mapData && mapData.nations) {
-            isCapital = mapData.nations.some(n => n.capitalTerritoryId === terr.id);
+        if (!isFogged) {
+          if (gameState) {
+            if (gameState.gameMode === 'capital_rush' && gameState.capitals) {
+              isCapital = Object.values(gameState.capitals).includes(terr.id);
+            }
+          } else if (this.options.isEditor || (mapData && mapData.scenarioSettings && mapData.scenarioSettings.capitalRush)) {
+            if (mapData && mapData.nations) {
+              isCapital = mapData.nations.some(n => n.capitalTerritoryId === terr.id);
+            }
           }
         }
 
@@ -464,19 +468,17 @@
           glowRing.setAttribute("cy", terr.center[1]);
           glowRing.setAttribute("r", "22");
           glowRing.setAttribute("fill", "none");
-          glowRing.setAttribute("stroke", "#fbbf24"); // Amber / Gold
+          glowRing.setAttribute("stroke", "#fbbf24");
           glowRing.setAttribute("stroke-width", "3.5");
-          glowRing.setAttribute("class", "pulsing-glow"); // pulses
+          glowRing.setAttribute("class", "pulsing-glow");
           glowRing.style.filter = "drop-shadow(0 0 6px rgba(251,191,36,0.9))";
           glowRing.style.pointerEvents = "none";
           g.appendChild(glowRing);
         }
 
-        // Draw Fortress Citadel icon if troops >= fortress threshold
-        if (troopCount >= fortressThreshold && !this.options.isEditor) {
+        if (!isFogged && typeof troopCount === 'number' && troopCount >= fortressThreshold && !this.options.isEditor) {
           const fortressGroup = document.createElementNS(svgNamespace, "g");
           fortressGroup.setAttribute("class", "fortress-citadel-badge");
-          // Shifted right and down to place on bottom-right of the badge
           fortressGroup.setAttribute("transform", `translate(${terr.center[0] + 17}, ${terr.center[1] + 17}) scale(1.15)`);
           fortressGroup.style.pointerEvents = "none";
           fortressGroup.style.filter = "drop-shadow(0 1px 3px rgba(0,0,0,0.8))";
@@ -854,8 +856,43 @@
       this.applyTransform();
     }
 
-    getAdjacentTerritories(territoryId) {
-      if (!this.mapData || !this.mapData.connections) return [];
+getVisibleTerritories(gameState, mapData, localPlayerId) {
+      if (!gameState || !gameState.fogOfWar || !localPlayerId || gameState.turnStage === 'GAME_OVER' || gameState.turnStage === 'SETUP_CLAIM' || window.SocketClient?.spectatorMode) {
+        return null; // Null indicates full vision (no fog applied during claim phase, game over, or spectating)
+      }
+
+      const visibleSet = new Set();
+      const alliedOwners = new Set([localPlayerId]);
+
+      // Add full alliance partners to shared vision
+      if (gameState.pacts) {
+        gameState.pacts.forEach(p => {
+          if (p.type === 'alliance') {
+            if (p.playerA === localPlayerId) alliedOwners.add(p.playerB);
+            if (p.playerB === localPlayerId) alliedOwners.add(p.playerA);
+          }
+        });
+      }
+
+      // 1. Territories owned by player or allies
+      Object.keys(gameState.territories).forEach(tid => {
+        const terr = gameState.territories[tid];
+        if (terr && alliedOwners.has(terr.ownerId)) {
+          visibleSet.add(tid);
+        }
+      });
+
+      // 2. Territories bordering owned/allied territories
+      const directlyOwnedAndAllied = Array.from(visibleSet);
+      directlyOwnedAndAllied.forEach(tid => {
+        const adj = this.getAdjacentTerritories(tid);
+        adj.forEach(adjId => visibleSet.add(adjId));
+      });
+
+      return visibleSet;
+    }
+
+    getAdjacentTerritories(territoryId) {      if (!this.mapData || !this.mapData.connections) return [];
       const adjacent = [];
       for (const conn of this.mapData.connections) {
         if (Array.isArray(conn)) {
@@ -1351,6 +1388,11 @@
     // Floating Casualty Damage Popup (with Blitz batch aggregation)
     showFloatingCasualty(territoryId, amount) {
       if (!this.transformGroup || !amount || amount <= 0) return;
+      const localId = window.SocketClient?.socket?.id;
+      const visibleSet = this.getVisibleTerritories(this.gameState, this.mapData, localId);
+      if (visibleSet !== null && !visibleSet.has(territoryId)) {
+        return; // Suppress floating numbers in fog of war!
+      }
       const mapData = this.mapData || (window.SocketClient && window.SocketClient.mapData);
       const terr = (mapData && mapData.territories) ? mapData.territories.find(t => t.id === territoryId) : null;
       if (!terr || !terr.center) return;
@@ -1525,8 +1567,11 @@
     // Tooltip management
     showTooltip(terr, event) {
       if (!this.tooltip || !terr) return;
+      const localId = window.SocketClient?.socket?.id;
+      const visibleSet = this.getVisibleTerritories(this.gameState, this.mapData, localId);
+      const isFogged = visibleSet !== null && !visibleSet.has(terr.id);
 
-      let ownerName = 'Neutral';
+      let ownerName = isFogged ? '??? (Fog of War)' : 'Neutral';
       let continentName = 'None';
       let continentColor = null;
       let continentBonusText = '';
@@ -1541,31 +1586,33 @@
         }
       }
 
-      let troopText = '0';
-      if (this.gameState && this.gameState.territories && this.gameState.territories[terr.id]) {
-        const tState = this.gameState.territories[terr.id];
-        troopText = tState.armies;
-        if (tState.ownerId === 'dummy') {
-          ownerName = 'Neutral Forces (Dummy)';
-        } else {
-          const owner = this.gameState.players ? this.gameState.players.find(p => p.id === tState.ownerId) : null;
-          if (owner) {
-            ownerName = owner.name;
+      let troopText = isFogged ? '???' : '0';
+      if (!isFogged) {
+        if (this.gameState && this.gameState.territories && this.gameState.territories[terr.id]) {
+          const tState = this.gameState.territories[terr.id];
+          troopText = tState.armies;
+          if (tState.ownerId === 'dummy') {
+            ownerName = 'Neutral Forces (Dummy)';
+          } else {
+            const owner = this.gameState.players ? this.gameState.players.find(p => p.id === tState.ownerId) : null;
+            if (owner) {
+              ownerName = owner.name;
+            }
           }
-        }
-      } else if (this.mapData && (this.mapData.isScenario || (this.mapData.nations && this.mapData.nations.length > 0))) {
-        const defaultDummyArmies = (this.mapData.scenarioSettings && this.mapData.scenarioSettings.defaultDummyArmies) || 1;
-        troopText = terr.startingArmies !== undefined ? terr.startingArmies : defaultDummyArmies;
-        if (terr.startingOwnerId && terr.startingOwnerId !== 'dummy') {
-          const nation = (this.mapData.nations || []).find(n => n.id === terr.startingOwnerId);
-          if (nation) {
-            ownerName = nation.name;
+        } else if (this.mapData && (this.mapData.isScenario || (this.mapData.nations && this.mapData.nations.length > 0))) {
+          const defaultDummyArmies = (this.mapData.scenarioSettings && this.mapData.scenarioSettings.defaultDummyArmies) || 1;
+          troopText = terr.startingArmies !== undefined ? terr.startingArmies : defaultDummyArmies;
+          if (terr.startingOwnerId && terr.startingOwnerId !== 'dummy') {
+            const nation = (this.mapData.nations || []).find(n => n.id === terr.startingOwnerId);
+            if (nation) {
+              ownerName = nation.name;
+            }
+          } else {
+            ownerName = 'Dummy / Neutral Nation';
           }
-        } else {
-          ownerName = 'Dummy / Neutral Nation';
+        } else if (terr.startingArmies !== undefined) {
+          troopText = terr.startingArmies;
         }
-      } else if (terr.startingArmies !== undefined) {
-        troopText = terr.startingArmies;
       }
 
       const clientX = event.clientX;

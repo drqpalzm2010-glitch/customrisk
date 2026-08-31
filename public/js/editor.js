@@ -150,6 +150,12 @@
       if (btnUndo) {
         btnUndo.addEventListener('click', () => this.undo());
       }
+
+      // Auto-Detect Missing Connections
+      const btnDetectLinks = document.getElementById('btn-editor-detect-links');
+      if (btnDetectLinks) {
+        btnDetectLinks.addEventListener('click', () => this.detectAndConnectMissingLinks());
+      }
       window.addEventListener('keydown', (e) => {
         if (e.ctrlKey && e.key.toLowerCase() === 'z') {
           e.preventDefault();
@@ -591,6 +597,14 @@
       } else if (type === 'delete-cosmetic') {
         this.mapData.cosmeticPolygons = this.mapData.cosmeticPolygons || [];
         this.mapData.cosmeticPolygons.push(data);
+      } else if (type === 'batch-add-connections') {
+        // Remove the batch of auto-added connections
+        const addedSet = new Set(data.connections.map(c => Array.isArray(c) ? `${c[0]}_${c[1]}` : `${c.from}_${c.to}`));
+        this.mapData.connections = this.mapData.connections.filter(c => {
+          const key1 = Array.isArray(c) ? `${c[0]}_${c[1]}` : `${c.from}_${c.to}`;
+          const key2 = Array.isArray(c) ? `${c[1]}_${c[0]}` : `${c.to}_${c.from}`;
+          return !addedSet.has(key1) && !addedSet.has(key2);
+        });
       }
 
       this.redraw();
@@ -1807,7 +1821,183 @@
       this.rebindTerritorySidebarEvents();
       this.redraw();
     }
+// ==================== GEOMETRIC BORDER DETECTION & MISSING LINK RESOLVER ====================
+    detectUnconnectedBorderingTerritories() {
+      const territories = this.mapData.territories || [];
+      const connections = this.mapData.connections || [];
+      const missing = [];
 
+      const areConnected = (idA, idB) => {
+        return connections.some(conn => {
+          if (Array.isArray(conn)) {
+            return (conn[0] === idA && conn[1] === idB) || (conn[0] === idB && conn[1] === idA);
+          } else if (conn && typeof conn === 'object') {
+            return (conn.from === idA && conn.to === idB) || (conn.from === idB && conn.to === idA);
+          }
+          return false;
+        });
+      };
+
+      for (let i = 0; i < territories.length; i++) {
+        for (let j = i + 1; j < territories.length; j++) {
+          const tA = territories[i];
+          const tB = territories[j];
+
+          if (!areConnected(tA.id, tB.id)) {
+            if (this.arePolygonsBorderingOrOverlapping(tA.points, tB.points)) {
+              missing.push({
+                terrA: tA,
+                terrB: tB
+              });
+            }
+          }
+        }
+      }
+
+      return missing;
+    }
+
+    arePolygonsBorderingOrOverlapping(ptsA, ptsB) {
+      if (!ptsA || !ptsB || ptsA.length < 3 || ptsB.length < 3) return false;
+
+      // 1. Fast bounding box check with 14px proximity margin
+      let minAx = Infinity, maxAx = -Infinity, minAy = Infinity, maxAy = -Infinity;
+      let minBx = Infinity, maxBx = -Infinity, minBy = Infinity, maxBy = -Infinity;
+
+      for (const [x, y] of ptsA) {
+        if (x < minAx) minAx = x;
+        if (x > maxAx) maxAx = x;
+        if (y < minAy) minAy = y;
+        if (y > maxAy) maxAy = y;
+      }
+      for (const [x, y] of ptsB) {
+        if (x < minBx) minBx = x;
+        if (x > maxBx) maxBx = x;
+        if (y < minBy) minBy = y;
+        if (y > maxBy) maxBy = y;
+      }
+
+      const margin = 14;
+      if (maxAx + margin < minBx || maxBx + margin < minAx || maxAy + margin < minBy || maxBy + margin < minAy) {
+        return false;
+      }
+
+      // 2. Point in polygon check (direct overlap)
+      const pointInPoly = (px, py, poly) => {
+        let inside = false;
+        for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+          const xi = poly[i][0], yi = poly[i][1];
+          const xj = poly[j][0], yj = poly[j][1];
+          const intersect = ((yi > py) !== (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi) + xi);
+          if (intersect) inside = !inside;
+        }
+        return inside;
+      };
+
+      for (const [x, y] of ptsA) {
+        if (pointInPoly(x, y, ptsB)) return true;
+      }
+      for (const [x, y] of ptsB) {
+        if (pointInPoly(x, y, ptsA)) return true;
+      }
+
+      // 3. Segment intersection & Segment-to-segment distance check (border seam / touching points <= 14px)
+      const distPointToSegSq = (px, py, x1, y1, x2, y2) => {
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const lenSq = dx * dx + dy * dy;
+        if (lenSq === 0) return (px - x1) * (px - x1) + (py - y1) * (py - y1);
+        let t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
+        t = Math.max(0, Math.min(1, t));
+        const projX = x1 + t * dx;
+        const projY = y1 + t * dy;
+        return (px - projX) * (px - projX) + (py - projY) * (py - projY);
+      };
+
+      const segsIntersect = (x1, y1, x2, y2, x3, y3, x4, y4) => {
+        const ccw = (ax, ay, bx, by, cx, cy) => (cy - ay) * (bx - ax) > (by - ay) * (cx - ax);
+        return (ccw(x1, y1, x3, y3, x4, y4) !== ccw(x2, y2, x3, y3, x4, y4)) &&
+               (ccw(x1, y1, x2, y2, x3, y3) !== ccw(x1, y1, x2, y2, x4, y4));
+      };
+
+      const maxDistSq = margin * margin;
+
+      for (let i = 0; i < ptsA.length; i++) {
+        const a1 = ptsA[i];
+        const a2 = ptsA[(i + 1) % ptsA.length];
+
+        for (let j = 0; j < ptsB.length; j++) {
+          const b1 = ptsB[j];
+          const b2 = ptsB[(j + 1) % ptsB.length];
+
+          if (segsIntersect(a1[0], a1[1], a2[0], a2[1], b1[0], b1[1], b2[0], b2[1])) {
+            return true;
+          }
+
+          if (distPointToSegSq(a1[0], a1[1], b1[0], b1[1], b2[0], b2[1]) <= maxDistSq ||
+              distPointToSegSq(a2[0], a2[1], b1[0], b1[1], b2[0], b2[1]) <= maxDistSq ||
+              distPointToSegSq(b1[0], b1[1], a1[0], a1[1], a2[0], a2[1]) <= maxDistSq ||
+              distPointToSegSq(b2[0], b2[1], a1[0], a1[1], a2[0], a2[1]) <= maxDistSq) {
+            return true;
+          }
+        }
+      }
+
+      return false;
+    }
+
+    detectAndConnectMissingLinks() {
+      if (!this.mapData.territories || this.mapData.territories.length < 2) {
+        if (window.showToast) window.showToast('You need at least 2 territories on the map to scan connections.', 'info');
+        else alert('You need at least 2 territories on the map to scan connections.');
+        return;
+      }
+
+      const missing = this.detectUnconnectedBorderingTerritories();
+
+      if (missing.length === 0) {
+        if (window.showToast) window.showToast('<i class="fa-solid fa-circle-check"></i> Great job! All bordering and overlapping territories are already connected.', 'success');
+        else alert('All bordering and overlapping territories are already connected!');
+        return;
+      }
+
+      const previewList = missing.slice(0, 10).map(m => `• ${m.terrA.name} <-> ${m.terrB.name}`).join('\n');
+      const moreText = missing.length > 10 ? `\n...and ${missing.length - 10} more` : '';
+
+      const confirmMsg = `Found ${missing.length} unconnected border/overlapping territory pair(s):\n\n${previewList}${moreText}\n\nWould you like to automatically create land connections between all of them?`;
+
+      const executeConnection = () => {
+        const newConnections = [];
+        missing.forEach(m => {
+          const pair = [m.terrA.id, m.terrB.id];
+          this.mapData.connections.push(pair);
+          newConnections.push(pair);
+        });
+
+        this.pushToUndo('batch-add-connections', { connections: newConnections });
+        this.redraw();
+
+        if (window.showToast) {
+          window.showToast(`<i class="fa-solid fa-link"></i> Successfully created ${newConnections.length} land connection(s)! (Ctrl+Z to Undo)`, 'success');
+        } else {
+          alert(`Successfully created ${newConnections.length} land connection(s)!`);
+        }
+      };
+
+      if (window.showConfirm) {
+        window.showConfirm(confirmMsg, {
+          title: `Connect ${missing.length} Missing Border Links?`,
+          okLabel: `Auto-Connect All (${missing.length})`,
+          cancelLabel: 'Cancel'
+        }).then(ok => {
+          if (ok) executeConnection();
+        });
+      } else {
+        if (confirm(confirmMsg)) {
+          executeConnection();
+        }
+      }
+    }
     deleteCosmetic(cosmeticId) {
       const cp = this.mapData.cosmeticPolygons.find(p => p.id === cosmeticId);
       if (!cp) return;

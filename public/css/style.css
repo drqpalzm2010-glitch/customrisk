@@ -1036,7 +1036,7 @@ body.dark-mode {
   transform: scale(0.94);
 }
 
-/* Cursor neon tracking overlay */
+/* Cursor neon tracking overlay (supports multi-button proximity bleeding) */
 [data-map-theme="scifi"] .btn,
 [data-map-theme="scifi"] .sidebar-tab,
 [data-map-theme="scifi"] .tool-btn {
@@ -1051,13 +1051,14 @@ body.dark-mode {
   position: absolute;
   top: var(--mouse-y, 50%);
   left: var(--mouse-x, 50%);
-  width: 130px;
-  height: 130px;
-  background: radial-gradient(circle, rgba(0, 240, 255, var(--glow-opacity, 0)) 0%, transparent 65%);
+  width: 140px;
+  height: 140px;
+  background: radial-gradient(circle, rgba(0, 240, 255, 0.45) 0%, transparent 70%);
   transform: translate(-50%, -50%);
   pointer-events: none;
   mix-blend-mode: screen;
-  transition: opacity 0.1s ease;
+  opacity: var(--glow-opacity, 0);
+  transition: opacity 0.15s ease-out;
 }
 
 /* 3D Dice rotation and physics animation classes */
@@ -3180,3 +3181,29 @@ svg.editor-canvas {
   box-shadow: 0 0 10px rgba(0, 229, 255, 0.4);
 }
 
+/* ==================== FOG OF WAR MODE ==================== */
+.territory-poly.fog-shrouded {
+  fill: #090d16 !important;
+  fill-opacity: 0.92 !important;
+  stroke: rgba(255, 255, 255, 0.08) !important;
+  stroke-width: 1.5px !important;
+  filter: none !important;
+  transition: all 0.25s ease;
+}
+
+.territory-poly.fog-shrouded:hover {
+  fill: #111827 !important;
+  fill-opacity: 0.96 !important;
+  stroke: rgba(255, 255, 255, 0.2) !important;
+}
+
+.army-badge-container.fog-badge .army-badge-bg {
+  fill: #1e293b !important;
+  stroke: rgba(255, 255, 255, 0.2) !important;
+  stroke-width: 1.5px !important;
+}
+
+.army-badge-container.fog-badge .army-badge-text {
+  fill: #94a3b8 !important;
+  font-size: 11px !important;
+}

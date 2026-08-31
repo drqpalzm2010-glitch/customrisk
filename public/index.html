@@ -318,6 +318,17 @@
           </div>
 
           <div class="map-select-box" style="margin-top: 12px;">
+            <h3><i class="fa-solid fa-cloud"></i> Fog of War
+              <span class="info-tip" data-tip="When enabled, you only see territories owned by you, your allies, or directly adjacent to them. Enemy army counts, ownership outside your vision, and unseen player stats are shrouded.">ℹ</span>
+            </h3>
+            <label for="chk-lobby-fog-of-war" style="font-size: 13px; font-weight: 600; cursor: pointer; color: #38bdf8; display: flex; align-items: center; justify-content: space-between; padding: 4px 0;">
+              <span><i class="fa-solid fa-eye-slash"></i> Enable Fog of War</span>
+              <input type="checkbox" id="chk-lobby-fog-of-war" style="cursor: pointer; width: 16px; height: 16px;">
+            </label>
+            <p class="map-hint">Shrouds un-scouted territory ownership, troop counts, and player stats.</p>
+          </div>
+
+          <div class="map-select-box" style="margin-top: 12px;">
             <h3><i class="fa-solid fa-layer-group"></i> Card Trade-in Rules
               <span class="info-tip" data-tip="PROGRESSIVE: Card trade values escalate with each trade-in across the match (4, 6, 8, 10, 12, 15, +5 per trade). FIXED: Card trade values depend strictly on card types (3 Infantry = 4, 3 Cavalry = 6, 3 Artillery = 8, 1 of Each / Mixed = 10).">ℹ</span>
             </h3>
@@ -598,7 +609,7 @@
           <!-- Active Diplomacy Pacts -->
           <div class="game-diplomacy-section" style="margin-top: 12px;">
             <h3>Active Pacts & Alliances
-              <span class="info-tip" data-tip="Non-Aggression Pact: a mutual promise not to attack each other. Breaking it lowers the AI's trust in you permanently. Full Alliance: stronger — you can also fortify through allied territory (following connected paths). Both types can be cancelled anytime.">ℹ</span>
+              <span class="info-tip" data-tip="Non-Aggression Pact: a mutual promise not to attack each other. Breaking it lowers trust permanently. Full Alliance: stronger — grants shared map vision in Fog of War mode and allows fortifying through allied territory (following connected paths). Both types can be cancelled anytime.">ℹ</span>
             </h3>
             <div id="game-active-pacts" class="active-pacts-list">
               <!-- Dynamic active pacts list -->
@@ -847,6 +858,7 @@
             </div>
             <div style="display: flex; gap: 8px; margin-top: 8px;">
               <button id="btn-editor-undo" class="btn outline-btn btn-sm w-full" style="border-color: var(--warning); color: var(--warning);"><i class="fa-solid fa-rotate-left"></i> UNDO (Ctrl+Z)</button>
+              <button id="btn-editor-detect-links" class="btn outline-btn btn-sm w-full" style="border-color: var(--primary); color: var(--primary);" title="Find touching or overlapping territories that lack a land or sea connection"><i class="fa-solid fa-link-slash"></i> Find Missing Links</button>
             </div>
             <div class="form-group mt-3">
               <label class="flex justify-between">
@@ -1050,11 +1062,11 @@
             </div>
             <div class="form-group">
               <label>Treaty Type
-                <span class="info-tip info-tip--dark" data-tip="Non-Aggression Pact: A promise not to attack each other. Either side can break it, but trust takes a hit. Full Alliance: Stronger bond — you can also fortify armies through allied territories (connected path required).">ℹ</span>
+                <span class="info-tip info-tip--dark" data-tip="Non-Aggression Pact: A promise not to attack each other. Either side can break it, but trust takes a hit. Full Alliance: Stronger bond — grants shared vision in Fog of War mode and allows fortifying armies through allied territories (connected path required).">ℹ</span>
               </label>
               <select id="propose-pact-type">
                 <option value="non_aggression">Non-Aggression Pact (Borders Protected)</option>
-                <option value="alliance">Full Alliance (Shared Borders & Path Fortifications)</option>
+                <option value="alliance">Full Alliance (Shared Vision & Borders)</option>
               </select>
             </div>
             <button id="btn-submit-pact" class="btn success-btn w-full mt-4"><i class="fa-solid fa-envelope"></i> Send Proposal</button>

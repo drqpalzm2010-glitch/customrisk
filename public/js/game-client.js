@@ -276,6 +276,28 @@
       this.activeFiringWeaponType = null; // 'nuke' | 'thermonuke'
     }
 
+hasFullVisionOfPlayer(playerId) {
+      if (!this.gameState || !this.gameState.fogOfWar || window.SocketClient?.spectatorMode || this.gameState.turnStage === 'GAME_OVER' || this.gameState.turnStage === 'SETUP_CLAIM') {
+        return true;
+      }
+      const myId = window.SocketClient?.socket?.id;
+      if (playerId === myId) return true;
+
+      // Full allies share vision
+      if (this.gameState.pacts && this.gameState.pacts.some(p => p.type === 'alliance' && ((p.playerA === myId && p.playerB === playerId) || (p.playerB === myId && p.playerA === playerId)))) {
+        return true;
+      }
+
+      const mapData = window.SocketClient.mapData || this.gameState.mapData;
+      const visibleSet = this.renderer ? this.renderer.getVisibleTerritories(this.gameState, mapData, myId) : null;
+      if (!visibleSet) return true;
+
+      // Check if EVERY territory owned by playerId is in visibleSet
+      const playerTerritories = Object.keys(this.gameState.territories).filter(tid => this.gameState.territories[tid]?.ownerId === playerId);
+      if (playerTerritories.length === 0) return true;
+      return playerTerritories.every(tid => visibleSet.has(tid));
+    }
+
     calculatePlayerIncome(playerId) {
       if (!this.gameState) return 3;
       const mapData = window.SocketClient.mapData || this.gameState.mapData;
@@ -380,10 +402,13 @@
         });
       }
 
-      // High-Performance Proximity & Shading System (Zero-Reflow O(1) Updates)
+      // High-Performance Multi-Button Proximity Glow & Map Shading System
       let glowFramePending = false;
       let lastMoveX = 0;
       let lastMoveY = 0;
+      let activeGlowingElements = new Set();
+      let cachedSciFiButtons = null;
+      let cacheStaleTime = 0;
 
       document.addEventListener('mousemove', (e) => {
         lastMoveX = e.clientX;
@@ -396,26 +421,81 @@
           const theme = document.body.getAttribute('data-map-theme') || 'default';
 
           if (theme === 'scifi') {
-            // Target only the element directly beneath the cursor to avoid page-wide layout recalculations
-            const target = document.elementFromPoint(lastMoveX, lastMoveY);
-            const btn = target ? target.closest('.btn, .sidebar-tab, .tool-btn, .color-picker-input, .lobby-color-picker') : null;
-            if (btn) {
-              const rect = btn.getBoundingClientRect();
-              btn.style.setProperty('--mouse-x', `${lastMoveX - rect.left}px`);
-              btn.style.setProperty('--mouse-y', `${lastMoveY - rect.top}px`);
-              btn.style.setProperty('--glow-opacity', '1');
+            const now = Date.now();
+            // Cache query list to prevent per-pixel DOM lookups
+            if (!cachedSciFiButtons || now > cacheStaleTime) {
+              cachedSciFiButtons = Array.from(document.querySelectorAll('.btn, .sidebar-tab, .tool-btn, .color-picker-input, .lobby-color-picker'))
+                .filter(el => el.offsetParent !== null);
+              cacheStaleTime = now + 600;
             }
-          } else if (theme === 'napoleonic') {
-            const container = document.getElementById('game-map-container') || document.querySelector('.svg-container');
-            if (container) {
-              const rect = container.getBoundingClientRect();
-              const inside = lastMoveX >= rect.left && lastMoveX <= rect.right && lastMoveY >= rect.top && lastMoveY <= rect.bottom;
-              if (inside) {
-                container.style.setProperty('--map-mouse-x', `${lastMoveX - rect.left}px`);
-                container.style.setProperty('--map-mouse-y', `${lastMoveY - rect.top}px`);
-                container.style.setProperty('--map-mouse-opacity', '1');
-              } else {
-                container.style.setProperty('--map-mouse-opacity', '0');
+
+            const glowRadius = 90; // Proximity threshold in pixels
+            const mx = lastMoveX;
+            const my = lastMoveY;
+            const updates = [];
+            const currentlyNear = new Set();
+
+            // Phase 1: Read all dimensions in batch (no style writes = zero layout reflow lag)
+            for (let i = 0; i < cachedSciFiButtons.length; i++) {
+              const el = cachedSciFiButtons[i];
+              const rect = el.getBoundingClientRect();
+              const cx = rect.left + rect.width / 2;
+              const cy = rect.top + rect.height / 2;
+
+              const dx = mx - cx;
+              const dy = my - cy;
+
+              const halfW = rect.width / 2;
+              const halfH = rect.height / 2;
+              const edgeDistX = Math.max(0, Math.abs(dx) - halfW);
+              const edgeDistY = Math.max(0, Math.abs(dy) - halfH);
+              const edgeDist = Math.hypot(edgeDistX, edgeDistY);
+
+              if (edgeDist < glowRadius) {
+                const relX = mx - rect.left;
+                const relY = my - rect.top;
+                const opacity = (1 - edgeDist / glowRadius).toFixed(2);
+                updates.push({ el, relX, relY, opacity });
+                currentlyNear.add(el);
+              }
+            }
+
+            // Phase 2: Batch write styles
+            // Clear any button that was glowing previously but is no longer within proximity
+            activeGlowingElements.forEach(el => {
+              if (!currentlyNear.has(el)) {
+                el.style.setProperty('--glow-opacity', '0');
+              }
+            });
+
+            // Apply glow to all buttons within proximity
+            for (let i = 0; i < updates.length; i++) {
+              const { el, relX, relY, opacity } = updates[i];
+              el.style.setProperty('--mouse-x', `${relX}px`);
+              el.style.setProperty('--mouse-y', `${relY}px`);
+              el.style.setProperty('--glow-opacity', opacity);
+            }
+
+            activeGlowingElements = currentlyNear;
+          } else {
+            // Clean up any remaining glow if the player switches themes
+            if (activeGlowingElements.size > 0) {
+              activeGlowingElements.forEach(el => el.style.setProperty('--glow-opacity', '0'));
+              activeGlowingElements.clear();
+            }
+
+            if (theme === 'napoleonic') {
+              const container = document.getElementById('game-map-container') || document.querySelector('.svg-container');
+              if (container) {
+                const rect = container.getBoundingClientRect();
+                const inside = lastMoveX >= rect.left && lastMoveX <= rect.right && lastMoveY >= rect.top && lastMoveY <= rect.bottom;
+                if (inside) {
+                  container.style.setProperty('--map-mouse-x', `${lastMoveX - rect.left}px`);
+                  container.style.setProperty('--map-mouse-y', `${lastMoveY - rect.top}px`);
+                  container.style.setProperty('--map-mouse-opacity', '1');
+                } else {
+                  container.style.setProperty('--map-mouse-opacity', '0');
+                }
               }
             }
           }
@@ -2034,19 +2114,28 @@
     }
 
     // Sidebar Renderers
+    // Sidebar Renderers
     renderPlayersList() {
       this.playersList.innerHTML = '';
       const isHost = window.SocketClient.isHost || (this.gameState.players && this.gameState.players.find(p => p.id === window.SocketClient.socket.id)?.isHost);
-      
+      const isFog = !!(this.gameState && this.gameState.fogOfWar && !window.SocketClient?.spectatorMode && this.gameState.turnStage !== 'GAME_OVER');
+
       this.gameState.players.forEach((p, idx) => {
         const item = document.createElement('div');
         item.setAttribute('class', `game-player-item ${idx === this.gameState.turnIndex ? 'active-turn' : ''} ${p.eliminated ? 'eliminated' : ''}`);
+
+        const hasFullVision = this.hasFullVisionOfPlayer(p.id);
 
         // Get owned territories and total armies
         const owned = Object.keys(this.gameState.territories).filter(
           tid => this.isPlayerOwner(p, this.gameState.territories[tid].ownerId)
         );
         const totalArmies = owned.reduce((sum, tid) => sum + this.gameState.territories[tid].armies, 0);
+        const income = this.calculatePlayerIncome(p.id);
+
+        const displayTerrCount = hasFullVision ? owned.length : '?';
+        const displayArmiesCount = hasFullVision ? totalArmies : '?';
+        const displayIncome = hasFullVision ? `+${income}/turn` : '+?/turn';
 
         // Generate dynamic personality badge if the player is an active AI and not in LLM mode
         const pBadgeHtml = p.isAI && p.personality && !p.isLLM
@@ -2065,22 +2154,22 @@
           selectHtml = p.isAI ? `<span class="personality-badge ${p.isLLM ? 'llm' : (p.personality || 'normal')}">${p.isLLM ? 'LLM' : (p.personality || 'normal').toUpperCase()}</span>` : '';
         }
 
-        // Show every player's nuke stockpile ONLY if crafting is enabled OR at least one player holds a nuke
+        // Show every player's nuke stockpile ONLY if crafting is enabled OR at least one player holds a nuke (and vision allows)
         const isCraftingEnabled = !!this.gameState.allowCrafting;
         const anyoneHasNukes = (this.gameState.players || []).some(pl => (pl.nukes || 0) > 0 || (pl.thermonukes || 0) > 0);
         const arsenalVisible = isCraftingEnabled || anyoneHasNukes;
 
-        const nukeCountsHtml = arsenalVisible
+        const nukeCountsHtml = arsenalVisible && hasFullVision
           ? '<span style="font-size: 10px; font-weight: 700; margin-top: 1px;"><span style="color: #22c55e;"><i class="fa-solid fa-radiation"></i> ' + (p.nukes || 0) + '</span> <span style="color: #a855f7;"><i class="fa-solid fa-rocket"></i> ' + (p.thermonukes || 0) + '</span></span>'
           : '';
-        const income = this.calculatePlayerIncome(p.id);
+
         item.innerHTML = `
           <div class="player-color-dot" style="background-color: ${p.color};"></div>
           <span class="game-player-name">${p.name} ${p.isAI ? '(AI)' : ''}${pBadgeHtml}</span>
           ${selectHtml}
           <span class="game-player-stats" style="display: flex; flex-direction: column; align-items: flex-end; line-height: 1.25;">
-            <span><i class="fa-solid fa-earth-americas"></i> ${owned.length} | <i class="fa-solid fa-person-military-pointing"></i> ${totalArmies}</span>
-            <span style="color: var(--warning); font-weight: 700; font-size: 10px; margin-top: 1px;"><i class="fa-solid fa-circle-plus"></i> +${income}/turn</span>
+            <span><i class="fa-solid fa-earth-americas"></i> ${displayTerrCount} | <i class="fa-solid fa-person-military-pointing"></i> ${displayArmiesCount}</span>
+            <span style="color: var(--warning); font-weight: 700; font-size: 10px; margin-top: 1px;"><i class="fa-solid fa-circle-plus"></i> ${displayIncome}</span>
             ${nukeCountsHtml}
           </span>
         `;
@@ -2141,9 +2230,45 @@
     }
 
     renderDominanceMeter() {
+      const container = document.getElementById('game-dominance-bar-container');
       const bar = document.getElementById('game-dominance-bar');
       const incomeBar = document.getElementById('game-dominance-income-bar');
       if (!bar || !this.gameState || !this.gameState.territories) return;
+
+      const isFog = !!(this.gameState && this.gameState.fogOfWar && !window.SocketClient?.spectatorMode && this.gameState.turnStage !== 'GAME_OVER');
+
+      // Hide and disable dominance meter completely in Fog of War mode
+      if (isFog) {
+        if (container) container.style.display = 'none';
+        return;
+      } else {
+        if (container) container.style.display = 'flex';
+      }
+
+      if (isFog) {
+        const totalTerritories = Object.keys(this.gameState.territories).length;
+        const mapData = window.SocketClient.mapData || this.gameState.mapData;
+        const visibleSet = this.renderer ? this.renderer.getVisibleTerritories(this.gameState, mapData, myId) : null;
+        
+        let visibleCount = 0;
+        let myCount = 0;
+        Object.keys(this.gameState.territories).forEach(tid => {
+          if (this.gameState.territories[tid]?.ownerId === myId) myCount++;
+          if (visibleSet && visibleSet.has(tid)) visibleCount++;
+        });
+
+        const myPct = Math.round((myCount / totalTerritories) * 100);
+        const fogPct = Math.round(((totalTerritories - visibleCount) / totalTerritories) * 100);
+        const knownOtherPct = 100 - myPct - fogPct;
+
+        bar.innerHTML = `
+          <div class="dominance-bar-segment" style="width: ${myPct}%; background-color: var(--primary);" title="Your Territory: ${myPct}%">${myPct >= 8 ? myPct + '%' : ''}</div>
+          <div class="dominance-bar-segment" style="width: ${knownOtherPct}%; background-color: #64748b;" title="Known Scouting: ${knownOtherPct}%">${knownOtherPct >= 8 ? knownOtherPct + '%' : ''}</div>
+          <div class="dominance-bar-segment" style="width: ${fogPct}%; background-color: #0f172a;" title="Unscouted Fog: ${fogPct}%">${fogPct >= 8 ? '🌫️ ' + fogPct + '%' : ''}</div>
+        `;
+        if (incomeBar) incomeBar.innerHTML = `<div class="dominance-bar-segment" style="width: 100%; background: #1e293b; color: #94a3b8; font-size: 10px;">🌫️ World Income Shrouded in Fog</div>`;
+        return;
+      }
 
       const totalTerritories = Object.keys(this.gameState.territories).length;
       if (totalTerritories === 0) return;
@@ -2669,6 +2794,14 @@
     // Treaties & Pact modal
     openDiplomacyModal() {
       this.diplomacyModal.classList.add('active');
+
+      // In Fog of War mode, indicate that Full Alliance gives shared vision
+      const optAlliance = this.selectDiplomacyType?.querySelector('option[value="alliance"]');
+      if (optAlliance) {
+        optAlliance.textContent = (this.gameState && this.gameState.fogOfWar)
+          ? 'Full Alliance (Shared Vision, Shared Borders & Fortifications)'
+          : 'Full Alliance (Shared Borders & Path Fortifications)';
+      }
 
       // Populate targets dropdown
       this.selectDiplomacyTarget.innerHTML = '';
@@ -4391,6 +4524,7 @@
         cardTradeRule: this.gameState.cardTradeRule || 'progressive',
         generativeAIMode: !!this.gameState.generativeAIMode,
         spectatorMode: !!window.SocketClient.spectatorMode,
+        fogOfWar: !!this.gameState.fogOfWar,
         allowCrafting: this.gameState.allowCrafting !== undefined ? this.gameState.allowCrafting : false,
         blizzardCount: this.gameState.blizzards ? this.gameState.blizzards.length : 0,
         startingNukes: this.gameState.startingNukes || 0,

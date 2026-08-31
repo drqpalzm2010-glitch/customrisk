@@ -1,4 +1,10 @@
 const express = require('express');
+let compression;
+try {
+  compression = require('compression');
+} catch (e) {
+  console.log('[Notice] "compression" module not found. Continuing without HTTP compression.');
+}
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
@@ -10,16 +16,29 @@ const { callLLMProvider } = require('./server/llm-provider');
 const { generateLLMPrompt } = require('./server/prompt-generator');
 
 const app = express();
+
+// 1. Enable Gzip/Brotli compression if installed
+if (compression) {
+  app.use(compression());
+}
+
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
     origin: '*',
     methods: ['GET', 'POST']
+  },
+  transports: ['websocket', 'polling'], // Prioritizes WebSocket immediately
+  perMessageDeflate: {
+    threshold: 1024 // Compresses WebSocket frames exceeding 1 KB
   }
 });
 
-// Serve static assets from public/ folder
-app.use(express.static(path.join(__dirname, 'public')));
+// 2. Cache static assets (images, audio, css, js) for 1 day so browsers don't re-download them repeatedly
+app.use(express.static(path.join(__dirname, 'public'), {
+  maxAge: '1d',
+  immutable: true
+}));
 
 // Serve the root favicon.ico (kept at the project root, outside public/) with
 // caching so it is fetched once per visit.
@@ -371,6 +390,24 @@ io.on('connection', (socket) => {
     } catch (err) {
       console.error(err);
       callback({ error: 'Failed to detonate weapon' });
+    }
+  });
+
+  // Toggle Fog of War in Lobby
+  socket.on('toggleFogOfWar', ({ roomCode, fogOfWar }, callback) => {
+    try {
+      const room = RoomManager.getRoom(roomCode);
+      if (!room) return callback && callback({ error: 'Room not found' });
+      if (room.hostId !== socket.id) return callback && callback({ error: 'Only host can toggle Fog of War' });
+
+      room.fogOfWar = !!fogOfWar;
+      io.to(room.code).emit('roomStateUpdate', {
+        fogOfWar: room.fogOfWar
+      });
+      if (callback) callback({ success: true, fogOfWar: room.fogOfWar });
+    } catch (err) {
+      console.error(err);
+      if (callback) callback({ error: 'Failed to update Fog of War' });
     }
   });
 
@@ -791,6 +828,8 @@ const actType = (actionStr || typeStr || '').toUpperCase();
       room.cardTradeRule = saveData.cardTradeRule || saveData.gameState.cardTradeRule || 'progressive';
       room.generativeAIMode = saveData.generativeAIMode !== undefined ? saveData.generativeAIMode : true;
       room.gameState.generativeAIMode = room.generativeAIMode;
+      room.fogOfWar = saveData.fogOfWar !== undefined ? !!saveData.fogOfWar : !!saveData.gameState.fogOfWar;
+      room.gameState.fogOfWar = room.fogOfWar;
       
       // Restore nuke, craft, and radiation metrics
       room.allowCrafting = saveData.allowCrafting !== undefined ? saveData.allowCrafting : (saveData.gameState.allowCrafting !== undefined ? saveData.gameState.allowCrafting : false);

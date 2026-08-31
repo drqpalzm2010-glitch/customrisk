@@ -1,7 +1,9 @@
 (function() {
-  const socket = io();
-
+  const socket = io({
+    transports: ['websocket', 'polling']
+  });
   const KEY_MAP = {
+    'fogOfWar': 'fw',
     'territories': 't',
     'players': 'p',
     'blizzards': 'bl',
@@ -135,6 +137,11 @@
         }
         if (typeof callback === 'function') callback(response);
       });
+    },
+
+    toggleFogOfWar: (fogOfWar, callback) => {
+      if (!window.SocketClient.roomCode) return callback && callback({ error: 'No room context' });
+      socket.emit('toggleFogOfWar', { roomCode: window.SocketClient.roomCode, fogOfWar }, callback);
     },
 
     changeCardTradeRule: (cardTradeRule, callback) => {

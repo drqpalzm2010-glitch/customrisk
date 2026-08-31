@@ -709,6 +709,16 @@
         });
       }
 
+      // Fog of War change (host only)
+      const lobbyFogOfWarChk = document.getElementById('chk-lobby-fog-of-war');
+      if (lobbyFogOfWarChk) {
+        lobbyFogOfWarChk.addEventListener('change', (e) => {
+          window.SocketClient.toggleFogOfWar(e.target.checked, (res) => {
+            if (res.error) alert(res.error);
+          });
+        });
+      }
+
       // Card Trade Rule change (host only)
       const lobbyCardRuleSelect = document.getElementById('lobby-card-rule');
       if (lobbyCardRuleSelect) {
@@ -747,6 +757,10 @@
       });
 
       window.SocketClient.onRoomStateUpdate((data) => {
+        if (data.fogOfWar !== undefined) {
+          const fowChk = document.getElementById('chk-lobby-fog-of-war');
+          if (fowChk) fowChk.checked = !!data.fogOfWar;
+        }
         if (data.blizzardCount !== undefined) {
           const selectBlizz = document.getElementById('select-lobby-blizzard-count');
           if (selectBlizz) selectBlizz.value = data.blizzardCount;
@@ -1150,8 +1164,8 @@
       const defaultTracks = ['imagesandsounds/conflict1.mp3', 'imagesandsounds/conflict2.mp3'];
       let currentTrackIdx = 0;
       this.bgMusic = new Audio();
-      this.bgMusic.volume = 0.2;
-      this.isMusicMuted = true;
+            this.bgMusic.volume = 0.2;
+      this.isMusicMuted = false; // Unmute music by default — user can mute via btn-toggle-music
       this.isSFXMuted = false; // SFX plays by default!
 
       this.updateBGMTrack = () => {
@@ -1168,7 +1182,12 @@
         }
       };
 
-      this.updateBGMTrack();
+            this.updateBGMTrack();
+
+      // Start playing immediately since music is unmuted by default
+      if (!this.isMusicMuted) {
+        this.bgMusic.play().catch(err => console.log('Initial audio playback blocked by browser'));
+      }
 
       this.bgMusic.addEventListener('ended', () => {
         if (this.mapTheme !== 'anime') {
@@ -1192,10 +1211,15 @@
             this.bgMusic.play().catch(err => {
               console.log('Audio playback blocked by browser');
             });
-            btnToggle.innerHTML = '<i class="fa-solid fa-volume-high"></i>';
+                        btnToggle.innerHTML = '<i class="fa-solid fa-volume-high"></i>';
             btnToggle.classList.remove('muted');
           }
         });
+        // Set initial icon state to match unmuted-by-default audio
+        if (!this.isMusicMuted) {
+          btnToggle.innerHTML = '<i class="fa-solid fa-volume-high"></i>';
+          btnToggle.classList.remove('muted');
+        }
       }
     }
 
@@ -1229,11 +1253,14 @@
         this.gameClient.renderCards();
       }
 
-      // Force instant lobby preview re-render if active
+          // Force instant lobby preview re-render if active
       const lobbyPreview = document.getElementById('lobby-map-preview-container');
       if (lobbyPreview && lobbyPreview.innerHTML !== '') {
         this.renderLobbyPreview();
       }
+
+            // Swap BGM track on theme change (e.g., anime theme plays animesong.mp3)
+      if (this.updateBGMTrack) this.updateBGMTrack();
     }
 
     // Replace CSS-only .info-tip tooltips with a single JS-positioned

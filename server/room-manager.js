@@ -69,6 +69,7 @@ function sendAIChatMessage(room, io, aiPlayer, text, prefixSymbol = '💬', igno
 }
 // Key Minification Map for Network Compression
 const KEY_MAP = {
+  'fogOfWar': 'fw',
   'territories': 't',
   'players': 'p',
   'blizzards': 'bl',
@@ -387,6 +388,7 @@ function createRoom(hostSocketId, playerName, playerColor, mapData) {
     hostId: hostSocketId,
     status: 'LOBBY',
     gameMode: 'auto',
+    fogOfWar: false,
     allowCrafting: false, // Nuke crafting is opt-IN (matches unchecked lobby checkbox); enabled when host toggles "Allow Crafting of Nukes"
     mapData,
     players: [
@@ -730,6 +732,9 @@ function startGame(roomCode) {
 
   room.status = 'PLAYING';
   GameEngine.initializeGame(room, activeMapData, room.gameMode || 'conquest');
+  if (room.gameState) {
+    room.gameState.fogOfWar = !!room.fogOfWar;
+  }
 
   return { success: true, room };
 }
