@@ -1,4 +1,4 @@
-(function() {
+﻿(function() {
 
   // Default campaign map in case host doesn't upload a custom one
   const DEFAULT_MAP = {
@@ -94,7 +94,7 @@
         }
       });
 
-      // Create lobby button — pick a battleground first
+      // Create lobby button â€” pick a battleground first
       document.getElementById('btn-create-lobby').addEventListener('click', () => {
         this.showMapSelectionModal().then((choice) => {
           if (choice === 'earth') {
@@ -105,7 +105,7 @@
             this.selectedMap = DEFAULT_MAP;
             this.createLobbyRoom();
           }
-          // choice === null (cancelled) → do nothing
+          // choice === null (cancelled) â†’ do nothing
         });
       });
 
@@ -230,7 +230,7 @@
                 watchMapLabel.textContent = file.name.replace('.json', '');
                 this.renderWatchAINationsUI();
               } else {
-                alert('Invalid map file — no territories found.');
+                alert('Invalid map file â€” no territories found.');
                 watchMapInput.value = '';
               }
             } catch {
@@ -360,7 +360,7 @@
           banner.className = 'spectator-banner';
           banner.id = 'spectator-banner';
           banner.innerHTML = `
-            <i class="fa-solid fa-eye"></i> SPECTATOR MODE — Watching AI Battle
+            <i class="fa-solid fa-eye"></i> SPECTATOR MODE â€” Watching AI Battle
             <span style="margin-left: 15px; font-weight: 500; font-size: 12px; color: #fff; opacity: 0.9;">Game Speed:</span>
             <select id="select-spectator-speed" style="background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.2); color: #fff; padding: 3px 8px; border-radius: 6px; font-size: 11px; cursor: pointer; margin-left: 6px; outline: none;">
               <option value="1000">1.0x (Normal)</option>
@@ -385,7 +385,7 @@
             });
           }
 
-          // Hide all player controls — spectator is read-only
+          // Hide all player controls â€” spectator is read-only
           const controlIds = [
             'btn-end-phase', 'btn-trade-cards', 'btn-quit-game',
             'btn-diplomacy', 'btn-submit-pact', 'chk-auto-attack', 'chk-auto-defend',
@@ -480,7 +480,7 @@
         }
       });
     }
-    // Map selection modal — resolves 'default' | 'earth' | 'upload' | null (cancelled)
+    // Map selection modal â€” resolves 'default' | 'earth' | 'upload' | null (cancelled)
     showMapSelectionModal() {
       return new Promise((resolve) => {
         const overlay = document.createElement('div');
@@ -547,9 +547,9 @@
 
 
 
-    // Built-in map shipped in /public — fetch, validate, and open the lobby with it
+    // Built-in map shipped in /public â€” fetch, validate, and open the lobby with it
     launchWithBuiltInMap(filename) {
-      fetch(`/${filename}`)
+      fetch(`/${filename}?_t=${Date.now()}`)
         .then((res) => {
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           return res.json();
@@ -1165,7 +1165,7 @@
       let currentTrackIdx = 0;
       this.bgMusic = new Audio();
             this.bgMusic.volume = 0.2;
-      this.isMusicMuted = false; // Unmute music by default — user can mute via btn-toggle-music
+      this.isMusicMuted = false; // Unmute music by default â€” user can mute via btn-toggle-music
       this.isSFXMuted = false; // SFX plays by default!
 
       this.updateBGMTrack = () => {

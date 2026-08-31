@@ -1828,11 +1828,19 @@
       const missing = [];
 
       const areConnected = (idA, idB) => {
+        if (!connections || !Array.isArray(connections)) return false;
+        const strA = String(idA);
+        const strB = String(idB);
         return connections.some(conn => {
+          if (!conn) return false;
           if (Array.isArray(conn)) {
-            return (conn[0] === idA && conn[1] === idB) || (conn[0] === idB && conn[1] === idA);
-          } else if (conn && typeof conn === 'object') {
-            return (conn.from === idA && conn.to === idB) || (conn.from === idB && conn.to === idA);
+            return (String(conn[0]) === strA && String(conn[1]) === strB) ||
+                   (String(conn[0]) === strB && String(conn[1]) === strA);
+          }
+          if (typeof conn === 'object') {
+            const from = String(conn.from || conn.source || conn.src || conn.idA || conn[0] || '');
+            const to = String(conn.to || conn.target || conn.tgt || conn.idB || conn[1] || '');
+            return (from === strA && to === strB) || (from === strB && to === strA);
           }
           return false;
         });
@@ -1857,34 +1865,70 @@
       return missing;
     }
 
-    arePolygonsBorderingOrOverlapping(ptsA, ptsB) {
-      if (!ptsA || !ptsB || ptsA.length < 3 || ptsB.length < 3) return false;
+    arePolygonsBorderingOrOverlapping(rawPtsA, rawPtsB) {
+      if (!rawPtsA || !rawPtsB) return false;
 
-      // 1. Fast bounding box check with 14px proximity margin
+      // 1. Sanitize and normalize points to strict Number floats
+      const normalize = (pts) => {
+        if (!Array.isArray(pts)) return [];
+        return pts.map(p => {
+          if (Array.isArray(p)) return [Number(p[0]) || 0, Number(p[1]) || 0];
+          if (p && typeof p === 'object') return [Number(p.x) || 0, Number(p.y) || 0];
+          return [0, 0];
+        }).filter(p => isFinite(p[0]) && isFinite(p[1]));
+      };
+
+      const ptsA = normalize(rawPtsA);
+      const ptsB = normalize(rawPtsB);
+
+      if (ptsA.length < 3 || ptsB.length < 3) return false;
+
+      // 2. Strict snap tolerance (4px threshold for true boundary seams)
+      const snapTol = 4.0;
+      const maxSnapDistSq = snapTol * snapTol;
+
+      // Fast Bounding Box check
       let minAx = Infinity, maxAx = -Infinity, minAy = Infinity, maxAy = -Infinity;
       let minBx = Infinity, maxBx = -Infinity, minBy = Infinity, maxBy = -Infinity;
 
-      for (const [x, y] of ptsA) {
+      for (let i = 0; i < ptsA.length; i++) {
+        const x = ptsA[i][0], y = ptsA[i][1];
         if (x < minAx) minAx = x;
         if (x > maxAx) maxAx = x;
         if (y < minAy) minAy = y;
         if (y > maxAy) maxAy = y;
       }
-      for (const [x, y] of ptsB) {
+
+      for (let i = 0; i < ptsB.length; i++) {
+        const x = ptsB[i][0], y = ptsB[i][1];
         if (x < minBx) minBx = x;
         if (x > maxBx) maxBx = x;
         if (y < minBy) minBy = y;
         if (y > maxBy) maxBy = y;
       }
 
-      const margin = 14;
-      if (maxAx + margin < minBx || maxBx + margin < minAx || maxAy + margin < minBy || maxBy + margin < minAy) {
+      if (maxAx + snapTol < minBx || maxBx + snapTol < minAx || maxAy + snapTol < minBy || maxBy + snapTol < minAy) {
         return false;
       }
 
-      // 2. Point in polygon check (direct overlap)
-      const pointInPoly = (px, py, poly) => {
+      // 3. Segment intersection check (direct crossings / overlapping boundaries)
+      const segsIntersect = (p1, p2, p3, p4) => {
+        const ccw = (a, b, c) => (c[1] - a[1]) * (b[0] - a[0]) > (b[1] - a[1]) * (c[0] - a[0]);
+        return (ccw(p1, p3, p4) !== ccw(p2, p3, p4)) && (ccw(p1, p2, p3) !== ccw(p1, p2, p4));
+      };
+
+      for (let i = 0; i < ptsA.length; i++) {
+        const a1 = ptsA[i], a2 = ptsA[(i + 1) % ptsA.length];
+        for (let j = 0; j < ptsB.length; j++) {
+          const b1 = ptsB[j], b2 = ptsB[(j + 1) % ptsB.length];
+          if (segsIntersect(a1, a2, b1, b2)) return true;
+        }
+      }
+
+      // 4. True interior overlap check (one polygon inside another or overlapping regions)
+      const pointInPoly = (p, poly) => {
         let inside = false;
+        const px = p[0], py = p[1];
         for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
           const xi = poly[i][0], yi = poly[i][1];
           const xj = poly[j][0], yj = poly[j][1];
@@ -1894,50 +1938,81 @@
         return inside;
       };
 
-      for (const [x, y] of ptsA) {
-        if (pointInPoly(x, y, ptsB)) return true;
-      }
-      for (const [x, y] of ptsB) {
-        if (pointInPoly(x, y, ptsA)) return true;
-      }
-
-      // 3. Segment intersection & Segment-to-segment distance check (border seam / touching points <= 14px)
-      const distPointToSegSq = (px, py, x1, y1, x2, y2) => {
-        const dx = x2 - x1;
-        const dy = y2 - y1;
-        const lenSq = dx * dx + dy * dy;
-        if (lenSq === 0) return (px - x1) * (px - x1) + (py - y1) * (py - y1);
-        let t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
-        t = Math.max(0, Math.min(1, t));
-        const projX = x1 + t * dx;
-        const projY = y1 + t * dy;
-        return (px - projX) * (px - projX) + (py - projY) * (py - projY);
-      };
-
-      const segsIntersect = (x1, y1, x2, y2, x3, y3, x4, y4) => {
-        const ccw = (ax, ay, bx, by, cx, cy) => (cy - ay) * (bx - ax) > (by - ay) * (cx - ax);
-        return (ccw(x1, y1, x3, y3, x4, y4) !== ccw(x2, y2, x3, y3, x4, y4)) &&
-               (ccw(x1, y1, x2, y2, x3, y3) !== ccw(x1, y1, x2, y2, x4, y4));
-      };
-
-      const maxDistSq = margin * margin;
-
+      // Test segment midpoints to detect overlapping interior regions
       for (let i = 0; i < ptsA.length; i++) {
-        const a1 = ptsA[i];
-        const a2 = ptsA[(i + 1) % ptsA.length];
+        const midA = [(ptsA[i][0] + ptsA[(i + 1) % ptsA.length][0]) / 2, (ptsA[i][1] + ptsA[(i + 1) % ptsA.length][1]) / 2];
+        if (pointInPoly(midA, ptsB)) return true;
+      }
+      for (let i = 0; i < ptsB.length; i++) {
+        const midB = [(ptsB[i][0] + ptsB[(i + 1) % ptsB.length][0]) / 2, (ptsB[i][1] + ptsB[(i + 1) % ptsB.length][1]) / 2];
+        if (pointInPoly(midB, ptsA)) return true;
+      }
 
+      // 5. Shared Border Edge / Seam Detection
+      const distPtToSegSq = (p, p1, p2) => {
+        const dx = p2[0] - p1[0], dy = p2[1] - p1[1];
+        const lenSq = dx * dx + dy * dy;
+        if (lenSq === 0) {
+          const ex = p[0] - p1[0], ey = p[1] - p1[1];
+          return ex * ex + ey * ey;
+        }
+        let t = ((p[0] - p1[0]) * dx + (p[1] - p1[1]) * dy) / lenSq;
+        t = Math.max(0, Math.min(1, t));
+        const projX = p1[0] + t * dx;
+        const projY = p1[1] + t * dy;
+        const rx = p[0] - projX, ry = p[1] - projY;
+        return rx * rx + ry * ry;
+      };
+
+      const contactPoints = [];
+
+      // Collect vertices of A touching boundary of B
+      for (let i = 0; i < ptsA.length; i++) {
+        const p = ptsA[i];
         for (let j = 0; j < ptsB.length; j++) {
-          const b1 = ptsB[j];
-          const b2 = ptsB[(j + 1) % ptsB.length];
-
-          if (segsIntersect(a1[0], a1[1], a2[0], a2[1], b1[0], b1[1], b2[0], b2[1])) {
-            return true;
+          const b1 = ptsB[j], b2 = ptsB[(j + 1) % ptsB.length];
+          if (distPtToSegSq(p, b1, b2) <= maxSnapDistSq) {
+            contactPoints.push(p);
+            break;
           }
+        }
+      }
 
-          if (distPointToSegSq(a1[0], a1[1], b1[0], b1[1], b2[0], b2[1]) <= maxDistSq ||
-              distPointToSegSq(a2[0], a2[1], b1[0], b1[1], b2[0], b2[1]) <= maxDistSq ||
-              distPointToSegSq(b1[0], b1[1], a1[0], a1[1], a2[0], a2[1]) <= maxDistSq ||
-              distPointToSegSq(b2[0], b2[1], a1[0], a1[1], a2[0], a2[1]) <= maxDistSq) {
+      // Collect vertices of B touching boundary of A
+      for (let i = 0; i < ptsB.length; i++) {
+        const p = ptsB[i];
+        for (let j = 0; j < ptsA.length; j++) {
+          const a1 = ptsA[j], a2 = ptsA[(j + 1) % ptsA.length];
+          if (distPtToSegSq(p, a1, a2) <= maxSnapDistSq) {
+            contactPoints.push(p);
+            break;
+          }
+        }
+      }
+
+      // Must have at least TWO distinct contact points spanning >= 5px of border seam
+      // (prevents diagonal single-corner touches or narrow sea channels from triggering)
+      if (contactPoints.length >= 2) {
+        for (let i = 0; i < contactPoints.length; i++) {
+          for (let j = i + 1; j < contactPoints.length; j++) {
+            const dx = contactPoints[i][0] - contactPoints[j][0];
+            const dy = contactPoints[i][1] - contactPoints[j][1];
+            if (dx * dx + dy * dy >= 25) { // >= 5px shared border edge length
+              return true;
+            }
+          }
+        }
+      }
+
+      // 6. Collinear overlapping edge check (parallel snapped segments)
+      for (let i = 0; i < ptsA.length; i++) {
+        const a1 = ptsA[i], a2 = ptsA[(i + 1) % ptsA.length];
+        const midA = [(a1[0] + a2[0]) / 2, (a1[1] + a2[1]) / 2];
+        for (let j = 0; j < ptsB.length; j++) {
+          const b1 = ptsB[j], b2 = ptsB[(j + 1) % ptsB.length];
+          const midB = [(b1[0] + b2[0]) / 2, (b1[1] + b2[1]) / 2];
+
+          if (distPtToSegSq(midA, b1, b2) <= maxSnapDistSq && distPtToSegSq(midB, a1, a2) <= maxSnapDistSq) {
             return true;
           }
         }
@@ -1947,9 +2022,9 @@
     }
 
     detectAndConnectMissingLinks() {
-      if (!this.mapData.territories || this.mapData.territories.length < 2) {
-        if (window.showToast) window.showToast('You need at least 2 territories on the map to scan connections.', 'info');
-        else alert('You need at least 2 territories on the map to scan connections.');
+      if (!this.mapData || !this.mapData.territories || this.mapData.territories.length < 2) {
+        if (window.showToast) window.showToast('You need at least 2 territories on the map to scan for missing links.', 'info');
+        else alert('You need at least 2 territories on the map to scan for missing links.');
         return;
       }
 
@@ -1961,13 +2036,15 @@
         return;
       }
 
-      const previewList = missing.slice(0, 10).map(m => `• ${m.terrA.name} <-> ${m.terrB.name}`).join('\n');
-      const moreText = missing.length > 10 ? `\n...and ${missing.length - 10} more` : '';
+      const previewList = missing.slice(0, 8).map(m => `• ${m.terrA.name} <-> ${m.terrB.name}`).join('\n');
+      const moreText = missing.length > 8 ? `\n...and ${missing.length - 8} more` : '';
 
-      const confirmMsg = `Found ${missing.length} unconnected border/overlapping territory pair(s):\n\n${previewList}${moreText}\n\nWould you like to automatically create land connections between all of them?`;
+      const confirmMsg = `Found ${missing.length} unconnected bordering territory pair(s):\n\n${previewList}${moreText}\n\nWould you like to automatically connect them with land routes?`;
 
       const executeConnection = () => {
+        this.mapData.connections = this.mapData.connections || [];
         const newConnections = [];
+
         missing.forEach(m => {
           const pair = [m.terrA.id, m.terrB.id];
           this.mapData.connections.push(pair);
@@ -1978,13 +2055,13 @@
         this.redraw();
 
         if (window.showToast) {
-          window.showToast(`<i class="fa-solid fa-link"></i> Successfully created ${newConnections.length} land connection(s)! (Ctrl+Z to Undo)`, 'success');
+          window.showToast(`<i class="fa-solid fa-link"></i> Successfully connected ${newConnections.length} missing link(s)! (Ctrl+Z to Undo)`, 'success');
         } else {
-          alert(`Successfully created ${newConnections.length} land connection(s)!`);
+          alert(`Successfully connected ${newConnections.length} missing link(s)!`);
         }
       };
 
-      if (window.showConfirm) {
+      if (typeof window.showConfirm === 'function') {
         window.showConfirm(confirmMsg, {
           title: `Connect ${missing.length} Missing Border Links?`,
           okLabel: `Auto-Connect All (${missing.length})`,
