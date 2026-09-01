@@ -36,6 +36,24 @@
                 <p class="subtitle">Custom Battlegrounds & Turn-Based Diplomacy</p>
               </div>
 
+              <!-- Account Bar -->
+              <div id="menu-account-bar" class="account-menu-bar" style="margin-bottom: 18px; padding: 10px 14px; background: rgba(0, 229, 255, 0.05); border: 1px solid var(--border-glass); border-radius: 10px; display: flex; justify-content: space-between; align-items: center;">
+                <div id="account-logged-out-view" style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+                  <span style="font-size: 12px; color: var(--text-muted);"><i class="fa-solid fa-user-lock"></i> Guest Commander</span>
+                  <button id="btn-open-login-modal" class="btn outline-btn btn-sm" style="font-size: 11px; padding: 4px 10px; border-color: var(--primary); color: var(--primary);"><i class="fa-solid fa-right-to-bracket"></i> Login / Register</button>
+                </div>
+                <div id="account-logged-in-view" style="display: none; align-items: center; justify-content: space-between; width: 100%;">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #10b981; box-shadow: 0 0 6px #10b981;"></span>
+                    <span style="font-size: 12px; font-weight: 700; color: #fff;" id="lbl-logged-in-username">Player</span>
+                  </div>
+                  <div style="display: flex; gap: 6px;">
+                    <button id="btn-view-my-stats" class="btn outline-btn btn-sm" style="font-size: 11px; padding: 3px 8px;" title="View Lifetime Stats"><i class="fa-solid fa-chart-simple"></i> Stats</button>
+                    <button id="btn-account-logout" class="btn outline-btn btn-sm" style="font-size: 11px; padding: 3px 8px; border-color: #ef4444; color: #ef4444;" title="Sign Out"><i class="fa-solid fa-power-off"></i></button>
+                  </div>
+                </div>
+              </div>
+
               <div class="form-group">
                 <label for="input-player-name"><i class="fa-solid fa-user"></i> Player Name</label>
                 <input type="text" id="input-player-name" placeholder="Enter commander name..." value="Commander">
@@ -216,13 +234,6 @@
           <div class="room-code-badge">
             <span class="label">ROOM CODE:</span>
             <span id="lobby-room-code" class="code">ABCD</span>
-          </div>
-        </div>
-
-        <div class="player-list-container">
-          <h3><i class="fa-solid fa-users"></i> Commanders Joined (<span id="lobby-player-count">1</span>/8)</h3>
-          <div id="lobby-player-list" class="player-list">
-            <!-- Dynamic players list -->
           </div>
         </div>
 
@@ -436,13 +447,28 @@
         <button id="btn-leave-lobby" class="btn outline-btn w-full mt-4"><i class="fa-solid fa-arrow-left"></i> Leave Lobby</button>
       </div>
 
-      <!-- Right side: Map preview -->
-      <div class="lobby-preview glass">
-        <h3><i class="fa-solid fa-eye"></i> Map Preview</h3>
-        <div id="lobby-map-preview-container" class="preview-svg-container">
-          <div class="preview-placeholder">
-            <i class="fa-solid fa-map-marked-alt placeholder-icon"></i>
-            <p>No map loaded yet. Host must select/upload a map file.</p>
+      <!-- Right side: Map preview & Commanders Battle Cards -->
+      <div class="lobby-preview glass" style="display: flex; flex-direction: column; gap: 15px; height: calc(100vh - 60px); overflow-y: auto;">
+        <div style="flex: 1; min-height: 280px; display: flex; flex-direction: column;">
+          <h3><i class="fa-solid fa-eye"></i> Map Preview</h3>
+          <div id="lobby-map-preview-container" class="preview-svg-container" style="flex: 1;">
+            <div class="preview-placeholder">
+              <i class="fa-solid fa-map-marked-alt placeholder-icon"></i>
+              <p>No map loaded yet. Host must select/upload a map file.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Large Commanders Battle Cards Roster -->
+        <div style="flex-shrink: 0; background: rgba(0,0,0,0.3); border: 1px solid var(--border-glass); border-radius: 12px; padding: 14px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <h3 style="margin: 0; font-size: 13px; font-weight: 700; color: var(--primary); text-transform: uppercase; letter-spacing: 1px;">
+              <i class="fa-solid fa-id-card"></i> Commanders Joined (<span id="lobby-player-count">1</span>/8)
+            </h3>
+            <span style="font-size: 11px; color: var(--text-muted);">Click any card to inspect player stats</span>
+          </div>
+          <div id="lobby-battlecards-container" class="battlecards-grid">
+            <!-- Dynamic Battle Cards (2 to 8 players) render here -->
           </div>
         </div>
       </div>
@@ -1364,8 +1390,189 @@
     </div>
   </div>
 
-  <!-- ==================== DYNAMIC TOOLTIP ==================== -->
-  <div id="game-tooltip" class="tooltip" style="display: none;"></div>
+  <!-- ==================== MODAL: ACCOUNT LOGIN / REGISTER ==================== -->
+  <div id="account-auth-modal" class="modal">
+    <div class="modal-content glass" style="max-width: 400px; padding: 24px;">
+      <div class="modal-header" style="padding: 0 0 14px 0; margin-bottom: 16px; border-bottom: 1px solid var(--border-glass);">
+        <h2 style="font-size: 18px; color: var(--primary); display: flex; align-items: center; gap: 8px;">
+          <i class="fa-solid fa-user-shield"></i> Commander Account
+        </h2>
+        <span class="close-btn" id="btn-close-auth-modal">&times;</span>
+      </div>
+
+      <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+        <button id="tab-auth-login" class="btn primary-btn btn-sm w-full active">Sign In</button>
+        <button id="tab-auth-register" class="btn outline-btn btn-sm w-full">Create Account</button>
+      </div>
+
+      <div class="form-group">
+        <label for="input-auth-username">Account Username</label>
+        <input type="text" id="input-auth-username" placeholder="Enter username..." maxlength="20">
+      </div>
+
+      <div class="form-group">
+        <label for="input-auth-password">Password</label>
+        <input type="password" id="input-auth-password" placeholder="Enter password...">
+      </div>
+
+      <p id="auth-status-msg" style="font-size: 12px; margin-bottom: 12px; min-height: 16px;"></p>
+
+      <button id="btn-submit-auth" class="btn success-btn w-full">Sign In</button>
+      <p style="font-size: 11px; color: var(--text-muted); margin-top: 10px; text-align: center;">
+        You can still change your in-game display name and color anytime in the lobby.
+      </p>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL: LIFETIME STATS & ACHIEVEMENTS GALLERY ==================== -->
+  <div id="account-stats-modal" class="modal">
+    <div class="modal-content glass" style="max-width: 680px; padding: 24px; max-height: 90vh; overflow-y: auto;">
+      <div class="modal-header" style="padding: 0 0 12px 0; margin-bottom: 14px; border-bottom: 1px solid var(--border-glass);">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div id="my-profile-insignia-badge" class="rank-insignia-icon insignia-sm"></div>
+          <div>
+            <h2 style="font-size: 18px; color: var(--primary); margin: 0;">
+              Commander <span id="lbl-stats-modal-user" style="color: #fff;"></span>
+            </h2>
+            <span style="font-size: 11px; color: #a855f7; font-weight: 700;" id="lbl-profile-rank-title">Rank: Private</span>
+          </div>
+        </div>
+        <span class="close-btn" id="btn-close-stats-modal">&times;</span>
+      </div>
+
+      <!-- Level Progress Bar -->
+      <div style="background: rgba(0,0,0,0.4); border: 1px solid var(--border-glass); border-radius: 10px; padding: 10px 14px; margin-bottom: 14px;">
+        <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: 700; margin-bottom: 4px;">
+          <span style="color: #38bdf8;">Level <span id="lbl-profile-level-num">1</span></span>
+          <span style="color: #facc15;"><span id="lbl-profile-xp-current">0</span> / <span id="lbl-profile-xp-needed">100</span> XP</span>
+        </div>
+        <div style="height: 8px; background: rgba(255,255,255,0.08); border-radius: 4px; overflow: hidden;">
+          <div id="profile-xp-bar-fill" style="width: 0%; height: 100%; background: linear-gradient(90deg, #38bdf8, #a855f7); transition: width 0.3s ease;"></div>
+        </div>
+        <p style="font-size: 10px; color: var(--text-muted); margin-top: 4px; margin-bottom: 0;">
+          XP is earned in multiplayer matches with at least 2 human commanders.
+        </p>
+      </div>
+
+      <!-- Tabs: Multiplayer vs Solo vs Battle Card vs Achievements -->
+      <div style="display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap;">
+        <button id="tab-stats-pvp" class="btn primary-btn btn-sm" style="flex: 1; min-width: 120px;">Multiplayer (PVP)</button>
+        <button id="tab-stats-solo" class="btn outline-btn btn-sm" style="flex: 1; min-width: 120px;">Solo vs AI</button>
+        <button id="tab-stats-card-customize" class="btn outline-btn btn-sm" style="flex: 1; min-width: 120px;"><i class="fa-solid fa-palette"></i> Battle Card</button>
+        <button id="tab-stats-achievements" class="btn outline-btn btn-sm" style="flex: 1; min-width: 120px;"><i class="fa-solid fa-trophy"></i> Achievements</button>
+      </div>
+
+      <!-- Panel 1: Stats Grid (PVP vs Solo) -->
+      <div id="profile-stats-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px;">
+        <div class="stat-box" style="background: rgba(0,0,0,0.3); border: 1px solid var(--border-glass); padding: 10px; border-radius: 8px;">
+          <span style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">Match Record</span>
+          <div style="font-size: 16px; font-weight: 700; color: #fff; margin-top: 4px;" id="stat-record-val">0W - 0L</div>
+          <span style="font-size: 11px; color: var(--primary);" id="stat-winrate-val">0% Win Rate</span>
+        </div>
+        <div class="stat-box" style="background: rgba(0,0,0,0.3); border: 1px solid var(--border-glass); padding: 10px; border-radius: 8px;">
+          <span style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">Conquests / Losses</span>
+          <div style="font-size: 16px; font-weight: 700; color: #10b981; margin-top: 4px;" id="stat-conquests-val">0</div>
+          <span style="font-size: 11px; color: #ef4444;" id="stat-lost-val">0 Lost</span>
+        </div>
+        <div class="stat-box" style="background: rgba(0,0,0,0.3); border: 1px solid var(--border-glass); padding: 10px; border-radius: 8px;">
+          <span style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">Combat Armies</span>
+          <div style="font-size: 16px; font-weight: 700; color: #38bdf8; margin-top: 4px;" id="stat-kills-val">0 Kills</div>
+          <span style="font-size: 11px; color: var(--text-muted);" id="stat-armies-lost-val">0 Lost</span>
+        </div>
+        <div class="stat-box" style="background: rgba(0,0,0,0.3); border: 1px solid var(--border-glass); padding: 10px; border-radius: 8px;">
+          <span style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">Nuclear Arsenal</span>
+          <div style="font-size: 16px; font-weight: 700; color: #f59e0b; margin-top: 4px;" id="stat-nukes-val">0 Fired</div>
+          <span style="font-size: 11px; color: #a855f7;" id="stat-thermo-val">0 Thermos</span>
+        </div>
+      </div>
+
+      <!-- Panel 2: Battle Card Customizer -->
+      <div id="profile-card-customizer" style="display: none; flex-direction: column; gap: 12px; margin-bottom: 14px;">
+        <div style="font-size: 12px; color: var(--text-muted);">
+          Customize your personal Battle Card. Other commanders will see this in lobbies!
+        </div>
+
+        <div style="display: flex; gap: 10px; align-items: center;">
+          <div style="flex: 1;">
+            <label style="font-size: 11px; font-weight: 700; color: #38bdf8; display: block; margin-bottom: 3px;">Theme:</label>
+            <select id="select-card-theme" style="width: 100%; background: #000; border: 1px solid var(--border-glass); color: #fff; padding: 6px; border-radius: 6px; font-size: 12px;">
+              <option value="default">Default Dark</option>
+              <option value="scifi">Sci-Fi Cybernetic</option>
+              <option value="anime">Anime Kawaii</option>
+              <option value="napoleonic">Napoleonic Era</option>
+              <option value="modern">Modern Warfare</option>
+            </select>
+          </div>
+          <div style="flex: 1;">
+            <label style="font-size: 11px; font-weight: 700; color: #38bdf8; display: block; margin-bottom: 3px;">Design Style:</label>
+            <select id="select-card-option" style="width: 100%; background: #000; border: 1px solid var(--border-glass); color: #fff; padding: 6px; border-radius: 6px; font-size: 12px;">
+              <option value="1">Style 1 (Clean / Basic)</option>
+              <option value="2">Style 2 (Rich Graphic Art)</option>
+              <option value="3">Style 3 (Rich Graphic Art)</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label style="font-size: 11px; font-weight: 700; color: var(--text-muted); display: block; margin-bottom: 6px;">Live Battle Card Preview:</label>
+          <div id="my-card-preview-render"></div>
+        </div>
+
+        <button id="btn-save-battle-card" class="btn success-btn w-full mt-2"><i class="fa-solid fa-floppy-disk"></i> Save Battle Card</button>
+      </div>
+
+      <!-- Panel 3: Filterable Achievements Gallery -->
+      <div id="profile-achievements-tab" style="display: none; flex-direction: column; gap: 10px; margin-bottom: 14px;">
+        <!-- Filters Row -->
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; background: rgba(0,0,0,0.3); padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border-glass);">
+          <div style="flex: 1; min-width: 140px;">
+            <select id="select-ach-category-filter" style="width: 100%; background: #000; border: 1px solid var(--border-glass); color: #fff; padding: 4px 8px; border-radius: 6px; font-size: 11px;">
+              <option value="all">All Categories (60)</option>
+              <option value="combat">Combat & Conquest (11)</option>
+              <option value="nuclear">Nuclear Warfare (8)</option>
+              <option value="diplomacy">Diplomacy & Treaties (9)</option>
+              <option value="capital">Capital Rush (4)</option>
+              <option value="fow">Fog of War (2)</option>
+              <option value="dice">Dice Luck & RNG (4)</option>
+              <option value="cards">Cards & Logistics (5)</option>
+              <option value="tactics">Tactics & Mastery (14)</option>
+              <option value="secret">Secret Feats (3)</option>
+            </select>
+          </div>
+          <div style="flex: 1; min-width: 140px;">
+            <select id="select-ach-rarity-filter" style="width: 100%; background: #000; border: 1px solid var(--border-glass); color: #fff; padding: 4px 8px; border-radius: 6px; font-size: 11px;">
+              <option value="all">All Rarities</option>
+              <option value="unlocked">Unlocked Only</option>
+              <option value="locked">Locked Only</option>
+              <option value="common">Common (+50 XP)</option>
+              <option value="rare">Rare (+100 XP)</option>
+              <option value="epic">Epic (+200 XP)</option>
+              <option value="legendary">Legendary (+500 XP)</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="stats-achievements-container">
+          <!-- Gallery cards populated by main-controller.js -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL: INSPECT OTHER COMMANDER ==================== -->
+  <div id="inspect-player-modal" class="modal">
+    <div class="modal-content glass" style="max-width: 480px; padding: 22px;">
+      <div class="modal-header" style="padding: 0 0 10px 0; margin-bottom: 12px; border-bottom: 1px solid var(--border-glass);">
+        <h2 style="font-size: 17px; color: var(--primary); margin: 0; display: flex; align-items: center; gap: 8px;">
+          <i class="fa-solid fa-magnifying-glass"></i> Commander Dossier
+        </h2>
+        <span class="close-btn" id="btn-close-inspect-modal">&times;</span>
+      </div>
+      <div id="inspect-modal-body">
+        <!-- Live inspected player card and stats -->
+      </div>
+    </div>
+  </div>
 
   <!-- Chart.js Library -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>

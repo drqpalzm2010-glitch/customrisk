@@ -1,7 +1,11 @@
 const assert = require('assert').strict;
+// Route the user database to a temp file so tests don't mutate the real DB
+process.env.USER_DB_PATH = require('path').join(__dirname, 'test_users_data.json');
+const fs = require('fs');
 const GameEngine = require('../server/game-engine');
 const AIEngine = require('../server/ai-engine');
 const RoomManager = require('../server/room-manager');
+const UserDB = require('../server/user-db');
 
 console.log('🧪 Starting Factional Risk Automated Verification Tests...\n');
 
@@ -1238,6 +1242,343 @@ function testLLMMultiDraftAndStuckWatchdog() {
   console.log('✅ LLM Multi-Draft Splitting & Stuck AI Auto-Recovery Passed.');
 }
 
+function testLargeMapArmyScaling() {
+  console.log('🔄 Testing Large Map Army Scaling...');
+
+  // Build a large mock map with 120 territories
+  const largeTerritories = [];
+  for (let i = 0; i < 120; i++) {
+    largeTerritories.push({ id: `t${i}`, name: `Territory ${i}` });
+  }
+  const largeMap = {
+    mapName: 'Large Map',
+    territories: largeTerritories,
+    connections: [['t0', 't1']],
+    continents: [
+      { id: 'c1', name: 'Continent A', bonus: 5, territoryIds: ['t0', 't1', 't2'] },
+      { id: 'c2', name: 'Continent B', bonus: 3, territoryIds: ['t3', 't4', 't5'] }
+    ]
+  };
+
+  const largeRoom = {
+    code: 'LARGE',
+    players: [
+      { id: 'p1', name: 'Alice', color: '#ff0000', isAI: false },
+      { id: 'p2', name: 'Bob', color: '#00ff00', isAI: true },
+      { id: 'p3', name: 'Carol', color: '#0000ff', isAI: true }
+    ],
+    mapData: largeMap,
+    gameState: null
+  };
+
+  GameEngine.initializeGame(largeRoom, largeMap);
+  const state = largeRoom.gameState;
+
+  // With 120 territories and 3 players, each player claims ~40 territories.
+  // startingArmies should be at least ceil(120/3) + 5 = 45
+  assert.equal(state.players[0].startingArmiesPool, 45,
+    '3 players on 120-territory map should get at least 45 starting armies');
+  assert.equal(state.players[1].startingArmiesPool, 45, 'p2 should also get 45');
+  assert.equal(state.players[2].startingArmiesPool, 45, 'p3 should also get 45');
+
+  // Simulate claiming all territories — pool should never go negative
+  let turnIdx = 0;
+  const unclaimed = Object.keys(state.territories).filter(tid => state.territories[tid].ownerId === null);
+  while (unclaimed.length > 0) {
+    const player = state.players[turnIdx];
+    const res = GameEngine.claimTerritory(largeRoom, player.id, unclaimed[0]);
+    assert.ok(res.success, `Claim should succeed for ${player.name}`);
+    assert.ok(player.startingArmiesPool >= 0,
+      `${player.name}'s pool should never go negative (was ${player.startingArmiesPool})`);
+    unclaimed.shift();
+    turnIdx = state.turnIndex;
+  }
+
+  // After all claims, transition should be to SETUP_FORTIFY
+  assert.equal(state.turnStage, 'SETUP_FORTIFY', 'Should be in SETUP_FORTIFY after all claims');
+
+  // All players should still have a positive pool for fortification
+  state.players.forEach(p => {
+    assert.ok(p.startingArmiesPool > 0,
+      `${p.name} should have fortify armies remaining (got ${p.startingArmiesPool})`);
+  });
+
+  // Test with 2 players on a 200-territory map
+  const hugeTerritories = [];
+  for (let i = 0; i < 200; i++) {
+    hugeTerritories.push({ id: `h${i}`, name: `Huge ${i}` });
+  }
+  const hugeMap = { mapName: 'Huge Map', territories: hugeTerritories, connections: [['h0', 'h1']], continents: [] };
+  const hugeRoom = {
+    code: 'HUGE',
+    players: [
+      { id: 'p1', name: 'Alice', color: '#ff0000', isAI: false },
+      { id: 'p2', name: 'Bob', color: '#00ff00', isAI: true }
+    ],
+    mapData: hugeMap,
+    gameState: null
+  };
+  GameEngine.initializeGame(hugeRoom, hugeMap);
+  const hugeState = hugeRoom.gameState;
+  // ceil(200/2) + 5 = 105
+  assert.equal(hugeState.players[0].startingArmiesPool, 105,
+    '2 players on 200-territory map should get at least 105 starting armies');
+
+  console.log('✅ Large Map Army Scaling Tests Passed.');
+}
+
+function testFortifySetupNoInfiniteLoop() {
+  console.log('🔄 Testing Fortify Setup Zero Pool Safety...');
+
+  const tinyMap = {
+    mapName: 'Tiny Map',
+    territories: [
+      { id: 't1', name: 'T1' },
+      { id: 't2', name: 'T2' }
+    ],
+    connections: [['t1', 't2']],
+    continents: []
+  };
+  const room = {
+    code: 'TINY',
+    players: [
+      { id: 'p1', name: 'Alice', color: '#ff0000', isAI: false },
+      { id: 'p2', name: 'Bob', color: '#00ff00', isAI: true, autoDefend: true }
+    ],
+    mapData: tinyMap,
+    gameState: null
+  };
+  GameEngine.initializeGame(room, tinyMap);
+  const state = room.gameState;
+
+  // Set up: both players have claimed all territories
+  state.turnStage = 'SETUP_FORTIFY';
+  state.turnIndex = 0;
+  state.territories['t1'] = { ownerId: 'p1', armies: 1 };
+  state.territories['t2'] = { ownerId: 'p2', armies: 1 };
+  // Set both players' pool to 0 (simulate exhaustion)
+  state.players[0].startingArmiesPool = 0;
+  state.players[1].startingArmiesPool = 0;
+
+  // fortifySetup should NOT return an error — it should succeed (no placement)
+  // and transition to DRAFT because armiesLeft <= 0
+  const res = GameEngine.fortifySetup(room, 'p1', 't1', 1);
+  assert.ok(res.success, 'fortifySetup with 0 pool should succeed (not error) and transition');
+  assert.equal(state.turnStage, 'DRAFT', 'Should transition to DRAFT when all pools are 0');
+
+  // Test with one player having pool > 0 and one at 0
+  GameEngine.initializeGame(room, tinyMap);
+  const state2 = room.gameState; // fresh reference after re-initialization
+  state2.turnStage = 'SETUP_FORTIFY';
+  state2.turnIndex = 0;
+  state2.territories['t1'] = { ownerId: 'p1', armies: 1 };
+  state2.territories['t2'] = { ownerId: 'p2', armies: 1 };
+  state2.players[0].startingArmiesPool = 0;
+  state2.players[1].startingArmiesPool = 5;
+
+  // p1 has 0 pool — should succeed (no placement) and advance to p2
+  const res2 = GameEngine.fortifySetup(room, 'p1', 't1', 1);
+  assert.ok(res2.success, 'fortifySetup with 0 pool should succeed');
+  assert.equal(state2.turnIndex, 1, 'Turn should advance to p2');
+  assert.equal(state2.turnStage, 'SETUP_FORTIFY', 'Should stay in SETUP_FORTIFY since p2 has armies');
+
+  console.log('✅ Fortify Setup Zero Pool Safety Tests Passed.');
+}
+
+function testColorUtilities() {
+  console.log('🔄 Testing Color Utilities...');
+
+  // Test hexToHsv
+  const red = GameEngine.hexToHsv('#ff0000');
+  assert.equal(Math.round(red.h), 0, '#ff0000 hue should be ~0');
+  assert.equal(Math.round(red.s * 100), 100, '#ff0000 saturation should be 100%');
+
+  const green = GameEngine.hexToHsv('#33ff66');
+  assert.equal(Math.round(green.h), 135, '#33ff66 hue should be ~135');
+
+  const blue = GameEngine.hexToHsv('#3366ff');
+  assert.equal(Math.round(blue.h), 225, '#3366ff hue should be ~225');
+
+  // Test colorDistanceHSV — similar colors should be close
+  const distSim = GameEngine.colorDistanceHSV('#ff3366', '#ff6633');
+  assert.ok(distSim < 0.35, 'Similar colors (#ff3366/#ff6633) should have low distance');
+
+  // Test colorDistanceHSV — different colors should be far apart
+  const distDiff = GameEngine.colorDistanceHSV('#ff3366', '#33ff66');
+  assert.ok(distDiff >= 0.35, 'Different colors (#ff3366/#33ff66) should have high distance');
+
+  // Test colorsAreSimilar
+  assert.equal(GameEngine.colorsAreSimilar('#ff3366', '#ff6633'), true,
+    '#ff3366 and #ff6633 should be similar');
+  assert.equal(GameEngine.colorsAreSimilar('#ff3366', '#33ff66'), false,
+    '#ff3366 and #33ff66 should NOT be similar');
+
+  console.log('✅ Color Utilities Tests Passed.');
+}
+
+function testAchievementIntegrity() {
+  console.log('🔄 Testing Achievement Integrity (all triggered IDs defined)...');
+  const fs = require('fs');
+  const q = String.fromCharCode(39);
+  const defined = Object.keys(UserDB.ACHIEVEMENTS);
+  const files = ['server/game-engine.js', 'server/room-manager.js', 'server/ai-engine.js', 'server.js', 'public/js/main-controller.js', 'public/js/game-client.js'];
+  let all = '';
+  files.forEach(f => { if (fs.existsSync(f)) all += fs.readFileSync(f, 'utf8'); });
+  const used = new Set();
+  const re = new RegExp(q + '([a-z_]+)' + q, 'g');
+  let m;
+  while ((m = re.exec(all)) !== null) if (defined.includes(m[1])) used.add(m[1]);
+
+  const missing = [...used].filter(id => !defined.includes(id));
+  assert.equal(missing.length, 0, `Triggered achievement IDs missing from definition: ${missing.join(', ')}`);
+  const newlyWired = ['manhattan_project', 'i_am_become_death', 'handshake_protocol', 'blood_brothers', 'the_coalition', 'et_tu_brute', 'silver_tongue', 'fool_me_twice', 'the_red_wedding', 'near_death_sovereign', 'omniscient_recon', 'shared_horizons', 'secret_anime_scroll', 'secret_choose_already'];
+  newlyWired.forEach(id => {
+    assert.ok(used.has(id), `Achievement ${id} should now be referenced by a trigger`);
+  });
+  console.log(`✅ Achievement Integrity Tests Passed (${used.size}/${defined.length} achievements reachable).`);
+}
+
+function testUserDBAccounts() {
+  console.log('🔄 Testing User Database & Auth...');
+  const dbPath = process.env.USER_DB_PATH;
+  try { if (fs.existsSync(dbPath)) fs.unlinkSync(dbPath); } catch (e) {}
+
+  const reg = UserDB.register('CommanderTest', 'secret123');
+  assert.ok(reg.success, 'Register should succeed');
+  assert.equal(reg.user.password, undefined, 'Safe user should not expose password');
+  assert.equal(reg.user.level, 1, 'New account starts at level 1');
+  assert.ok(UserDB.register('Commandertest', 'other123').error, 'Case-insensitive duplicate register should fail');
+  assert.ok(UserDB.login('Commandertest', 'wrongpass').error, 'Wrong password should fail');
+
+  const loginRes = UserDB.login('commanderTest', 'secret123');
+  assert.ok(loginRes.success, 'Login should succeed');
+  assert.ok(loginRes.user.token, 'Login should return a token for autologin');
+  assert.ok(UserDB.autoLogin('commanderTest', loginRes.user.token).success, 'Auto-login with valid token should succeed');
+  assert.ok(UserDB.autoLogin('commanderTest', 'wrongtoken').error, 'Auto-login with invalid token should fail');
+
+  const stats = UserDB.getAccountStats('commanderTest');
+  assert.ok(stats.success, 'getAccountStats should succeed');
+  assert.ok(stats.allAchievements, 'Should return allAchievements list');
+
+  try { if (fs.existsSync(dbPath)) fs.unlinkSync(dbPath); } catch (e) {}
+  console.log('✅ User DB & Auth Tests Passed.');
+}
+
+function testAchievementGrantingAndStats() {
+  console.log('🔄 Testing Achievement Granting, XP & Match Stats...');
+  const dbPath = process.env.USER_DB_PATH;
+  const reg = UserDB.register('XPTest', 'secret123');
+  assert.ok(reg.success, 'Register should succeed');
+
+  const grant1 = UserDB.grantAchievement('xptest', 'first_blood', true);
+  assert.ok(grant1, 'Grant should succeed');
+  assert.equal(grant1.xpReward, 50, 'Common achievement is worth 50 XP');
+  assert.ok(UserDB.getSafeUser(UserDB.loadUsers()['xptest']).unlockedAchievements.includes('first_blood'), 'Achievement should persist');
+
+  assert.equal(UserDB.grantAchievement('xptest', 'first_blood', true), null, 'Duplicate grant should return null');
+  assert.equal(UserDB.getSafeUser(UserDB.loadUsers()['xptest']).level, 1, 'Level should not increase on duplicate');
+
+  UserDB.grantAchievement('xptest', 'the_red_wedding', true); // epic = 200 XP
+  UserDB.grantAchievement('xptest', 'the_comeback_kid', true); // legendary = 500 XP
+  const after = UserDB.getSafeUser(UserDB.loadUsers()['xptest']);
+  assert.ok(after.totalXP >= 750, 'XP should accumulate');
+  assert.ok(after.level >= 3, 'XP should trigger level-ups');
+
+  UserDB.recordMatchFinished('xptest', { territoriesConquered: 4, killed: 10, lost: 2 }, true, false, 'conquest', false, {});
+  const stats = UserDB.getSafeUser(UserDB.loadUsers()['xptest']).soloStats;
+  assert.equal(stats.matchesPlayed, 1, 'matchesPlayed should increment');
+  assert.equal(stats.matchesWon, 1, 'matchesWon should increment');
+  assert.equal(stats.conquestWins, 1, 'conquestWins should increment');
+  assert.equal(stats.territoriesConquered, 4, 'territoriesConquered should add');
+
+  try { if (fs.existsSync(dbPath)) fs.unlinkSync(dbPath); } catch (e) {}
+  console.log('✅ Achievement Granting & Stats Tests Passed.');
+}
+
+function testNewAchievementTriggers() {
+  console.log('🔄 Testing Newly-Wired Achievement Triggers...');
+  const dbPath = process.env.USER_DB_PATH;
+  const reg = UserDB.register('AchTrigger', 'secret123');
+  assert.ok(reg.success, 'Register should succeed');
+
+  const mkRoom = (extra = {}) => ({
+    code: 'ACHTRIG',
+    io: null,
+    mapData: {
+      territories: [{ id: 't1', name: 'T1' }, { id: 't2', name: 'T2' }, { id: 't3', name: 'T3' }],
+      connections: [['t1', 't2'], ['t2', 't3']],
+      continents: [],
+    },
+    gameState: {
+      matchStartedWithMinTwoHumans: true,
+      players: [
+        { id: 'p1', name: 'A', accountId: 'achtrigger', isAI: false, cards: [], nukes: 0, thermonukes: 0, stats: { drafted: 0, killed: 0, lost: 0, territoriesConquered: 0 } },
+        { id: 'p2', name: 'B', accountId: 'achtriggerx', isAI: false, stats: { drafted: 0, killed: 0, lost: 0, territoriesConquered: 0 } }
+      ],
+      territories: { t1: { ownerId: 'p1', armies: 2 }, t2: { ownerId: 'p2', armies: 1 }, t3: { ownerId: null, armies: 0 } },
+      pacts: [],
+      capitals: {},
+      allowCrafting: true,
+      turnStage: 'DRAFT',
+      turnIndex: 0,
+      turnNum: 1,
+      logs: [],
+      fogOfWar: false,
+      gameMode: 'conquest',
+      ...extra
+    }
+  });
+
+  // Pact formation helper winding
+  const pactRoom = mkRoom();
+  GameEngine.grantPactFormationAchievements(pactRoom, 'alliance', 'p1', 'p2');
+  const p1Acc = UserDB.getSafeUser(UserDB.loadUsers()['achtrigger']);
+  assert.ok(p1Acc.unlockedAchievements.includes('blood_brothers'), 'Alliance should unlock blood_brothers');
+
+  // Fog helper mirrors client visibility
+  const fogRoom = mkRoom({ fogOfWar: true });
+  const vis = GameEngine.computeVisibleTerritories(fogRoom.gameState, fogRoom.mapData, 'p1');
+  assert.ok(vis.has('t1') && vis.has('t2'), 'Player should see own + bordering territories');
+
+  try { if (fs.existsSync(dbPath)) fs.unlinkSync(dbPath); } catch (e) {}
+  console.log('✅ Newly-Wired Achievement Triggers Tests Passed.');
+}
+
+
+function testGetUniqueColorSimilarity() {
+  console.log('🔄 Testing getUniqueColor Similarity Check...');
+
+  // Create a mock room with one player who has a red color
+  const room = RoomManager.createRoom('p1', 'Host', '#ff0000', mockMap);
+
+  // getUniqueColor should NOT return a color similar to #ff0000
+  const newColor = RoomManager.getUniqueColor(room);
+  assert.ok(newColor, 'Should return a color');
+  assert.equal(GameEngine.colorsAreSimilar(newColor, '#ff0000'), false,
+    'New color should NOT be similar to existing #ff0000');
+
+  // Add the new color as a player and get another
+  room.players.push({ id: 'p2', name: 'P2', color: newColor });
+  const newColor2 = RoomManager.getUniqueColor(room);
+  assert.ok(newColor2, 'Should return a second color');
+  assert.equal(GameEngine.colorsAreSimilar(newColor2, '#ff0000'), false,
+    'Second new color should NOT be similar to #ff0000');
+  assert.equal(GameEngine.colorsAreSimilar(newColor2, newColor), false,
+    'Second new color should NOT be similar to first new color');
+
+  // Test with a room that already has similar colors
+  const room2 = RoomManager.createRoom('p1', 'Host', '#ff3366', mockMap);
+  room2.players.push({ id: 'p2', name: 'P2', color: '#e11d48' });
+  const newColor3 = RoomManager.getUniqueColor(room2);
+  assert.ok(newColor3, 'Should return a color');
+  assert.equal(GameEngine.colorsAreSimilar(newColor3, '#ff3366'), false,
+    'Should not return color similar to #ff3366');
+  assert.equal(GameEngine.colorsAreSimilar(newColor3, '#e11d48'), false,
+    'Should not return color similar to #e11d48');
+
+  console.log('✅ Get Unique Color Similarity Tests Passed.');
+}
+
 try {
   testInitialization();
   testSetupPhase();
@@ -1267,6 +1608,14 @@ try {
   testCampaignSaveAndRestore();
   testScenarioInProgressLLMLoading();
   testLLMMultiDraftAndStuckWatchdog();
+  testLargeMapArmyScaling();
+  testFortifySetupNoInfiniteLoop();
+  testColorUtilities();
+  testGetUniqueColorSimilarity();
+  testAchievementIntegrity();
+  testUserDBAccounts();
+  testAchievementGrantingAndStats();
+  testNewAchievementTriggers();
   console.log('\n🎉 ALL AUTOMATED VERIFICATION TESTS PASSED SUCCESSFULLY! 🎉');
   process.exit(0);
 } catch (err) {

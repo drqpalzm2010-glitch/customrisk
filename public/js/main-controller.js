@@ -38,6 +38,7 @@
       this.setMapTheme(this.mapTheme);
 
       this.initMenu();
+      this.initAccountUI();
       this.initLobby();
       this.initAudio();
       this.initInfoTips();
@@ -1152,6 +1153,209 @@
         waitMsg.style.display = 'block';
       }
     }
+    
+    getRankInsigniaInfo(level, isAI = false) {
+      if (isAI) {
+        return { tierClass: 'rank-tier-bot', icon: '<i class="fa-solid fa-robot"></i>', rankTitle: 'AI Automaton' };
+      }
+      const lvl = Math.max(1, parseInt(level) || 1);
+
+      if (lvl >= 100) return { tierClass: 'rank-tier-marshal', icon: '<i class="fa-solid fa-crown"></i>', rankTitle: 'Supreme Field Marshal' };
+      if (lvl >= 90)  return { tierClass: 'rank-tier-gen',     icon: '<i class="fa-solid fa-star"></i>', rankTitle: 'General of the Army' };
+      if (lvl >= 80)  return { tierClass: 'rank-tier-bgen',    icon: '<i class="fa-solid fa-star-half-stroke"></i>', rankTitle: 'Brigadier General' };
+      if (lvl >= 70)  return { tierClass: 'rank-tier-col',     icon: '<i class="fa-solid fa-shield-halved"></i>', rankTitle: 'Colonel' };
+      if (lvl >= 60)  return { tierClass: 'rank-tier-maj',     icon: '<i class="fa-solid fa-gem"></i>', rankTitle: 'Major' };
+      if (lvl >= 50)  return { tierClass: 'rank-tier-cpt',     icon: '<i class="fa-solid fa-crosshairs"></i>', rankTitle: 'Captain' };
+      if (lvl >= 40)  return { tierClass: 'rank-tier-lt',      icon: '<i class="fa-solid fa-bars"></i>', rankTitle: 'Lieutenant' };
+      if (lvl >= 30)  return { tierClass: 'rank-tier-msgt',    icon: '<i class="fa-solid fa-ribbon"></i>', rankTitle: 'Master Sergeant' };
+      if (lvl >= 20)  return { tierClass: 'rank-tier-sgt',     icon: '<i class="fa-solid fa-angles-up"></i>', rankTitle: 'Sergeant' };
+      if (lvl >= 10)  return { tierClass: 'rank-tier-cpl',     icon: '<i class="fa-solid fa-angle-up"></i>', rankTitle: 'Corporal' };
+      return { tierClass: 'rank-tier-pvt', icon: '<i class="fa-solid fa-chevron-up"></i>', rankTitle: 'Private' };
+    }
+
+    renderBattleCardHTML(player, isMe = false, isHost = false, isEditing = false) {
+      const card = player.battleCard || { theme: 'default', option: 1, showcasedBadges: [] };
+      const themeKey = (card.theme || 'default').toLowerCase();
+      const optionNum = Math.max(1, Math.min(3, parseInt(card.option) || 1));
+      const cardClass = `player-battlecard bcard-theme-${themeKey}-${optionNum}`;
+
+      const insignia = this.getRankInsigniaInfo(player.level, player.isAI);
+      const lvlStr = player.isAI ? 'AI' : `Lvl ${player.level || 1}`;
+      const colorSwatch = `<span style="display:inline-block; width:13px; height:13px; border-radius:50%; background:${player.color}; border:1.5px solid #fff; box-shadow:0 0 6px ${player.color}; flex-shrink:0;"></span>`;
+
+      // Mini level progress calculation
+      const lvl = Math.max(1, parseInt(player.level) || 1);
+      const needed = Math.min(3000, 100 + (lvl - 1) * 50);
+      const xp = player.currentXP || 0;
+      const xpPct = player.isAI ? 100 : Math.min(100, Math.round((xp / needed) * 100));
+
+      let badgesHtml = '';
+      const showcased = card.showcasedBadges || [];
+
+      if (isEditing) {
+        let slotItems = '';
+        for (let i = 0; i < 3; i++) {
+          const achId = showcased[i];
+          if (achId) {
+            const iconSvg = window.getAchievementSvgIcon(achId, 20);
+            slotItems += `<span class="bcard-achievement-slot slot-equipped" data-slot-index="${i}" title="${achId}">${iconSvg}</span>`;
+          } else {
+            slotItems += `<span class="bcard-achievement-slot bcard-slot-empty" data-slot-index="${i}" title="Empty Medal Slot"><i class="fa-solid fa-plus"></i></span>`;
+          }
+        }
+        badgesHtml = `<div style="display: flex; gap: 6px;">${slotItems}</div>`;
+      } else if (showcased.length > 0) {
+        let slotItems = '';
+        showcased.slice(0, 3).forEach(achId => {
+          if (achId) {
+            const iconSvg = window.getAchievementSvgIcon(achId, 20);
+            slotItems += `<span class="bcard-achievement-slot" title="Medal">${iconSvg}</span>`;
+          }
+        });
+        if (slotItems) badgesHtml = `<div style="display: flex; gap: 6px;">${slotItems}</div>`;
+      }
+
+      return `
+        <div class="${cardClass}" data-player-id="${player.id}" title="Click to inspect commander statistics">
+          <div class="bcard-art-overlay"></div>
+          <div class="bcard-content-layer">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <div class="rank-insignia-icon ${insignia.tierClass}">${insignia.icon}</div>
+                <div>
+                  <div style="font-weight: 800; font-size: 14px; color: #fff; display: flex; align-items: center; gap: 6px; letter-spacing: 0.5px;">
+                    ${colorSwatch}
+                    <span>${player.name}</span>
+                  </div>
+                  <div style="font-size: 11px; color: rgba(255,255,255,0.75); font-weight: 600;">
+                    ${insignia.rankTitle}
+                  </div>
+                </div>
+              </div>
+              <span style="font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 6px; background: rgba(0,0,0,0.6); color: var(--primary); border: 1px solid rgba(0,229,255,0.4); letter-spacing: 0.5px;">
+                ${lvlStr}
+              </span>
+            </div>
+
+            <!-- Mini XP bar removed -->
+
+            <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 6px; font-size: 11px; color: rgba(255,255,255,0.7);">
+              <span style="font-weight: 600;">${player.isHost ? '👑 Room Host' : (player.isAI ? (player.personality ? player.personality.toUpperCase() : 'AI BOT') : 'Commander')}</span>
+              ${badgesHtml}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    updateLobbyUI(players, isHost, roomCode) {
+      this.isLobbyHost = isHost;
+      document.getElementById('lobby-room-code').textContent = roomCode;
+      document.getElementById('lobby-player-count').textContent = players.length;
+
+      this.updateLobbyScenarioUI();
+
+      // Render Large Battle Cards Grid in Lobby
+      const cardsContainer = document.getElementById('lobby-battlecards-container');
+      if (cardsContainer) {
+        cardsContainer.innerHTML = '';
+        const myId = window.SocketClient.socket ? window.SocketClient.socket.id : null;
+
+        players.forEach(p => {
+          const isMe = p.id === myId;
+          const cardHtml = this.renderBattleCardHTML(p, isMe, p.isHost);
+          const wrapper = document.createElement('div');
+          wrapper.innerHTML = cardHtml;
+          const cardEl = wrapper.firstElementChild;
+
+          // Click to inspect player stats
+          cardEl.addEventListener('click', () => {
+            this.openPlayerInspectorModal(p);
+          });
+
+          cardsContainer.appendChild(cardEl);
+        });
+      }
+
+      // Enable/Disable buttons based on player roles
+      const hostCtrls = document.getElementById('host-only-controls');
+      const waitMsg = document.getElementById('client-waiting-msg');
+      const btnStart = document.getElementById('btn-start-game');
+
+      if (isHost) {
+        hostCtrls.style.display = 'block';
+        waitMsg.style.display = 'none';
+        const playAsNormal = document.getElementById('chk-lobby-play-as-normal')?.checked;
+        const disableNations = document.getElementById('chk-lobby-disable-nations')?.checked;
+        const isScenario = !!(this.selectedMap && this.selectedMap.isScenario && !playAsNormal && !disableNations);
+        const hasScenarioNations = !!(this.selectedMap && this.selectedMap.nations && this.selectedMap.nations.length >= 2);
+
+        if (players.length >= 2 || (isScenario && hasScenarioNations)) {
+          btnStart.disabled = false;
+        } else {
+          btnStart.disabled = true;
+        }
+      } else {
+        hostCtrls.style.display = 'none';
+        waitMsg.style.display = 'block';
+      }
+    }
+
+    openPlayerInspectorModal(player) {
+      const modal = document.getElementById('inspect-player-modal');
+      const body = document.getElementById('inspect-modal-body');
+      if (!modal || !body) return;
+
+      if (player.isAI) {
+        body.innerHTML = `
+          <div style="text-align: center; padding: 20px;">
+            <div style="font-size: 38px; color: #818cf8; margin-bottom: 8px;"><i class="fa-solid fa-robot"></i></div>
+            <h3 style="color: #fff; margin: 0 0 4px 0;">${player.name}</h3>
+            <span style="font-size: 12px; color: var(--primary); font-weight: 700;">Tactical AI Persona: ${player.personality ? player.personality.toUpperCase() : 'NORMAL'}</span>
+            <p style="font-size: 11px; color: var(--text-muted); margin-top: 10px;">
+              This commander is controlled by the tactical simulation engine.
+            </p>
+          </div>
+        `;
+        modal.classList.add('active');
+        return;
+      }
+
+      // Fetch user profile from database
+      const accountName = player.accountId || player.name;
+      window.SocketClient.getAccountStats(accountName, (res) => {
+        const u = res.success ? res.user : null;
+        const pvp = u ? (u.multiplayerStats || {}) : {};
+        const solo = u ? (u.soloStats || {}) : {};
+        const lvl = u ? (u.level || 1) : 1;
+        const xp = u ? (u.currentXP || 0) : 0;
+        const needed = u ? (u.xpNeeded || 100) : 100;
+        const insignia = this.getRankInsigniaInfo(lvl, false);
+
+        body.innerHTML = `
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 14px; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 8px;">
+            <div class="rank-insignia-icon ${insignia.tierClass}">${insignia.icon}</div>
+            <div>
+              <strong style="color: #fff; font-size: 14px; display: block;">${player.name}</strong>
+              <span style="font-size: 11px; color: #38bdf8;">${insignia.rankTitle} • Level ${lvl} (${xp}/${needed} XP)</span>
+            </div>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 12px;">
+            <div style="background: rgba(0,0,0,0.25); padding: 8px; border-radius: 6px; border: 1px solid var(--border-glass);">
+              <span style="color: var(--text-muted); font-size: 10px; display: block;">Multiplayer (PVP)</span>
+              <strong style="color: #fff;">${pvp.matchesWon || 0}W - ${Math.max(0, (pvp.matchesPlayed || 0) - (pvp.matchesWon || 0))}L</strong>
+              <div style="color: var(--primary); font-size: 10px;">${pvp.matchesPlayed ? Math.round(((pvp.matchesWon || 0) / pvp.matchesPlayed) * 100) : 0}% Win Rate</div>
+            </div>
+            <div style="background: rgba(0,0,0,0.25); padding: 8px; border-radius: 6px; border: 1px solid var(--border-glass);">
+              <span style="color: var(--text-muted); font-size: 10px; display: block;">Solo vs AI</span>
+              <strong style="color: #fff;">${solo.matchesWon || 0}W - ${Math.max(0, (solo.matchesPlayed || 0) - (solo.matchesWon || 0))}L</strong>
+              <div style="color: var(--primary); font-size: 10px;">${solo.matchesPlayed ? Math.round(((solo.matchesWon || 0) / solo.matchesPlayed) * 100) : 0}% Win Rate</div>
+            </div>
+          </div>
+        `;
+        modal.classList.add('active');
+      });
+    }
 
     renderLobbyPreview() {
       const container = document.getElementById('lobby-map-preview-container');
@@ -1234,6 +1438,28 @@
       this.mapTheme = theme;
       localStorage.setItem('map-theme', theme);
       document.body.setAttribute('data-map-theme', theme);
+
+      // --- Secret Achievement: "Just Choose Already" (switch themes 6+ times in one turn) ---
+      // Only count real user switches (skip the constructor-init call when mapTheme is unchanged).
+      this._themeSwitchCount = (this._themeSwitchCount || 0);
+      let isInitCall = false;
+      if (this._lastSetTheme && this._lastSetTheme === null) isInitCall = false;
+      if (this._themeSwitchCount === 0 && this._firstThemeSet === undefined) {
+        this._firstThemeSet = theme;
+        isInitCall = true; // first call from constructor
+      }
+      this._themeSwitchCount++;
+      const isManual = !(this._firstThemeSet && this._themeSwitchCount === 1);
+      if (isManual && this._themeSwitchCount >= 6) {
+        if (window.SocketClient && window.SocketClient.triggerSecretAchievement) {
+          window.SocketClient.triggerSecretAchievement('secret_choose_already', this._themeSwitchCount, (res) => {
+            if (res && res.achievement) {
+              if (window.showToast) window.showToast(`<i class="fa-solid fa-trophy"></i> Secret achievement unlocked: <strong>${res.achievement.title}</strong>!`, 'success');
+            }
+          });
+        }
+      }
+      this._lastSetTheme = theme;
 
       // Filter out and sanitize old map themes into premium replacements
       const deprecatedThemes = new Set(['satellite', 'pastel', 'basiclight', 'light', 'molten', 'glacial']);
@@ -1365,6 +1591,378 @@
         if (activeEl) position(activeEl);
       }, true);
       window.addEventListener('blur', () => hide());
+    }
+    initAccountUI() {
+      const authModal = document.getElementById('account-auth-modal');
+      const statsModal = document.getElementById('account-stats-modal');
+      const inspectModal = document.getElementById('inspect-player-modal');
+      const btnCloseInspect = document.getElementById('btn-close-inspect-modal');
+      if (btnCloseInspect && inspectModal) {
+        btnCloseInspect.onclick = () => inspectModal.classList.remove('active');
+      }
+
+      const btnOpenAuth = document.getElementById('btn-open-login-modal');
+      const btnCloseAuth = document.getElementById('btn-close-auth-modal');
+      const btnCloseStats = document.getElementById('btn-close-stats-modal');
+      const tabLogin = document.getElementById('tab-auth-login');
+      const tabRegister = document.getElementById('tab-auth-register');
+      const btnSubmitAuth = document.getElementById('btn-submit-auth');
+      const inputUser = document.getElementById('input-auth-username');
+      const inputPass = document.getElementById('input-auth-password');
+      const authStatus = document.getElementById('auth-status-msg');
+      const btnLogout = document.getElementById('btn-account-logout');
+      const btnViewStats = document.getElementById('btn-view-my-stats');
+      const loggedOutView = document.getElementById('account-logged-out-view');
+      const loggedInView = document.getElementById('account-logged-in-view');
+      const lblUsername = document.getElementById('lbl-logged-in-username');
+
+      const tabStatsPvp = document.getElementById('tab-stats-pvp');
+      const tabStatsSolo = document.getElementById('tab-stats-solo');
+      const tabStatsCard = document.getElementById('tab-stats-card-customize');
+      const tabStatsAch = document.getElementById('tab-stats-achievements');
+
+      const statsGrid = document.getElementById('profile-stats-grid');
+      const cardCustomizer = document.getElementById('profile-card-customizer');
+      const achTab = document.getElementById('profile-achievements-tab');
+
+      const selectCardTheme = document.getElementById('select-card-theme');
+      const selectCardOption = document.getElementById('select-card-option');
+      const cardPreview = document.getElementById('my-card-preview-render');
+      const btnSaveCard = document.getElementById('btn-save-battle-card');
+
+      const filterCategory = document.getElementById('select-ach-category-filter');
+      const filterRarity = document.getElementById('select-ach-rarity-filter');
+
+      let currentAccountData = null;
+      let allAchievementsData = {};
+      let activeStatsMode = 'pvp';
+
+      // Live Achievement Toast Notification Listener
+      if (window.SocketClient && window.SocketClient.socket) {
+        window.SocketClient.socket.on('achievementUnlocked', ({ achievement, xpReward, newLevel, currentXP, xpNeeded }) => {
+          if (!achievement) return;
+          const toast = document.createElement('div');
+          toast.className = `achievement-unlock-toast ach-glow-${achievement.rarity}`;
+          
+          const iconSvg = window.getAchievementSvgIcon(achievement.id, 32);
+          toast.innerHTML = `
+            <div class="ach-toast-icon">${iconSvg}</div>
+            <div class="ach-toast-info">
+              <div class="ach-toast-header">
+                <span class="ach-toast-badge ${achievement.rarity}">ACHIEVEMENT UNLOCKED (+${xpReward} XP)</span>
+              </div>
+              <strong class="ach-toast-title">${achievement.title}</strong>
+              <p class="ach-toast-desc">${achievement.desc}</p>
+            </div>
+          `;
+
+          document.body.appendChild(toast);
+          if (window.MainController) window.MainController.playSFX('imagesandsounds/conflict1.mp3');
+
+          setTimeout(() => {
+            toast.classList.add('hide');
+            setTimeout(() => toast.remove(), 400);
+          }, 6000);
+        });
+      }
+
+      const updateStatsDisplay = () => {
+        if (!currentAccountData || !statsGrid) return;
+        const st = activeStatsMode === 'pvp' ? (currentAccountData.multiplayerStats || {}) : (currentAccountData.soloStats || {});
+        
+        const won = st.matchesWon || 0;
+        const played = st.matchesPlayed || 0;
+        const lost = Math.max(0, played - won);
+        const winRate = played > 0 ? Math.round((won / played) * 100) : 0;
+
+        document.getElementById('stat-record-val').textContent = `${won}W - ${lost}L`;
+        document.getElementById('stat-winrate-val').textContent = `${winRate}% Win Rate (${played} matches)`;
+        document.getElementById('stat-conquests-val').textContent = `${st.territoriesConquered || 0} Conquered`;
+        document.getElementById('stat-lost-val').textContent = `${st.territoriesLost || 0} Lost`;
+        document.getElementById('stat-kills-val').textContent = `${st.armiesKilled || 0} Kills`;
+        document.getElementById('stat-armies-lost-val').textContent = `${st.armiesLost || 0} Armies Lost`;
+        document.getElementById('stat-nukes-val').textContent = `${st.tacticalNukesFired || 0} Tactical`;
+        document.getElementById('stat-thermo-val').textContent = `${st.thermonukesFired || 0} Thermos`;
+      };
+
+      const updateCardPreview = () => {
+        if (!cardPreview || !currentAccountData) return;
+        const theme = selectCardTheme ? selectCardTheme.value : 'default';
+        const opt = selectCardOption ? selectCardOption.value : 1;
+        const mockPlayer = {
+          id: 'me',
+          name: this.playerName || currentAccountData.username,
+          color: this.playerColor || '#00e5ff',
+          level: currentAccountData.level || 1,
+          isAI: false,
+          battleCard: { theme, option: opt, showcasedBadges: currentAccountData.battleCard?.showcasedBadges || [] }
+        };
+        cardPreview.innerHTML = this.renderBattleCardHTML(mockPlayer, true, false, true);
+
+        // Allow clicking empty "+" slots or equipped slots in preview to jump directly to achievements tab
+        cardPreview.querySelectorAll('.bcard-achievement-slot').forEach(slot => {
+          slot.onclick = () => {
+            if (tabStatsAch) tabStatsAch.click();
+          };
+        });
+      };
+
+      const renderAchievementsGallery = () => {
+        const galleryEl = document.getElementById('stats-achievements-container');
+        if (!galleryEl || !currentAccountData) return;
+
+        galleryEl.innerHTML = '';
+        const grid = document.createElement('div');
+        grid.className = 'achievements-gallery-grid';
+
+        const cat = filterCategory ? filterCategory.value : 'all';
+        const rar = filterRarity ? filterRarity.value : 'all';
+        const unlockedList = currentAccountData.unlockedAchievements || [];
+
+        Object.keys(allAchievementsData).forEach(achId => {
+          const ach = allAchievementsData[achId];
+          const isUnlocked = unlockedList.includes(achId);
+          const isShowcased = (currentAccountData.battleCard?.showcasedBadges || []).includes(achId);
+
+          // Filtering rules
+          if (cat !== 'all' && ach.category !== cat) return;
+          if (rar === 'unlocked' && !isUnlocked) return;
+          if (rar === 'locked' && isUnlocked) return;
+          if (['common', 'rare', 'epic', 'legendary'].includes(rar) && ach.rarity !== rar) return;
+
+          const rarityClass = `ach-glow-${ach.rarity}`;
+          const card = document.createElement('div');
+          card.className = `achievement-card ${rarityClass} ${isUnlocked ? 'unlocked' : 'locked'}`;
+
+          const iconSvg = window.getAchievementSvgIcon(achId, 30);
+          const titleText = (!isUnlocked && ach.secret) ? '???' : ach.title;
+          const descText = (!isUnlocked && ach.secret) ? 'Secret achievement. Criteria hidden until unlocked.' : ach.desc;
+
+          card.innerHTML = `
+            <div class="ach-icon-box">${iconSvg}</div>
+            <div class="ach-info-box">
+              <div class="ach-title-row">
+                <strong>${titleText}</strong>
+                <span class="ach-rarity-pill ${ach.rarity}">${ach.rarity.toUpperCase()} (+${ach.rarity === 'legendary' ? 500 : ach.rarity === 'epic' ? 200 : ach.rarity === 'rare' ? 100 : 50} XP)</span>
+              </div>
+              <div class="ach-desc">${descText}</div>
+            </div>
+            ${isUnlocked ? `
+              <button class="btn btn-sm ${isShowcased ? 'success-btn' : 'outline-btn'} btn-equip-badge" data-ach-id="${achId}">
+                ${isShowcased ? 'Showcased' : 'Showcase'}
+              </button>
+            ` : ''}
+          `;
+
+          const btnEquip = card.querySelector('.btn-equip-badge');
+          if (btnEquip) {
+            btnEquip.onclick = () => {
+              let currentBadges = [...(currentAccountData.battleCard?.showcasedBadges || [])];
+              if (currentBadges.includes(achId)) {
+                currentBadges = currentBadges.filter(id => id !== achId);
+                showToast(`Removed <strong>${ach.title}</strong> from Battle Card showcase.`, 'info');
+              } else {
+                if (currentBadges.length >= 3) {
+                  currentBadges.shift(); // rotate first out to maintain max 3
+                }
+                currentBadges.push(achId);
+                showToast(`<i class="fa-solid fa-star"></i> Equipped <strong>${ach.title}</strong> to Battle Card!`, 'success');
+              }
+              window.SocketClient.updateBattleCard({ ...currentAccountData.battleCard, showcasedBadges: currentBadges }, (saveRes) => {
+                if (saveRes.success) {
+                  currentAccountData.battleCard = saveRes.battleCard;
+                  renderAchievementsGallery();
+                  updateCardPreview();
+                }
+              });
+            };
+          }
+
+          grid.appendChild(card);
+        });
+
+        galleryEl.appendChild(grid);
+      };
+
+      if (filterCategory) filterCategory.onchange = renderAchievementsGallery;
+      if (filterRarity) filterRarity.onchange = renderAchievementsGallery;
+
+      if (selectCardTheme) selectCardTheme.onchange = updateCardPreview;
+      if (selectCardOption) selectCardOption.onchange = updateCardPreview;
+
+      if (btnSaveCard) {
+        btnSaveCard.onclick = () => {
+          const theme = selectCardTheme.value;
+          const option = selectCardOption.value;
+          window.SocketClient.updateBattleCard({ theme, option }, (res) => {
+            if (res.success) {
+              if (currentAccountData) currentAccountData.battleCard = res.battleCard;
+              showToast('<i class="fa-solid fa-check"></i> Battle Card style saved!', 'success');
+            }
+          });
+        };
+      }
+
+      const hideAllPanels = () => {
+        if (statsGrid) statsGrid.style.display = 'none';
+        if (cardCustomizer) cardCustomizer.style.display = 'none';
+        if (achTab) achTab.style.display = 'none';
+        [tabStatsPvp, tabStatsSolo, tabStatsCard, tabStatsAch].forEach(tab => {
+          if (tab) tab.className = 'btn outline-btn btn-sm';
+        });
+      };
+
+      if (tabStatsPvp) {
+        tabStatsPvp.onclick = () => {
+          hideAllPanels();
+          activeStatsMode = 'pvp';
+          tabStatsPvp.className = 'btn primary-btn btn-sm';
+          if (statsGrid) statsGrid.style.display = 'grid';
+          updateStatsDisplay();
+        };
+      }
+
+      if (tabStatsSolo) {
+        tabStatsSolo.onclick = () => {
+          hideAllPanels();
+          activeStatsMode = 'solo';
+          tabStatsSolo.className = 'btn primary-btn btn-sm';
+          if (statsGrid) statsGrid.style.display = 'grid';
+          updateStatsDisplay();
+        };
+      }
+
+      if (tabStatsCard) {
+        tabStatsCard.onclick = () => {
+          hideAllPanels();
+          tabStatsCard.className = 'btn primary-btn btn-sm';
+          if (cardCustomizer) cardCustomizer.style.display = 'flex';
+          updateCardPreview();
+        };
+      }
+
+      if (tabStatsAch) {
+        tabStatsAch.onclick = () => {
+          hideAllPanels();
+          tabStatsAch.className = 'btn primary-btn btn-sm';
+          if (achTab) achTab.style.display = 'flex';
+          renderAchievementsGallery();
+        };
+      }
+
+      const updateAuthUI = (account) => {
+        currentAccountData = account;
+        if (account) {
+          if (loggedOutView) loggedOutView.style.display = 'none';
+          if (loggedInView) loggedInView.style.display = 'flex';
+          if (lblUsername) lblUsername.textContent = account.username;
+        } else {
+          if (loggedOutView) loggedOutView.style.display = 'flex';
+          if (loggedInView) loggedInView.style.display = 'none';
+        }
+      };
+
+      const savedAuth = localStorage.getItem('factional_risk_account');
+      if (savedAuth) {
+        try {
+          const { username, token } = JSON.parse(savedAuth);
+          if (username && token) {
+            window.SocketClient.autoLoginAccount(username, token, (res) => {
+              if (res.success) updateAuthUI(res.user);
+            });
+          }
+        } catch (e) {
+          localStorage.removeItem('factional_risk_account');
+        }
+      }
+
+      if (btnOpenAuth) btnOpenAuth.onclick = () => authModal && authModal.classList.add('active');
+      if (btnCloseAuth) btnCloseAuth.onclick = () => authModal && authModal.classList.remove('active');
+      if (btnCloseStats) btnCloseStats.onclick = () => statsModal && statsModal.classList.remove('active');
+
+      let isRegisterMode = false;
+      if (tabLogin && tabRegister) {
+        tabLogin.onclick = () => {
+          isRegisterMode = false;
+          tabLogin.className = 'btn primary-btn btn-sm w-full active';
+          tabRegister.className = 'btn outline-btn btn-sm w-full';
+          btnSubmitAuth.textContent = 'Sign In';
+          if (authStatus) authStatus.textContent = '';
+        };
+        tabRegister.onclick = () => {
+          isRegisterMode = true;
+          tabRegister.className = 'btn primary-btn btn-sm w-full active';
+          tabLogin.className = 'btn outline-btn btn-sm w-full';
+          btnSubmitAuth.textContent = 'Create Account';
+          if (authStatus) authStatus.textContent = '';
+        };
+      }
+
+      if (btnSubmitAuth) {
+        btnSubmitAuth.onclick = () => {
+          const u = inputUser ? inputUser.value.trim() : '';
+          const p = inputPass ? inputPass.value : '';
+          if (!u || !p) {
+            if (authStatus) { authStatus.textContent = 'Please fill in all fields.'; authStatus.style.color = '#ef4444'; }
+            return;
+          }
+          const cb = (res) => {
+            if (res.error) {
+              if (authStatus) { authStatus.textContent = res.error; authStatus.style.color = '#ef4444'; }
+            } else {
+              updateAuthUI(res.user);
+              if (authModal) authModal.classList.remove('active');
+              showToast(`<i class="fa-solid fa-circle-check"></i> Welcome, ${res.user.username}!`, 'success');
+              if (inputPass) inputPass.value = '';
+            }
+          };
+          if (isRegisterMode) window.SocketClient.registerAccount(u, p, cb);
+          else window.SocketClient.loginAccount(u, p, cb);
+        };
+      }
+
+      if (btnLogout) {
+        btnLogout.onclick = () => {
+          window.SocketClient.logoutAccount();
+          updateAuthUI(null);
+          showToast('Signed out of account.', 'info');
+        };
+      }
+
+      if (btnViewStats) {
+        btnViewStats.onclick = () => {
+          const acc = window.SocketClient.currentAccount;
+          if (!acc) return;
+
+          window.SocketClient.getAccountStats(acc.username, (res) => {
+            if (res.error) { alert(res.error); return; }
+            currentAccountData = res.user;
+            allAchievementsData = res.allAchievements || {};
+            const u = res.user;
+
+            document.getElementById('lbl-stats-modal-user').textContent = u.username;
+            const insignia = this.getRankInsigniaInfo(u.level, false);
+            const badgeEl = document.getElementById('my-profile-insignia-badge');
+            if (badgeEl) {
+              badgeEl.className = `rank-insignia-icon insignia-sm ${insignia.tierClass}`;
+              badgeEl.innerHTML = insignia.icon;
+            }
+            document.getElementById('lbl-profile-rank-title').textContent = `Rank: ${insignia.rankTitle}`;
+            document.getElementById('lbl-profile-level-num').textContent = u.level || 1;
+            document.getElementById('lbl-profile-xp-current').textContent = u.currentXP || 0;
+            document.getElementById('lbl-profile-xp-needed').textContent = u.xpNeeded || 100;
+
+            const pct = Math.min(100, Math.round(((u.currentXP || 0) / (u.xpNeeded || 100)) * 100));
+            document.getElementById('profile-xp-bar-fill').style.width = `${pct}%`;
+
+            if (selectCardTheme && u.battleCard) selectCardTheme.value = u.battleCard.theme || 'default';
+            if (selectCardOption && u.battleCard) selectCardOption.value = u.battleCard.option || 1;
+
+            if (tabStatsPvp) tabStatsPvp.click();
+            if (statsModal) statsModal.classList.add('active');
+          });
+        };
+      }
     }
   }
 

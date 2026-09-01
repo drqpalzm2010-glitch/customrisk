@@ -3207,3 +3207,747 @@ svg.editor-canvas {
   fill: #94a3b8 !important;
   font-size: 11px !important;
 }
+/* ==================== BATTLE CARDS & ARTWORK ROSTER ==================== */
+.battlecards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  gap: 12px;
+  max-height: 230px;
+  overflow-y: auto;
+  padding: 4px 6px;
+}
+
+.player-battlecard {
+  border-radius: 12px;
+  padding: 12px 14px;
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  transition: transform 0.22s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.22s ease, border-color 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 96px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55);
+}
+
+.player-battlecard:hover {
+  transform: translateY(-3px) scale(1.025);
+  box-shadow: 0 8px 24px rgba(0, 229, 255, 0.35);
+  border-color: rgba(0, 229, 255, 0.7);
+}
+
+/* Battle Card Art Layer / Watermark Background */
+.bcard-art-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  background-repeat: no-repeat;
+  background-position: right center;
+  background-size: contain;
+  opacity: 0.22;
+  z-index: 1;
+}
+
+.bcard-content-layer {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 100%;
+  gap: 8px;
+}
+
+/* ==================== BATTLE CARDS & ARTWORK ROSTER ==================== */
+.battlecards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+  max-height: 250px;
+  overflow-y: auto;
+  padding: 6px 8px;
+}
+
+.player-battlecard {
+  border-radius: 12px;
+  padding: 12px 15px;
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+  border: 1.5px solid rgba(255, 255, 255, 0.15);
+  transition: transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.25s ease, border-color 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 105px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.6), inset 0 1px 1px rgba(255, 255, 255, 0.12);
+}
+
+.player-battlecard:hover {
+  transform: translateY(-4px) scale(1.025);
+  box-shadow: 0 10px 28px rgba(0, 229, 255, 0.35);
+  border-color: rgba(0, 229, 255, 0.8);
+}
+
+/* Holographic Sheen Animation on Hover */
+.player-battlecard::after {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: linear-gradient(60deg, transparent 40%, rgba(255, 255, 255, 0.08) 50%, transparent 60%);
+  transform: rotate(25deg) translateY(-100%);
+  opacity: 0;
+  transition: transform 0.6s ease, opacity 0.3s ease;
+  pointer-events: none;
+  z-index: 3;
+}
+.player-battlecard:hover::after {
+  transform: rotate(25deg) translateY(100%);
+  opacity: 1;
+}
+
+/* Battle Card Art Layer / Watermark Background */
+.bcard-art-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  background-size: 85px 85px;
+  opacity: 0.28;
+  z-index: 1;
+  transition: opacity 0.2s ease, transform 0.3s ease;
+}
+.player-battlecard:hover .bcard-art-overlay {
+  opacity: 0.42;
+  transform: scale(1.06);
+}
+
+.bcard-content-layer {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 100%;
+  gap: 8px;
+}
+
+/* Mini Level Progress Bar on Battle Card */
+.bcard-xp-mini {
+  display: none;
+}
+
+/* ==================== 1. DEFAULT THEME ==================== */
+/* Option 1: Clean Obsidian Slate (Basic) */
+.bcard-theme-default-1 {
+  background: linear-gradient(135deg, #1e293b 0%, #0b1120 100%);
+  border-color: #475569;
+}
+
+/* Option 2: Crimson Warlord (Crossed Battleaxes Art) */
+.bcard-theme-default-2 {
+  background: radial-gradient(circle at 90% 20%, rgba(225, 29, 72, 0.38) 0%, transparent 60%),
+              linear-gradient(135deg, #2b0c14 0%, #0f0307 100%);
+  border-color: #be123c;
+  box-shadow: inset 0 0 14px rgba(225, 29, 72, 0.25);
+}
+.bcard-theme-default-2 .bcard-art-overlay {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' fill='%23fb7185' opacity='0.75'%3E%3Cpath d='M85,15 L70,30 L60,20 L75,5 Z M15,85 L30,70 L20,60 L5,75 Z M45,45 L55,55 L25,85 L15,75 Z M55,45 L45,55 L75,85 L85,75 Z M65,35 L80,20 C85,25 90,40 75,55 L60,40 Z'/%3E%3C/svg%3E");
+}
+
+/* Option 3: Iron Aegis (Riveted Industrial Steel Plating) */
+.bcard-theme-default-3 {
+  background: repeating-linear-gradient(45deg, rgba(255,255,255,0.02) 0px, rgba(255,255,255,0.02) 2px, transparent 2px, transparent 6px),
+              linear-gradient(135deg, #334155 0%, #0f172a 100%);
+  border-color: #94a3b8;
+  border-left: 6px solid #38bdf8;
+}
+.bcard-theme-default-3 .bcard-art-overlay {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' fill='%2394a3b8' opacity='0.5'%3E%3Cpath d='M50,10 L85,25 L85,60 C85,80 50,95 50,95 C50,95 15,80 15,60 L15,25 Z M50,22 L25,33 L25,58 C25,72 50,84 50,84 C50,84 75,72 75,58 L75,33 Z'/%3E%3C/svg%3E");
+}
+
+/* ==================== 2. SCI-FI THEME ==================== */
+/* Option 1: Clean Cyber Terminal (Basic) */
+.bcard-theme-scifi-1 {
+  background: linear-gradient(135deg, #05192d 0%, #010811 100%);
+  border-color: #00f0ff;
+  box-shadow: inset 0 0 12px rgba(0, 240, 255, 0.25);
+}
+
+/* Option 2: Isometric Holo-Grid (Cyberpunk HUD Mesh) */
+.bcard-theme-scifi-2 {
+  background: linear-gradient(rgba(0, 240, 255, 0.08) 1px, transparent 1px),
+              linear-gradient(90deg, rgba(0, 240, 255, 0.08) 1px, transparent 1px),
+              linear-gradient(135deg, #091d34 0%, #020712 100%);
+  background-size: 16px 16px, 16px 16px, 100% 100%;
+  border-color: #00f0ff;
+  box-shadow: 0 0 18px rgba(0, 240, 255, 0.3), inset 0 0 14px rgba(0, 240, 255, 0.2);
+}
+.bcard-theme-scifi-2 .bcard-art-overlay {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' stroke='%2300f0ff' stroke-width='1.5' fill='none'%3E%3Ccircle cx='50' cy='50' r='38' stroke-dasharray='4 3'/%3E%3Ccircle cx='50' cy='50' r='24'/%3E%3Cpath d='M50,5 L50,95 M5,50 L95,50 M25,25 L75,75 M25,75 L75,25'/%3E%3Cpolygon points='50,20 60,35 40,35' fill='%2300f0ff'/%3E%3C/svg%3E");
+}
+
+/* Option 3: Quantum Singularity (Deep Space Nebula & Planetary Ring) */
+.bcard-theme-scifi-3 {
+  background: radial-gradient(circle at 85% 30%, rgba(192, 132, 252, 0.45) 0%, transparent 55%),
+              linear-gradient(135deg, #24083b 0%, #07010d 100%);
+  border-color: #c084fc;
+  box-shadow: 0 0 18px rgba(192, 132, 252, 0.3);
+}
+.bcard-theme-scifi-3 .bcard-art-overlay {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' fill='none'%3E%3Cellipse cx='50' cy='50' rx='42' ry='16' stroke='%23c084fc' stroke-width='2' transform='rotate(-25 50 50)'/%3E%3Ccircle cx='50' cy='50' r='20' fill='%23581c87' stroke='%23e9d5ff' stroke-width='1.5'/%3E%3Ccircle cx='38' cy='42' r='4' fill='%23c084fc'/%3E%3C/svg%3E");
+}
+
+/* ==================== 3. ANIME THEME ==================== */
+/* Option 1: Pastel Sparkle (Basic) */
+.bcard-theme-anime-1 {
+  background: linear-gradient(135deg, #4c1d35 0%, #200715 100%);
+  border-color: #ff77a9;
+}
+
+/* Option 2: Sakura Blossom (Falling Cherry Petals & Magic Stars) */
+.bcard-theme-anime-2 {
+  background: radial-gradient(circle at 85% 20%, rgba(255, 119, 169, 0.4) 0%, transparent 60%),
+              linear-gradient(135deg, #581635 0%, #1e0512 100%);
+  border-color: #ff77a9;
+  box-shadow: 0 0 16px rgba(255, 119, 169, 0.35);
+}
+.bcard-theme-anime-2 .bcard-art-overlay {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' fill='%23ffb6c1'%3E%3Cpath d='M75,20 C70,12 85,5 90,15 C95,25 80,28 75,20 Z M60,45 C55,38 68,32 72,40 C76,48 64,52 60,45 Z M82,65 C78,58 92,54 95,62 C98,70 86,72 82,65 Z M45,15 L50,25 L60,28 L52,35 L55,45 L45,38 L35,45 L38,35 L30,28 L40,25 Z' fill='%23fde047'/%3E%3C/svg%3E");
+}
+
+/* Option 3: Mecha Unit-01 (Futuristic Anime Warning Chevron Art) */
+.bcard-theme-anime-3 {
+  background: repeating-linear-gradient(135deg, rgba(250, 204, 21, 0.12) 0px, rgba(250, 204, 21, 0.12) 8px, transparent 8px, transparent 16px),
+              linear-gradient(135deg, #2e1065 0%, #0f0426 100%);
+  border-color: #a855f7;
+  border-right: 6px solid #facc15;
+}
+.bcard-theme-anime-3 .bcard-art-overlay {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' fill='%23c084fc'%3E%3Cpolygon points='30,10 70,10 85,35 50,90 15,35' stroke='%23facc15' stroke-width='2'/%3E%3Cpolygon points='40,25 60,25 50,70' fill='%23facc15'/%3E%3C/svg%3E");
+}
+
+/* ==================== 4. NAPOLEONIC THEME ==================== */
+/* Option 1: Vintage Cartographer (Basic) */
+.bcard-theme-napoleonic-1 {
+  background: linear-gradient(135deg, #3d2f1f 0%, #171109 100%);
+  border-color: #c29d6d;
+}
+
+/* Option 2: Imperial Eagle Crest (Gold Baroque Leaf & Eagle) */
+.bcard-theme-napoleonic-2 {
+  background: radial-gradient(circle at 90% 30%, rgba(194, 157, 109, 0.4) 0%, transparent 65%),
+              linear-gradient(135deg, #382718 0%, #150d06 100%);
+  border-color: #c29d6d;
+  box-shadow: inset 0 0 15px rgba(194, 157, 109, 0.3);
+}
+.bcard-theme-napoleonic-2 .bcard-art-overlay {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' fill='%23c29d6d'%3E%3Cpath d='M50,15 L56,28 L70,30 L60,40 L62,54 L50,47 L38,54 L40,40 L30,30 L44,28 Z M20,35 C35,32 45,45 50,60 C55,45 65,32 80,35 C70,55 60,75 50,85 C40,75 30,55 20,35 Z M50,5 L54,12 L46,12 Z'/%3E%3C/svg%3E");
+}
+
+/* Option 3: Grand Armée Royal Velvet (Crossed Sabers & Tricolore Sash) */
+.bcard-theme-napoleonic-3 {
+  background: linear-gradient(135deg, #1e293b 0%, #1e1b4b 50%, #450a0a 100%);
+  border-color: #eab308;
+  border-left: 6px solid #3b82f6;
+}
+.bcard-theme-napoleonic-3 .bcard-art-overlay {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' stroke='%23facc15' stroke-width='2' fill='none'%3E%3Cpath d='M15,85 C35,65 65,35 85,15 M85,15 C88,18 82,24 80,25 M20,80 L15,85 L10,80 L15,75 Z'/%3E%3Cpath d='M85,85 C65,65 35,35 15,15 M15,15 C12,18 18,24 20,25 M80,80 L85,85 L90,80 L85,75 Z'/%3E%3C/svg%3E");
+}
+
+/* ==================== 5. MODERN THEME ==================== */
+/* Option 1: Ballistic Carbon Plate (Basic) */
+.bcard-theme-modern-1 {
+  background: linear-gradient(135deg, #18181b 0%, #09090b 100%);
+  border-color: #38bdf8;
+}
+
+/* Option 2: Digital Desert Storm (Hexagonal Tactical Camo & Reticle) */
+.bcard-theme-modern-2 {
+  background: radial-gradient(circle at 85% 30%, rgba(245, 158, 11, 0.3) 0%, transparent 60%),
+              linear-gradient(135deg, #2d1e12 0%, #130b05 100%);
+  border-color: #f59e0b;
+}
+.bcard-theme-modern-2 .bcard-art-overlay {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' stroke='%23f59e0b' stroke-width='1.5' fill='none'%3E%3Ccircle cx='55' cy='50' r='32'/%3E%3Ccircle cx='55' cy='50' r='18' stroke-dasharray='3 3'/%3E%3Cline x1='55' y1='10' x2='55' y2='90'/%3E%3Cline x1='15' y1='50' x2='95' y2='50'/%3E%3Crect x='49' y='44' width='12' height='12' fill='%23f59e0b' fill-opacity='0.25'/%3E%3C/svg%3E");
+}
+
+/* Option 3: Night-Ops Topo (Radar Elevation Contours) */
+.bcard-theme-modern-3 {
+  background: linear-gradient(135deg, #06231d 0%, #020f0c 100%);
+  border-color: #10b981;
+  box-shadow: 0 0 18px rgba(16, 185, 129, 0.25);
+}
+.bcard-theme-modern-3 .bcard-art-overlay {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' stroke='%2310b981' stroke-width='1.2' fill='none' opacity='0.7'%3E%3Cellipse cx='50' cy='50' rx='44' ry='36'/%3E%3Cellipse cx='48' cy='48' rx='34' ry='26'/%3E%3Cellipse cx='45' cy='45' rx='24' ry='16'/%3E%3Ccircle cx='42' cy='42' r='6' fill='%2310b981' fill-opacity='0.3'/%3E%3C/svg%3E");
+}
+
+/* ==================== RANK INSIGNIAS ==================== */
+.rank-insignia-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 800;
+  border: 1.5px solid rgba(255, 255, 255, 0.25);
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+.insignia-sm {
+  width: 28px;
+  height: 28px;
+  font-size: 13px;
+}
+
+/* Insignia Military Tier Badges (Levels 1 to 100+) */
+.rank-tier-pvt     { background: linear-gradient(135deg, #334155, #0f172a); color: #94a3b8; border-color: #64748b; }
+.rank-tier-cpl     { background: linear-gradient(135deg, #475569, #1e293b); color: #cbd5e1; border-color: #94a3b8; }
+.rank-tier-sgt     { background: linear-gradient(135deg, #0369a1, #082f49); color: #7dd3fc; border-color: #38bdf8; box-shadow: 0 0 6px rgba(56, 189, 248, 0.25); }
+.rank-tier-msgt    { background: linear-gradient(135deg, #0284c7, #0c4a6e); color: #bae6fd; border-color: #0ea5e9; box-shadow: 0 0 8px rgba(14, 165, 233, 0.35); }
+.rank-tier-lt      { background: linear-gradient(135deg, #059669, #022c22); color: #6ee7b7; border-color: #10b981; box-shadow: 0 0 8px rgba(16, 185, 129, 0.35); }
+.rank-tier-cpt     { background: linear-gradient(135deg, #16a34a, #052e16); color: #86efac; border-color: #22c55e; box-shadow: 0 0 10px rgba(34, 197, 94, 0.4); }
+.rank-tier-maj     { background: linear-gradient(135deg, #d97706, #451a03); color: #fde68a; border-color: #f59e0b; box-shadow: 0 0 10px rgba(245, 158, 11, 0.45); }
+.rank-tier-col     { background: linear-gradient(135deg, #ea580c, #431407); color: #fed7aa; border-color: #f97316; box-shadow: 0 0 12px rgba(249, 115, 22, 0.5); }
+.rank-tier-bgen    { background: linear-gradient(135deg, #7c3aed, #2e1065); color: #ddd6fe; border-color: #a855f7; box-shadow: 0 0 12px rgba(168, 85, 247, 0.5); }
+.rank-tier-gen     { background: linear-gradient(135deg, #9333ea, #3b0764); color: #f3e8ff; border-color: #c084fc; box-shadow: 0 0 15px rgba(192, 132, 252, 0.65); }
+.rank-tier-marshal { background: linear-gradient(135deg, #e11d48, #4c0519); color: #fef08a; border-color: #facc15; box-shadow: 0 0 18px rgba(244, 63, 94, 0.85); animation: marshalPulse 2s infinite alternate; }
+.rank-tier-bot     { background: linear-gradient(135deg, #4f46e5, #1e1b4b); color: #a5b4fc; border-color: #818cf8; }
+
+@keyframes marshalPulse {
+  0%   { box-shadow: 0 0 10px rgba(244, 63, 94, 0.6); }
+  100% { box-shadow: 0 0 22px rgba(250, 204, 21, 0.9); }
+}
+
+/* Empty Achievement Slot Placeholder (During Battle Card Customization) */
+.bcard-slot-empty {
+  border: 1px dashed rgba(255, 255, 255, 0.35) !important;
+  color: rgba(255, 255, 255, 0.35) !important;
+  background: rgba(0, 0, 0, 0.25) !important;
+  cursor: pointer;
+}
+.bcard-slot-empty:hover {
+  border-color: var(--primary) !important;
+  color: var(--primary) !important;
+  background: rgba(0, 229, 255, 0.1) !important;
+}
+
+/* ==================== ENLARGED PROMINENT ACHIEVEMENT SLOTS ==================== */
+.bcard-achievement-slot {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: #facc15;
+  box-shadow: inset 0 0 4px rgba(0,0,0,0.6);
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.bcard-achievement-slot:hover {
+  transform: scale(1.15);
+  border-color: #fde047;
+  box-shadow: 0 0 8px rgba(250, 204, 21, 0.4);
+}
+/* ==================== ACHIEVEMENT RARITY GLOWS & GALLERY ==================== */
+.achievements-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 8px;
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.achievement-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1.5px solid #64748b;
+  border-radius: 8px;
+  padding: 8px 10px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.achievement-card.locked {
+  opacity: 0.45;
+  filter: grayscale(0.85);
+}
+
+.achievement-card.unlocked:hover {
+  transform: translateY(-2px);
+}
+
+/* Rarity Glow Outlines */
+/* Common: No glow */
+.ach-glow-common.unlocked {
+  border-color: #64748b;
+}
+
+/* Rare: Blue glow */
+.ach-glow-rare.unlocked {
+  border-color: #38bdf8;
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.45);
+}
+
+/* Epic: Purple glow */
+.ach-glow-epic.unlocked {
+  border-color: #c084fc;
+  box-shadow: 0 0 12px rgba(192, 132, 252, 0.55);
+}
+
+/* Legendary: Golden glow */
+.ach-glow-legendary.unlocked {
+  border-color: #facc15;
+  box-shadow: 0 0 18px rgba(250, 204, 21, 0.8);
+  background: linear-gradient(135deg, rgba(250, 204, 21, 0.1) 0%, rgba(0,0,0,0.5) 100%);
+}
+
+.ach-icon-box {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ach-info-box {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.ach-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2px;
+}
+
+.ach-title-row strong {
+  font-size: 11px;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ach-desc {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.ach-rarity-pill {
+  font-size: 8px;
+  font-weight: 800;
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+.ach-rarity-pill.common    { background: #334155; color: #cbd5e1; }
+.ach-rarity-pill.rare      { background: #0369a1; color: #7dd3fc; }
+.ach-rarity-pill.epic      { background: #581c87; color: #e9d5ff; }
+.ach-rarity-pill.legendary { background: #854d0e; color: #fef08a; }
+/* ==================== LIVE ACHIEVEMENT TOAST POPUPS ==================== */
+.achievement-unlock-toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: rgba(11, 15, 25, 0.95);
+  border: 2px solid #facc15;
+  border-radius: 12px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: 380px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+  z-index: 999999;
+  backdrop-filter: blur(12px);
+  animation: toastSlideIn 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.achievement-unlock-toast.hide {
+  opacity: 0;
+  transform: translateY(20px);
+}
+
+@keyframes toastSlideIn {
+  from { opacity: 0; transform: translateY(40px) scale(0.9); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.ach-toast-icon {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.ach-toast-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.ach-toast-header {
+  margin-bottom: 2px;
+}
+
+.ach-toast-badge {
+  font-size: 8.5px;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 4px;
+  letter-spacing: 0.5px;
+  display: inline-block;
+}
+.ach-toast-badge.common    { background: #334155; color: #cbd5e1; }
+.ach-toast-badge.rare      { background: #0369a1; color: #7dd3fc; }
+.ach-toast-badge.epic      { background: #581c87; color: #e9d5ff; }
+.ach-toast-badge.legendary { background: #854d0e; color: #fef08a; }
+
+.ach-toast-title {
+  font-size: 13px;
+  color: #fff;
+  display: block;
+  font-weight: 800;
+}
+
+.ach-toast-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.3;
+  margin: 0;
+}
+/* ==================== MOBILE & TABLET RESPONSIVE SYSTEM ==================== */
+
+/* Prevent native bounce / unwanted scrolling on interactive game containers */
+.svg-container {
+  touch-action: none !important;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+@media (max-width: 900px) {
+  /* Main Menu adjustments */
+  #screen-menu {
+    padding: 12px;
+  }
+  .menu-container {
+    width: 100% !important;
+    max-width: 480px;
+    padding: 20px 16px;
+    max-height: 92vh;
+  }
+  .brand h1 {
+    font-size: 24px;
+  }
+  .brand-icon {
+    font-size: 36px;
+  }
+
+  /* Lobby adjustments */
+  .lobby-layout {
+    grid-template-columns: 1fr !important;
+    padding: 12px !important;
+    gap: 16px !important;
+    height: auto !important;
+    min-height: 100vh;
+    overflow-y: auto;
+  }
+  .lobby-sidebar {
+    height: auto !important;
+    padding: 16px !important;
+  }
+  .lobby-preview {
+    height: auto !important;
+    min-height: 480px;
+    padding: 16px !important;
+  }
+
+  /* Game screen full slide-over drawer sidebars */
+  .game-sidebar {
+    position: fixed !important;
+    left: 0;
+    top: 0;
+    width: 85vw !important;
+    max-width: 340px !important;
+    min-width: unset !important;
+    z-index: 1000 !important;
+    box-shadow: 10px 0 30px rgba(0, 0, 0, 0.8) !important;
+  }
+  .game-right-sidebar {
+    position: fixed !important;
+    right: 0;
+    top: 0;
+    width: 85vw !important;
+    max-width: 340px !important;
+    min-width: unset !important;
+    z-index: 1000 !important;
+    box-shadow: -10px 0 30px rgba(0, 0, 0, 0.8) !important;
+  }
+
+  /* Drawer handles on mobile */
+  .sidebar-toggle-handle {
+    width: 28px !important;
+    height: 64px !important;
+    font-size: 14px;
+    z-index: 999 !important;
+  }
+  #btn-toggle-left-sidebar {
+    left: 85vw !important;
+    max-left: 340px;
+  }
+  #btn-toggle-left-sidebar.collapsed {
+    left: 0 !important;
+  }
+  #btn-toggle-right-sidebar {
+    right: 85vw !important;
+    max-right: 340px;
+  }
+  #btn-toggle-right-sidebar.collapsed {
+    right: 0 !important;
+  }
+
+  /* Top Viewport Header on Mobile */
+  .viewport-header {
+    width: 94% !important;
+    max-width: 94vw !important;
+    padding: 8px 12px !important;
+    top: 10px !important;
+  }
+  .viewport-header .instructions {
+    font-size: 11px !important;
+    line-height: 1.35;
+  }
+
+  /* Draft batch toolbar compact sizing */
+  .draft-batch-toolbar {
+    padding: 2px 6px !important;
+    gap: 4px !important;
+  }
+  .btn-batch-step {
+    padding: 2px 5px !important;
+    font-size: 10px !important;
+  }
+
+  /* Compact World Dominance Bar on Mobile */
+  .dominance-bar-container {
+    width: 96% !important;
+    bottom: 8px !important;
+    padding: 4px 6px !important;
+  }
+  .dominance-row {
+    padding: 2px 4px !important;
+    gap: 6px !important;
+  }
+  .dominance-row-label {
+    width: 85px !important;
+    font-size: 8.5px !important;
+  }
+  .dominance-bar {
+    height: 9px !important;
+  }
+
+  /* Zoom controls placement */
+  .zoom-controls {
+    bottom: 45px !important;
+    right: 10px !important;
+  }
+  .zoom-controls button {
+    width: 34px !important;
+    height: 34px !important;
+  }
+
+  /* Audio control position */
+  .audio-control-container {
+    top: 10px !important;
+    right: 10px !important;
+  }
+  .audio-btn {
+    width: 36px !important;
+    height: 36px !important;
+  }
+
+  /* Modals on Mobile */
+  .modal-content {
+    max-width: 94vw !important;
+    width: 94vw !important;
+    padding: 16px !important;
+    max-height: 90vh !important;
+    overflow-y: auto !important;
+  }
+  .diplomacy-grid {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+  }
+  .diplomacy-proposal-panel {
+    border-right: none !important;
+    border-bottom: 1px solid var(--border-glass) !important;
+    padding-right: 0 !important;
+    padding-bottom: 16px !important;
+  }
+
+  /* Combat Overlay on Mobile */
+  .combat-overlay-content {
+    width: 94vw !important;
+    padding: 20px 14px !important;
+  }
+  .dice-container-3d {
+    width: 38px !important;
+    height: 38px !important;
+    margin: 3px !important;
+  }
+  .cube-face-3d {
+    width: 38px !important;
+    height: 38px !important;
+  }
+  .face-1 { transform: rotateY(0deg) translateZ(19px) !important; }
+  .face-2 { transform: rotateY(180deg) translateZ(19px) !important; }
+  .face-3 { transform: rotateY(90deg) translateZ(19px) !important; }
+  .face-4 { transform: rotateY(-90deg) translateZ(19px) !important; }
+  .face-5 { transform: rotateX(90deg) translateZ(19px) !important; }
+  .face-6 { transform: rotateX(-90deg) translateZ(19px) !important; }
+
+  /* Map Editor Mobile View */
+  .editor-layout {
+    grid-template-columns: 1fr !important;
+    height: auto !important;
+    min-height: 100vh;
+  }
+  .editor-sidebar {
+    height: auto !important;
+    max-height: unset !important;
+  }
+  .editor-workspace {
+    min-height: 70vh !important;
+  }
+  .editor-right-sidebar {
+    width: calc(100vw - 32px) !important;
+    right: 16px !important;
+    top: 70px !important;
+  }
+}

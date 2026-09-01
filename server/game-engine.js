@@ -1,5 +1,101 @@
 const crypto = require('crypto');
 
+// Centralized Achievement Trigger Helper
+function checkAndGrantAchievement(room, playerId, achId) {
+  if (!room || !room.gameState || !room.gameState.matchStartedWithMinTwoHumans) return;
+  const player = room.gameState.players.find(p => p.id === playerId);
+  if (!player || !player.accountId) return;
+
+  try {
+    const UserDB = require('./user-db');
+    UserDB.grantAchievement(player.accountId, achId, true, room.io, player.id);
+  } catch (err) {
+    console.warn('[UserDB] Error granting achievement:', err.message);
+  }
+}
+
+// Server-side mirror of the client's getVisibleTerritories() algorithm, used to
+// grant the Fog of War achievements (Omniscient Recon / Shared Horizons). Returns
+// the Set of territory IDs the given player can currently see.
+function computeVisibleTerritories(gameState, mapData, playerId) {
+  const visibleSet = new Set();
+  if (!gameState || !mapData || !mapData.territories) return visibleSet;
+
+  const alliedOwners = new Set([playerId]);
+  if (gameState.pacts) {
+    gameState.pacts.forEach(p => {
+      if (p.type === 'alliance') {
+        if (p.playerA === playerId) alliedOwners.add(p.playerB);
+        if (p.playerB === playerId) alliedOwners.add(p.playerA);
+      }
+    });
+  }
+
+  // 1. Territories owned by player or full-alliance partners
+  Object.keys(gameState.territories).forEach(tid => {
+    const terr = gameState.territories[tid];
+    if (terr && alliedOwners.has(terr.ownerId)) visibleSet.add(tid);
+  });
+
+  // 2. Territories bordering owned/allied territories
+  const ownedAndAllied = Array.from(visibleSet);
+  const adjacency = {};
+  (mapData.connections || []).forEach(conn => {
+    let a, b;
+    if (Array.isArray(conn)) { a = conn[0]; b = conn[1]; }
+    else if (conn && typeof conn === 'object') { a = conn.from; b = conn.to; }
+    if (!a || !b) return;
+    (adjacency[a] = adjacency[a] || []).push(b);
+    (adjacency[b] = adjacency[b] || []).push(a);
+  });
+  ownedAndAllied.forEach(tid => {
+    (adjacency[tid] || []).forEach(adjId => visibleSet.add(adjId));
+  });
+
+  return visibleSet;
+}
+
+// Shared helper: applies the achievement checks for a newly formed pact (used by
+// every pact-formation code path to avoid duplication). grantInFavorOf is the
+// account-bearing player id that should receive the single-player achievements.
+function grantPactFormationAchievements(room, pactType, playerAId, playerBId) {
+  if (!room || !room.gameState) return;
+  const gameState = room.gameState;
+
+  if (pactType === 'handshake' || pactType === 'non_aggression') {
+    checkAndGrantAchievement(room, playerAId, 'handshake_protocol');
+    checkAndGrantAchievement(room, playerBId, 'handshake_protocol');
+  } else if (pactType === 'alliance') {
+    checkAndGrantAchievement(room, playerAId, 'blood_brothers');
+    checkAndGrantAchievement(room, playerBId, 'blood_brothers');
+
+    // The Coalition: maintain active alliances with 2+ players at once
+    [playerAId, playerBId].forEach(pid => {
+      const allianceCount = (gameState.pacts || []).filter(p =>
+        p.type === 'alliance' && (p.playerA === pid || p.playerB === pid)
+      ).length;
+      if (allianceCount >= 2) checkAndGrantAchievement(room, pid, 'the_coalition');
+    });
+  }
+}
+
+// Shared helper: track + grant the Silver Tongue achievement (3 different players
+// accept this player's treaty proposals in one match).
+function grantSilverTongue(room, proposerId, acceptedTargetId) {
+  if (!room || !room.gameState) return;
+  const gameState = room.gameState;
+  const proposer = gameState.players.find(p => p.id === proposerId);
+  if (!proposer) return;
+  proposer.proposalsAcceptedAgainst = proposer.proposalsAcceptedAgainst || {};
+  if (!proposer.proposalsAcceptedAgainst[acceptedTargetId]) {
+    proposer.proposalsAcceptedAgainst[acceptedTargetId] = true;
+    proposer.proposalsAcceptedCount = (proposer.proposalsAcceptedCount || 0) + 1;
+    if (proposer.proposalsAcceptedCount >= 3) {
+      checkAndGrantAchievement(room, proposerId, 'silver_tongue');
+    }
+  }
+}
+
 // Assign balanced card types across territories (faithful to original Risk)
 // Real Risk deck: each territory gets exactly one type, distributed as evenly as
 // possible across Infantry / Cavalry / Artillery, then 2 Wildcards added.
@@ -84,6 +180,28 @@ function isGraphConnected(territories, connections, excludedSet) {
     }
   }
   return visited.size === activeIds.length;
+}
+
+// Shortest BFS Path helper for path length and achievement calculations
+function getShortestPath(connections, startId, endId) {
+  if (startId === endId) return [startId];
+  const queue = [[startId]];
+  const visited = new Set([startId]);
+
+  while (queue.length > 0) {
+    const path = queue.shift();
+    const curr = path[path.length - 1];
+    const adjacents = getAdjacentTerritories(connections, curr);
+
+    for (const adj of adjacents) {
+      if (adj === endId) return [...path, adj];
+      if (!visited.has(adj)) {
+        visited.add(adj);
+        queue.push([...path, adj]);
+      }
+    }
+  }
+  return null;
 }
 
 // Breadth-First Search to find if there is an allied path between start and end territories
@@ -359,7 +477,7 @@ function initializeGame(room, mapData, gameMode = 'auto') {
     return;
   }
   
-  // Determine starting armies per player based on standard Risk rules
+      // Determine starting armies per player based on standard Risk rules
   let startingArmies = 35;
   if (numPlayers === 2) startingArmies = 40;
   else if (numPlayers === 3) startingArmies = 35;
@@ -400,6 +518,21 @@ function initializeGame(room, mapData, gameMode = 'auto') {
         excludedSet.delete(tId); // rollback if it would isolate territories
       }
     }
+  }
+
+  // Scale starting armies for large maps so every player always has enough
+  // armies to claim their fair share of territories AND retain a buffer for
+  // initial fortification. On very large maps the fixed pool above is smaller
+  // than the number of territories each player must claim, which causes the
+  // pool to go negative, breaks SETUP_FORTIFY transitions, and can trap the AI
+  // (and players) in an infinite loop of failed fortify attempts.
+  if (mapData && mapData.territories) {
+    const blizzardSet = new Set(blizzards);
+    const claimableCount = mapData.territories.filter(t => !blizzardSet.has(t.id)).length;
+    // In a round-robin claim, the first player can end up claiming ceil(claimable / N) territories.
+    // Ensure each player can always claim all their territories plus a small fortify buffer.
+    const armiesNeededForClaims = Math.ceil(claimableCount / numPlayers);
+    startingArmies = Math.max(startingArmies, armiesNeededForClaims + 5);
   }
 
   // Reset players
@@ -545,16 +678,22 @@ function fortifySetup(room, playerId, territoryId, amount = 1) {
   if (amount > currentPlayer.startingArmiesPool) {
     amount = currentPlayer.startingArmiesPool;
   }
-  if (amount <= 0) return { error: 'Invalid army count' };
 
-  territory.armies += amount;
-  currentPlayer.startingArmiesPool -= amount;
-
-  addLog(gameState, `${currentPlayer.name} placed ${amount} army on ${getTerritoryName(room.mapData, territoryId)}.`);
+  // Place armies if we have any to place; if the pool is exhausted (amount <= 0)
+  // skip placement but still fall through to the progression check below so the
+  // turn can advance. This prevents infinite loops where an AI keeps calling
+  // fortifySetup with a 0 pool and the turn never advances.
+  if (amount > 0) {
+    territory.armies += amount;
+    currentPlayer.startingArmiesPool -= amount;
+    addLog(gameState, `${currentPlayer.name} placed ${amount} army on ${getTerritoryName(room.mapData, territoryId)}.`);
+  }
 
   // Check if all players have placed their starting armies
-  const armiesLeft = gameState.players.reduce((sum, p) => sum + p.startingArmiesPool, 0);
-  if (armiesLeft === 0) {
+  // Use Math.max(0, ...) so exhausted or negative pools (from oversized maps)
+  // are treated as 0 and the game can still transition out of SETUP_FORTIFY.
+  const armiesLeft = gameState.players.reduce((sum, p) => sum + Math.max(0, p.startingArmiesPool), 0);
+  if (armiesLeft <= 0) {
     if (gameState.gameMode === 'capital_rush') {
       gameState.turnStage = 'CAPITAL_SELECTION';
       gameState.capitals = {};
@@ -637,6 +776,21 @@ function placeDraft(room, playerId, territoryId, amount) {
   currentPlayer.stats = currentPlayer.stats || { drafted: 0, killed: 0, lost: 0, territoriesConquered: 0 };
   currentPlayer.stats.drafted += amount;
 
+  // Achievement Checks: Garrison Master (50+ on territory), The Colossus (200+ on territory)
+  if (territory.armies >= 50) checkAndGrantAchievement(room, playerId, 'garrison_master');
+  if (territory.armies >= 200) checkAndGrantAchievement(room, playerId, 'the_colossus');
+
+  // Achievement Check: Fortified Crown (60+ defending own capital)
+  if (gameState.gameMode === 'capital_rush' && gameState.capitals && gameState.capitals[playerId] === territoryId) {
+    if (territory.armies >= 60) checkAndGrantAchievement(room, playerId, 'fortified_crown');
+  }
+
+  // Achievement Check: Human Wave Tactics (200+ total active armies across all owned territories)
+  const totalArmiesOwned = Object.values(gameState.territories)
+    .filter(t => t.ownerId === playerId)
+    .reduce((sum, t) => sum + (t.armies || 0), 0);
+  if (totalArmiesOwned >= 200) checkAndGrantAchievement(room, playerId, 'human_wave_tactics');
+
   addLog(gameState, `${currentPlayer.name} drafted ${amount} armies to ${getTerritoryName(room.mapData, territoryId)}.`);
 
   if (gameState.draftPool === 0) {
@@ -650,6 +804,7 @@ function placeDraft(room, playerId, territoryId, amount) {
   }
 
   return { success: true };
+  
 }
 
 // Attack logic
@@ -840,6 +995,11 @@ function executeBlitzAttack(room, playerId, sourceId, targetId) {
 
   const conquered = target.ownerId === playerId;
 
+  // Achievement Check: Clean Sweep (Conquer 5+ army tile in Blitz with 0 loss)
+  if (conquered && totalAttackerLosses === 0 && totalDefenderLosses >= 5) {
+    checkAndGrantAchievement(room, playerId, 'clean_sweep');
+  }
+
   addLog(gameState, `⚔️ BLITZ CAMPAIGN: ${currentPlayer.name} fought ${roundsFought} rounds against ${getTerritoryName(room.mapData, targetId)}. Attacker lost ${totalAttackerLosses}, Defender lost ${totalDefenderLosses}. ${conquered ? 'CONQUERED!' : 'Halted.'}`);
 
   return {
@@ -966,10 +1126,28 @@ function resolveCombatRolls(room, sourceId, targetId, attackerDiceCount, defende
   );
 
   let betrayed = false;
+  let brokenPactType = null;
   if (activePactIndex !== -1) {
     betrayed = true;
+    brokenPactType = gameState.pacts[activePactIndex] ? gameState.pacts[activePactIndex].type : null;
     gameState.pacts.splice(activePactIndex, 1);
-    
+
+    // Achievement: Et Tu, Brute? (break an active Full Alliance by direct attack)
+    if (brokenPactType === 'alliance') {
+      checkAndGrantAchievement(room, currentPlayer.id, 'et_tu_brute');
+      // Track for The Red Wedding (capture former ally's capital on the same turn)
+      currentPlayer.brokeAllianceWithThisTurn = defenderId;
+    }
+
+    // Achievement: Fool Me Twice (victim betrayed by the same commander 2+ times in one match)
+    if (defenderPlayer) {
+      defenderPlayer.betrayalCountBy = defenderPlayer.betrayalCountBy || {};
+      defenderPlayer.betrayalCountBy[currentPlayer.id] = (defenderPlayer.betrayalCountBy[currentPlayer.id] || 0) + 1;
+      if (defenderPlayer.betrayalCountBy[currentPlayer.id] >= 2) {
+        checkAndGrantAchievement(room, defenderPlayer.id, 'fool_me_twice');
+      }
+    }
+
     // Save betrayal records
     if (currentPlayer.isAI) {
       currentPlayer.betrayedPlayers = currentPlayer.betrayedPlayers || {};
@@ -1025,11 +1203,71 @@ function resolveCombatRolls(room, sourceId, targetId, attackerDiceCount, defende
   source.armies = Math.max(1, source.armies - attackerLosses);
   target.armies = Math.max(0, target.armies - defenderLosses);
 
+  // Achievement Checks: Dice Roll Outliers
+  if (attackerRolls.filter(r => r === 6).length === 3) checkAndGrantAchievement(room, currentPlayer.id, 'blessed_by_rngesus');
+  if (attackerRolls.length === 3 && attackerRolls.every(r => r === 1)) checkAndGrantAchievement(room, currentPlayer.id, 'snake_eyes_tragedy');
+  if (defenderRolls.filter(r => r === 6).length === 2 && defenderPlayer) checkAndGrantAchievement(room, defenderPlayer.id, 'wall_of_steel');
+
+  // Calculated Risk (10 consecutive dice comparisons won in a turn without taking a loss)
+  if (attackerLosses === 0 && defenderLosses > 0) {
+    currentPlayer.consecutiveDiceWins = (currentPlayer.consecutiveDiceWins || 0) + defenderLosses;
+    if (currentPlayer.consecutiveDiceWins >= 10) checkAndGrantAchievement(room, currentPlayer.id, 'calculated_risk');
+  } else {
+    currentPlayer.consecutiveDiceWins = 0;
+  }
+
+  // Decisive Strike (30+ kills in one turn)
+  currentPlayer.turnKills = (currentPlayer.turnKills || 0) + defenderLosses;
+  if (currentPlayer.turnKills >= 30) checkAndGrantAchievement(room, currentPlayer.id, 'decisive_strike');
+
+  // Iron Citadel (Defend when outnumbered 3-to-1)
+  if (source.armies >= 3 * Math.max(1, target.armies) && defenderLosses < attackerLosses && defenderPlayer) {
+    checkAndGrantAchievement(room, defenderPlayer.id, 'iron_citadel');
+  }
+
   let captured = false;
   if (target.armies === 0) {
     captured = true;
     gameState.conqueredThisTurn = true;
     target.ownerId = currentPlayer.id;
+
+    // Trigger Combat & Conquest Achievements
+    checkAndGrantAchievement(room, currentPlayer.id, 'first_blood');
+
+    currentPlayer.turnConquests = (currentPlayer.turnConquests || 0) + 1;
+    if (currentPlayer.turnConquests >= 5) checkAndGrantAchievement(room, currentPlayer.id, 'lightning_advance');
+    if (currentPlayer.turnConquests >= 12) checkAndGrantAchievement(room, currentPlayer.id, 'steamroller');
+
+    const totalTerrCount = Object.keys(gameState.territories).length || 1;
+    if (currentPlayer.turnConquests >= Math.floor(0.9 * totalTerrCount)) {
+      checkAndGrantAchievement(room, currentPlayer.id, 'rags_to_riches');
+    }
+
+    // Continent Breaker & Continent Master
+    if (room.mapData && room.mapData.continents) {
+      room.mapData.continents.forEach(c => {
+        if (c.territoryIds.includes(targetId)) {
+          // If previous defender owned the whole continent, attacker broke it!
+          if (defenderId && c.territoryIds.every(tid => tid === targetId || gameState.territories[tid]?.ownerId === defenderId)) {
+            checkAndGrantAchievement(room, currentPlayer.id, 'continent_breaker');
+          }
+          // If attacker now holds the entire continent
+          if (c.territoryIds.every(tid => gameState.territories[tid]?.ownerId === currentPlayer.id)) {
+            checkAndGrantAchievement(room, currentPlayer.id, 'continent_master');
+          }
+        }
+      });
+    }
+
+    // Blitzkrieg World Tour (conquer a territory in every continent in 1 turn)
+    if (room.mapData && room.mapData.continents && room.mapData.continents.length >= 2) {
+      currentPlayer.conqueredContinentsThisTurn = currentPlayer.conqueredContinentsThisTurn || new Set();
+      const contOfTarget = room.mapData.continents.find(c => c.territoryIds.includes(targetId));
+      if (contOfTarget) currentPlayer.conqueredContinentsThisTurn.add(contOfTarget.id);
+      if (currentPlayer.conqueredContinentsThisTurn.size === room.mapData.continents.length) {
+        checkAndGrantAchievement(room, currentPlayer.id, 'blitzkrieg_world_tour');
+      }
+    }
 
     // Move-in: at least attackerDiceCount armies, clamped so source keeps at least 1
     const minMove = Math.min(attackerDiceCount, source.armies - 1);
@@ -1053,6 +1291,16 @@ function resolveCombatRolls(room, sourceId, targetId, attackerDiceCount, defende
       const capOwnerId = Object.keys(gameState.capitals).find(pId => gameState.capitals[pId] === targetId);
       if (capOwnerId && capOwnerId !== currentPlayer.id) {
         lostCapitalOwnerId = capOwnerId;
+
+        // The Red Wedding: broke an alliance and captured the ex-ally's capital on the same turn
+        if (currentPlayer.brokeAllianceWithThisTurn === capOwnerId) {
+          checkAndGrantAchievement(room, currentPlayer.id, 'the_red_wedding');
+        }
+
+        // Near-Death Sovereign: mark the capital owner as breached so a later
+        // capital-rush victory with this flag can grant the achievement.
+        const lostCapitalPlayer = gameState.players.find(p => p.id === capOwnerId);
+        if (lostCapitalPlayer) lostCapitalPlayer.capitalBreached = true;
       }
     }
 
@@ -1067,6 +1315,20 @@ function resolveCombatRolls(room, sourceId, targetId, attackerDiceCount, defende
         eliminatedPlayerId = defenderPlayer.id;
         killerPlayerId = currentPlayer.id;
         addLog(gameState, `💀 ${defenderPlayer.name} has been eliminated!`);
+
+        // Achievement: No Way Home (Be eliminated)
+        checkAndGrantAchievement(room, defenderPlayer.id, 'no_way_home');
+
+        // Achievement: Single-Stack Wipeout (Eliminate 2 players in 1 turn with same source)
+        currentPlayer.eliminatedInTurn = (currentPlayer.eliminatedInTurn || 0) + 1;
+        if (currentPlayer.eliminatedInTurn >= 2) {
+          checkAndGrantAchievement(room, currentPlayer.id, 'single_stack_wipeout');
+        }
+
+        // Achievement: Cold-Blooded Backstab (Eliminate former ally after breaking treaty)
+        if (betrayed) {
+          checkAndGrantAchievement(room, currentPlayer.id, 'cold_blooded_backstab');
+        }
 
         // Clear all active alliances and ceasefires involving the eliminated player
         if (gameState.pacts) {
@@ -1132,6 +1394,34 @@ function resolveCombatRolls(room, sourceId, targetId, attackerDiceCount, defende
   if (attackerPlayer) {
     attackerPlayer.stats = attackerPlayer.stats || { drafted: 0, killed: 0, lost: 0, territoriesConquered: 0 };
     attackerPlayer.stats.killed += defenderLosses;
+    if (attackerPlayer.accountId && gameState.matchStartedWithMinTwoHumans) {
+      const UserDB = require('./user-db');
+      UserDB.grantAchievement(attackerPlayer.accountId, 'first_blood', true);
+
+      if (captured) {
+        attackerPlayer.turnConquests = (attackerPlayer.turnConquests || 0) + 1;
+        attackerPlayer.stats.turnConquests = attackerPlayer.turnConquests;
+        if (attackerPlayer.turnConquests >= 5) UserDB.grantAchievement(attackerPlayer.accountId, 'lightning_advance', true);
+        if (attackerPlayer.turnConquests >= 12) UserDB.grantAchievement(attackerPlayer.accountId, 'steamroller', true);
+        
+        const totalTerrCount = Object.keys(gameState.territories).length || 1;
+        if (attackerPlayer.turnConquests >= Math.floor(0.9 * totalTerrCount)) {
+          UserDB.grantAchievement(attackerPlayer.accountId, 'rags_to_riches', true);
+        }
+      }
+
+      attackerPlayer.stats.successfulAttacks = (attackerPlayer.stats.successfulAttacks || 0) + 1;
+      if (attackerPlayer.stats.successfulAttacks >= 25) {
+        UserDB.grantAchievement(attackerPlayer.accountId, 'relentless_vanguard', true);
+      }
+
+      if (attackerRolls.filter(r => r === 6).length === 3) {
+        UserDB.grantAchievement(attackerPlayer.accountId, 'blessed_by_rngesus', true);
+      }
+      if (attackerRolls.length === 3 && attackerRolls.every(r => r === 1)) {
+        UserDB.grantAchievement(attackerPlayer.accountId, 'snake_eyes_tragedy', true);
+      }
+    }
     attackerPlayer.stats.lost += attackerLosses;
     attackerPlayer.stats.diceRollsCount = (attackerPlayer.stats.diceRollsCount || 0) + attackerRolls.length;
     attackerPlayer.stats.diceRollsSum = (attackerPlayer.stats.diceRollsSum || 0) + attackerRolls.reduce((a, b) => a + b, 0);
@@ -1263,6 +1553,16 @@ function executeFortify(room, playerId, sourceId, targetId, amount) {
   source.armies -= amount;
   target.armies += amount;
 
+  // Achievement Check: The Silk Road (Fortify through 6+ connected territories)
+  const path = getShortestPath(room.mapData.connections, sourceId, targetId);
+  if (path && path.length >= 6) {
+    checkAndGrantAchievement(room, playerId, 'the_silk_road');
+  }
+
+  // Achievement Check: Garrison Master (50+) & The Colossus (200+)
+  if (target.armies >= 50) checkAndGrantAchievement(room, playerId, 'garrison_master');
+  if (target.armies >= 200) checkAndGrantAchievement(room, playerId, 'the_colossus');
+
   addLog(gameState, `${currentPlayer.name} fortified ${amount} armies from ${getTerritoryName(room.mapData, sourceId)} to ${getTerritoryName(room.mapData, targetId)}.`);
 
   // Once fortification is done, end turn
@@ -1309,6 +1609,72 @@ function endTurn(room) {
     currentPlayer.cards.push(card);
     addLog(gameState, `🃏 ${currentPlayer.name} drew a Risk card (${card.type}${card.territoryId ? ' — ' + getTerritoryName(room.mapData, card.territoryId) : ' Wildcard'}).`);
   }
+
+  // Achievement Check: Border Guard (3 turns) & Impenetrable Border (5 turns) without losing territory
+  if ((currentPlayer.stats?.currentTurnLost || 0) === 0) {
+    currentPlayer.noLossStreak = (currentPlayer.noLossStreak || 0) + 1;
+    if (currentPlayer.noLossStreak >= 3) checkAndGrantAchievement(room, currentPlayer.id, 'border_guard');
+    if (currentPlayer.noLossStreak >= 5) checkAndGrantAchievement(room, currentPlayer.id, 'impenetrable_border');
+  } else {
+    currentPlayer.noLossStreak = 0;
+  }
+
+  // Achievement Check: Minmaxing (<20% territories but >80% active armies)
+  const totalWorldTerrs = Object.keys(gameState.territories).length || 1;
+  const myTerrCount = Object.values(gameState.territories).filter(t => t.ownerId === currentPlayer.id).length;
+  const totalWorldArmies = Object.values(gameState.territories).reduce((sum, t) => sum + (t.armies || 0), 0) || 1;
+  const myArmyCount = Object.values(gameState.territories).filter(t => t.ownerId === currentPlayer.id).reduce((sum, t) => sum + (t.armies || 0), 0);
+
+  if ((myTerrCount / totalWorldTerrs) < 0.20 && (myArmyCount / totalWorldArmies) > 0.80) {
+    checkAndGrantAchievement(room, currentPlayer.id, 'minmaxing');
+  }
+
+  // Achievement Checks: Fog of War (only when fog is actually enabled)
+  if (gameState.fogOfWar && room.mapData && currentPlayer.accountId) {
+    const totalTerrs = totalWorldTerrs;
+
+    // Omniscient Recon: line-of-sight of 85%+ of the world map
+    const visibleWithAllies = computeVisibleTerritories(gameState, room.mapData, currentPlayer.id);
+    if ((visibleWithAllies.size / totalTerrs) >= 0.85) {
+      checkAndGrantAchievement(room, currentPlayer.id, 'omniscient_recon');
+    }
+
+    // Shared Horizons: gain line-of-sight of 10+ new territories through a Full Alliance.
+    // We approximate this by computing vision without alliance partners and measuring
+    // the delta produced by the alliance vision bonus.
+    const pactsSnapshot = gameState.pacts || [];
+    const alliancePacts = pactsSnapshot.filter(p => p.type === 'alliance');
+    if (alliancePacts.length > 0) {
+      const visibleWithoutAllies = computeVisibleTerritories(
+        { ...gameState, pacts: pactsSnapshot.filter(p => p.type !== 'alliance') },
+        room.mapData,
+        currentPlayer.id
+      );
+      let allianceGained = 0;
+      visibleWithAllies.forEach(tid => {
+        if (!visibleWithoutAllies.has(tid) &&
+            gameState.territories[tid] &&
+            alliancePacts.some(p =>
+              (p.playerA === currentPlayer.id && gameState.territories[tid].ownerId === p.playerB) ||
+              (p.playerB === currentPlayer.id && gameState.territories[tid].ownerId === p.playerA)
+            )) {
+          allianceGained++;
+        }
+      });
+      if (allianceGained >= 10) {
+        checkAndGrantAchievement(room, currentPlayer.id, 'shared_horizons');
+      }
+    }
+  }
+
+  // Reset turn-specific counters
+  currentPlayer.turnConquests = 0;
+  currentPlayer.turnKills = 0;
+  currentPlayer.consecutiveDiceWins = 0;
+  currentPlayer.conqueredContinentsThisTurn = new Set();
+  currentPlayer.eliminatedInTurn = 0;
+  currentPlayer.nukesFiredThisTurn = 0;
+  currentPlayer.brokeAllianceWithThisTurn = null;
 
   // Reset turn flags
   gameState.conqueredThisTurn = false;
@@ -1402,6 +1768,23 @@ function tradeCards(room, playerId, cardIndices, targetTerritoryId = null, skipS
 
   gameState.draftPool += bonusArmies;
   player.cardsTradedCount++;
+
+  // Achievement: Card Shark (5+ trade-ins) & Arms Race Escalation (10th progressive trade)
+  if (player.cardsTradedCount >= 5) checkAndGrantAchievement(room, playerId, 'card_shark');
+  if (gameState.tradeInCount >= 10) checkAndGrantAchievement(room, playerId, 'arms_race_escalation');
+
+  // Achievement: Joker's Wild (2 Wildcards in trade set)
+  const wildCount = selectedCards.filter(c => c.type === 'Wild').length;
+  if (wildCount >= 2) checkAndGrantAchievement(room, playerId, 'jokers_wild');
+
+  // Achievement: Matching Soil (all 3 cards match owned territories)
+  const allMatched = selectedCards.every(c => c.territoryId && gameState.territories[c.territoryId]?.ownerId === playerId);
+  if (allMatched) checkAndGrantAchievement(room, playerId, 'matching_soil');
+
+  // Achievement: Forced Liquidation (had >= 5 cards, traded down to <= 2)
+  if (player.cards.length >= 5) {
+    checkAndGrantAchievement(room, playerId, 'forced_liquidation');
+  }
 
   // Risk Rule: If player owns the territory shown on one of the cards, they get 2 extra armies on that territory
   selectedCards.forEach(card => {
@@ -1590,9 +1973,83 @@ function checkWinCondition(room) {
     }
   }
 
-  // Save final victory snapshot if game just ended
+  // Save final victory snapshot, award achievements & record lifetime stats
   if (gameState.turnStage === 'GAME_OVER') {
     saveHistorySnapshot(room);
+    try {
+      const UserDB = require('./user-db');
+      const isEligible = !!gameState.matchStartedWithMinTwoHumans;
+
+      const humanPlayers = (gameState.players || []).filter(p => !p.isAI && !p.disconnected);
+      const isMultiplayer = humanPlayers.length >= 2;
+
+      let totalMatchKills = 0;
+      let totalMatchConquests = 0;
+      let totalMatchDeployed = 0;
+
+      gameState.players.forEach(p => {
+        const s = p.stats || {};
+        totalMatchKills += (s.killed || 0);
+        totalMatchConquests += (s.territoriesConquered || 0);
+        totalMatchDeployed += (s.drafted || 0) + (p.startingArmiesPool !== undefined ? 35 : 0);
+      });
+
+      const matchTotals = {
+        kills: totalMatchKills,
+        conquests: totalMatchConquests,
+        deployed: totalMatchDeployed
+      };
+
+      let runnerUpId = null;
+      const nonWinners = gameState.players.filter(p => p.id !== gameState.winner);
+      if (nonWinners.length > 0) {
+        nonWinners.sort((a, b) => {
+          const terrA = Object.values(gameState.territories).filter(t => t.ownerId === a.id).length;
+          const terrB = Object.values(gameState.territories).filter(t => t.ownerId === b.id).length;
+          return terrB - terrA;
+        });
+        runnerUpId = nonWinners[0].id;
+      }
+
+      gameState.players.forEach(p => {
+        if (p.accountId) {
+          const isWinner = p.id === gameState.winner;
+          const isRunnerUp = p.id === runnerUpId;
+
+          // Record stats & XP
+          UserDB.recordMatchFinished(
+            p.accountId,
+            p.stats || {},
+            isWinner,
+            isRunnerUp,
+            gameState.gameMode,
+            isMultiplayer,
+            matchTotals
+          );
+
+          // Game-Over Achievements Checks
+          if (isEligible && isWinner) {
+            if (gameState.gameMode === 'capital_rush') {
+              UserDB.grantAchievement(p.accountId, 'capital_crusher', true, room.io, p.id);
+              // Near-Death Sovereign: win Capital Rush after your own capital was breached & reclaimed
+              if (p.capitalBreached && gameState.capitals && gameState.capitals[p.id] !== undefined) {
+                UserDB.grantAchievement(p.accountId, 'near_death_sovereign', true, room.io, p.id);
+              }
+            }
+            if (gameState.isScenario) UserDB.grantAchievement(p.accountId, 'multiverse', true, room.io, p.id);
+            if (gameState.blizzards && gameState.blizzards.length > 0) UserDB.grantAchievement(p.accountId, 'mother_russia', true, room.io, p.id);
+            if (Object.keys(gameState.territories).length >= 40) UserDB.grantAchievement(p.accountId, 'world_dominator', true, room.io, p.id);
+            if ((p.stats?.betrayals || 0) === 0) UserDB.grantAchievement(p.accountId, 'switzerland', true, room.io, p.id);
+            if (p.minTerritoriesHeld <= 1) UserDB.grantAchievement(p.accountId, 'the_comeback_kid', true, room.io, p.id);
+            if ((p.nukes || 0) + (p.thermonukes || 0) >= 3 && (p.stats?.nukesFired || 0) === 0) {
+              UserDB.grantAchievement(p.accountId, 'nuclear_deterrent', true, room.io, p.id);
+            }
+          }
+        }
+      });
+    } catch (err) {
+      console.warn('[UserDB] Could not record match finish:', err.message);
+    }
   }
 }
 
@@ -1632,6 +2089,16 @@ function saveHistorySnapshot(room) {
     chatCount: gameState.chatArchive ? gameState.chatArchive.length : 0, // Store only the size
     timestamp: Date.now()
   });
+
+  // Bound history growth: one full-board snapshot is saved per turn-end (and
+  // per draft->attack transition), so multi-hour games accumulate thousands of
+  // snapshots. This bloats server memory and makes any accidental raw-state
+  // serialization extremely expensive (multi-MB JSON blocks the event loop).
+  // Keep a generous rolling window; timelapse replay still covers ~500 turns.
+  const MAX_HISTORY_SNAPSHOTS = 500;
+  if (gameState.history.length > MAX_HISTORY_SNAPSHOTS) {
+    gameState.history.splice(0, gameState.history.length - MAX_HISTORY_SNAPSHOTS);
+  }
 }
 
 function getTerritoryName(mapData, id) {
@@ -1660,9 +2127,13 @@ function craftNuke(room, playerId, cardIndices, isThermo) {
     }
     player.thermonukes = (player.thermonukes || 0) + 1;
     addLog(gameState, `☢️ CRITICAL ASSEMBLY: ${player.name} crafted a Thermonuclear Weapon!`);
+    // Achievement: I Am Become Death (forge a Thermonuclear Weapon)
+    checkAndGrantAchievement(room, playerId, 'i_am_become_death');
   } else {
     player.nukes = (player.nukes || 0) + 1;
     addLog(gameState, `☢️ ASSEMBLY: ${player.name} crafted a Tactical Nuke!`);
+    // Achievement: Manhattan Project (craft first Tactical Nuke from 3 Risk Cards)
+    checkAndGrantAchievement(room, playerId, 'manhattan_project');
   }
 
   // Remove cards from hand
@@ -1683,7 +2154,23 @@ function fireNuke(room, playerId, sourceId, targetId, isThermo) {
   if (!player) return { error: 'Player not found' };
   if (gameState.players[gameState.turnIndex].id !== playerId) return { error: 'Not your turn' };
   if (gameState.turnStage !== 'ATTACK') return { error: 'Can only fire weapons during your Attack stage!' };
+const UserDB = require('./user-db');
+  const isEligible = !!gameState.matchStartedWithMinTwoHumans;
 
+  if (player.accountId && isEligible) {
+    if (!isThermo) UserDB.grantAchievement(player.accountId, 'trinity_test', true, room.io, player.id);
+    if (target.armies >= 100 && !isThermo) UserDB.grantAchievement(player.accountId, 'mass_demilitarization', true, room.io, player.id);
+    if (target.armies === 1 && isThermo) UserDB.grantAchievement(player.accountId, 'secret_nuclear_bbq', true, room.io, player.id);
+
+    if (gameState.gameMode === 'capital_rush' && gameState.capitals) {
+      const isCap = Object.values(gameState.capitals).includes(targetId);
+      if (isCap && isThermo) UserDB.grantAchievement(player.accountId, 'ground_zero_capital', true, room.io, player.id);
+    }
+
+    if (defenderId && gameState.pacts && gameState.pacts.some(p => p.type === 'alliance' && ((p.playerA === playerId && p.playerB === defenderId) || (p.playerB === playerId && p.playerA === defenderId)))) {
+      UserDB.grantAchievement(player.accountId, 'nuclear_judas', true, room.io, player.id);
+    }
+  }
   if (isThermo) {
     if (!player.thermonukes || player.thermonukes <= 0) return { error: 'You hold zero Thermonuclear weapons.' };
     player.thermonukes--;
@@ -1724,6 +2211,37 @@ function fireNuke(room, playerId, sourceId, targetId, isThermo) {
     });
   }
 
+  // Track nukes fired in turn
+  player.nukesFiredThisTurn = (player.nukesFiredThisTurn || 0) + 1;
+  player.stats = player.stats || { drafted: 0, killed: 0, lost: 0, territoriesConquered: 0 };
+  player.stats.nukesFired = (player.stats.nukesFired || 0) + 1;
+
+  if (player.nukesFiredThisTurn >= 3) {
+    checkAndGrantAchievement(room, playerId, 'mutually_assured_destruction');
+  }
+
+  // Achievement Check: Trinity Test (first tactical nuke)
+  if (!isThermo) checkAndGrantAchievement(room, playerId, 'trinity_test');
+
+  // Achievement Check: Mass Demilitarization (wiping 100+ armies)
+  if (target.armies >= 100 && !isThermo) checkAndGrantAchievement(room, playerId, 'mass_demilitarization');
+
+  // Achievement Check: Secret Nuclear Barbecue (firing thermo on 1 defender)
+  if (target.armies === 1 && isThermo) checkAndGrantAchievement(room, playerId, 'secret_nuclear_bbq');
+
+  // Achievement Check: Ground Zero Capital
+  if (gameState.gameMode === 'capital_rush' && gameState.capitals && isThermo) {
+    const isEnemyCapital = Object.entries(gameState.capitals).some(([pId, tid]) => pId !== playerId && tid === targetId);
+    if (isEnemyCapital) checkAndGrantAchievement(room, playerId, 'ground_zero_capital');
+  }
+
+  // Achievement Check: Nuclear Judas (firing on ally)
+  if (defenderId && gameState.pacts && gameState.pacts.some(p => p.type === 'alliance' && ((p.playerA === playerId && p.playerB === defenderId) || (p.playerB === playerId && p.playerA === defenderId)))) {
+    checkAndGrantAchievement(room, playerId, 'nuclear_judas');
+  }
+
+  let totalNukeCasualties = target.armies;
+
   // Execute Detonation
   target.armies = 0;
   target.ownerId = null; // Unclaimed
@@ -1738,7 +2256,9 @@ function fireNuke(room, playerId, sourceId, targetId, isThermo) {
       const splashTerr = gameState.territories[sid];
       if (splashTerr && !gameState.blizzards.includes(sid)) {
         if (splashTerr.armies > 1) {
-          splashTerr.armies = Math.ceil(splashTerr.armies / 2); // Devastate half the garrison (safeguards final remaining troop)
+          const removed = Math.floor(splashTerr.armies / 2);
+          splashTerr.armies -= removed;
+          totalNukeCasualties += removed;
         }
       }
     });
@@ -1748,6 +2268,9 @@ function fireNuke(room, playerId, sourceId, targetId, isThermo) {
     gameState.radiation[targetId] = 1; // Radioactive for 1 FULL turn (round)
     addLog(gameState, `☢️ DETONATION: ${player.name} fired a tactical nuke from ${getTerritoryName(room.mapData, sourceId)} onto ${getTerritoryName(room.mapData, targetId)}! Radioactive for 1 full turn.`);
   }
+  if (totalNukeCasualties >= 40) {
+    checkAndGrantAchievement(room, playerId, 'total_scorched_earth');
+  }
 
   // Eliminate the defender if this nuke wiped out their very last territory (mirror of attack conquest rule)
   if (defenderPlayer && target.ownerId === null && defenderId !== 'dummy' && defenderId !== playerId) {
@@ -1756,6 +2279,8 @@ function fireNuke(room, playerId, sourceId, targetId, isThermo) {
     );
     if (defenderTerritories.length === 0) {
       defenderPlayer.eliminated = true;
+      checkAndGrantAchievement(room, playerId, 'extinction_protocol');
+      checkAndGrantAchievement(room, defenderPlayer.id, 'no_way_home');
       addLog(gameState, `💀 ${defenderPlayer.name} has been eliminated by a nuclear strike from ${player.name}!`);
       if (gameState.pacts) {
         gameState.pacts = gameState.pacts.filter(p => p.playerA !== defenderId && p.playerB !== defenderId);
@@ -1770,6 +2295,65 @@ function fireNuke(room, playerId, sourceId, targetId, isThermo) {
   checkWinCondition(room);
 
   return { success: true, result: { targetId, isThermo } };
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Color utility helpers (shared by server.js and room-manager.js)
+// ─────────────────────────────────────────────────────────────────────────
+
+// Convert a hex color string (e.g. "#ff3366") to an {r,g,b} object
+function hexToRgb(hex) {
+  const h = (hex || '').replace('#', '');
+  if (h.length !== 6) return { r: 0, g: 0, b: 0 };
+  return {
+    r: parseInt(h.substr(0, 2), 16),
+    g: parseInt(h.substr(2, 2), 16),
+    b: parseInt(h.substr(4, 2), 16)
+  };
+}
+
+// Convert an {r,g,b} object (0-255 each) to {h,s,v} (h: 0-360, s: 0-1, v: 0-1)
+function rgbToHsv(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const d = max - min;
+  let h = 0;
+  if (d !== 0) {
+    if (max === r) h = ((g - b) / d) % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h *= 60;
+    if (h < 0) h += 360;
+  }
+  const s = max === 0 ? 0 : d / max;
+  return { h, s, v: max };
+}
+
+// Convenience: hex string → {h,s,v}
+function hexToHsv(hex) {
+  const { r, g, b } = hexToRgb(hex);
+  return rgbToHsv(r, g, b);
+}
+
+// Perceptual-ish distance between two hex colors in HSV space.
+// Hue is weighted most heavily (×2) because it is the most visually
+// discriminative component. Returns a number where larger means more
+// different. Values below ~0.35 generally indicate "visually similar".
+function colorDistanceHSV(hexA, hexB) {
+  const a = hexToHsv(hexA);
+  const b = hexToHsv(hexB);
+  let dh = Math.abs(a.h - b.h);
+  if (dh > 180) dh = 360 - dh;          // shortest arc around the color wheel
+  const ds = Math.abs(a.s - b.s);
+  const dv = Math.abs(a.v - b.v);
+  // Normalise hue difference to 0-1 range, weight hue 2×, then Euclidean
+  return Math.sqrt((dh / 180 * 2) ** 2 + ds ** 2 + dv ** 2);
+}
+
+// Returns true if two hex colors are perceptually similar (hard to tell apart)
+function colorsAreSimilar(hexA, hexB) {
+  return colorDistanceHSV(hexA, hexB) < 0.35;
 }
 
 module.exports = {
@@ -1794,5 +2378,13 @@ module.exports = {
   findValidCardSetIndices,
   getAdjacentTerritories,
   hasAlliedPath,
-  checkWinCondition
+  checkWinCondition,
+  computeVisibleTerritories,
+  grantPactFormationAchievements,
+  grantSilverTongue,
+  hexToRgb,
+  rgbToHsv,
+  hexToHsv,
+  colorDistanceHSV,
+  colorsAreSimilar
 };

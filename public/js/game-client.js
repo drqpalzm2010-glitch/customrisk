@@ -183,6 +183,18 @@
           if (aaaText) {
             aaaText.classList.toggle('show', isAtBottom);
           }
+
+          // Secret Achievement: "( ͡° ͜ʖ ͡°)" — scrolled sidebar to the bottom under Anime theme
+          if (isAtBottom && window.SocketClient && window.SocketClient.triggerSecretAchievement) {
+            const accountName = window.SocketClient.currentAccount?.username;
+            if (accountName) {
+              window.SocketClient.triggerSecretAchievement('secret_anime_scroll', true, (res) => {
+                if (res && res.achievement && window.showToast) {
+                  window.showToast(`<i class="fa-solid fa-trophy"></i> Secret achievement unlocked: <strong>${res.achievement.title}</strong>!`, 'success');
+                }
+              });
+            }
+          }
         });
       }
 
@@ -1026,12 +1038,71 @@ hasFullVisionOfPlayer(playerId) {
           }
         }
       });
+
+      // Staleness watchdog: in AI games the server pushes state updates every
+      // few seconds. If updates stop arriving (a dropped socket frame, a failed
+      // handler, or a stalled broadcast), the screen silently freezes while the
+      // game keeps running server-side. Detect that and request a fresh sync to
+      // self-heal instead of freezing forever.
+      setInterval(() => {
+        if (document.hidden || !this.gameState || !window.SocketClient) return;
+        if (this.gameState.turnStage === 'GAME_OVER') return;
+        const cur = this.gameState.players && this.gameState.players[this.gameState.turnIndex];
+        const isMyTurn = !!(cur && cur.id === window.SocketClient.socket.id);
+        // Don't auto-resync while the local human is deliberating their own turn
+        if (isMyTurn && !window.SocketClient.spectatorMode) return;
+        const now = Date.now();
+        if (now - (this.lastStateUpdateAt || 0) > 20000 && now - (this._lastAutoResyncAt || 0) > 15000) {
+          this._lastAutoResyncAt = now;
+          console.warn('[GameClient] No game state updates for 20s — requesting fresh sync...');
+          window.SocketClient.syncGameState();
+        }
+      }, 5000);
+
+      // FX sweep: transient animation groups (projectiles, explosions, beams)
+      // are tagged with data-fx-created by the renderer. Normally each map
+      // rebuild destroys them, but if rendering stalls they can linger forever
+      // and bloat the DOM. Sweep anything older than 15 seconds.
+      setInterval(() => {
+        const stale = document.querySelectorAll('#game-map-container [data-fx-created]');
+        if (stale.length === 0) return;
+        const now = Date.now();
+        stale.forEach(el => {
+          const created = parseInt(el.getAttribute('data-fx-created'));
+          if (created && now - created > 15000) el.remove();
+        });
+      }, 10000);
     }
 
     startCampaign(mapData, gameState) {
       if (mapData) {
         window.SocketClient.mapData = mapData;
       }
+
+      // Auto-collapse sidebars on small/mobile screens so the map fills the display
+      if (window.innerWidth <= 900) {
+        const leftSidebar = document.getElementById('game-left-sidebar');
+        const rightSidebar = document.getElementById('game-right-sidebar');
+        const btnToggleLeft = document.getElementById('btn-toggle-left-sidebar');
+        const btnToggleRight = document.getElementById('btn-toggle-right-sidebar');
+
+        if (leftSidebar && !leftSidebar.classList.contains('collapsed')) {
+          leftSidebar.classList.add('collapsed');
+          if (btnToggleLeft) {
+            btnToggleLeft.classList.add('collapsed');
+            btnToggleLeft.innerHTML = '<i class="fa-solid fa-chevron-right"></i>';
+          }
+        }
+        if (rightSidebar && !rightSidebar.classList.contains('collapsed')) {
+          rightSidebar.classList.add('collapsed');
+          btnToggleRight.classList.add('collapsed');
+          if (btnToggleRight) {
+            btnToggleRight.classList.add('collapsed');
+            btnToggleRight.innerHTML = '<i class="fa-solid fa-chevron-left"></i>';
+          }
+        }
+      }
+
       this.renderer = new window.SVGRenderer('game-map-container', {
         isEditor: false,
         onTerritoryClick: (tid, e) => this.handleTerritoryClick(tid, e)
@@ -1041,68 +1112,132 @@ hasFullVisionOfPlayer(playerId) {
     }
 
     updateGameState(state) {
-      // Clear any visual attack arrows
-      document.querySelectorAll('.attack-arrow-segment, #attack-arrow-line').forEach(el => el.remove());
+      // Track last update time for the staleness watchdog
+      this.lastStateUpdateAt = Date.now();
 
-      // Bandwidth Optimization Merge: Reconstruct historical log feed on client
-      if (this.gameState && this.gameState.logs && state.logs) {
-        const localLogs = this.gameState.logs;
-        state.logs.forEach(newLog => {
-          const exists = localLogs.some(l => l.timestamp === newLog.timestamp && l.message === newLog.message);
-          if (!exists) {
-            localLogs.push(newLog);
-          }
-        });
-        if (localLogs.length > 100) localLogs.shift();
-        state.logs = localLogs;
-      }
+      // Perf diagnostics (Step 0): count incoming updates vs. actual renders
+      // so long-game freezes can be attributed to update storms or render cost.
+      this._perf = this._perf || { updates: 0, renders: 0, totalMs: 0, maxMs: 0, lastReport: Date.now() };
+      this._perf.updates++;
 
-      // Bandwidth Optimization Merge: Reconstruct historical chat feed on client
-      if (this.gameState && this.gameState.chatArchive && state.chatArchive) {
-        const localChats = this.gameState.chatArchive;
-        state.chatArchive.forEach(newChat => {
-          const exists = localChats.some(c => c.timestamp === newChat.timestamp && c.text === newChat.text && c.senderName === newChat.senderName);
-          if (!exists) {
-            localChats.push(newChat);
-          }
-        });
-        if (localChats.length > 200) localChats.shift();
-        state.chatArchive = localChats;
-      }
+      try {
+        // Clear any visual attack arrows
+        document.querySelectorAll('.attack-arrow-segment, #attack-arrow-line').forEach(el => el.remove());
 
-      // Reset selections if turn or stage changed
-      if (this.gameState) {
-        if (this.gameState.turnIndex !== state.turnIndex || this.gameState.turnStage !== state.turnStage) {
-          this.selectedSourceId = null;
-          this.selectedTargetId = null;
-          this.selectedLaunchPadId = null;
-          this.activeFiringWeaponType = null;
-          document.querySelectorAll('.nuke-badge').forEach(b => b.classList.remove('active-pulsing'));
+        // Bandwidth Optimization Merge: Reconstruct historical log feed on client
+        if (this.gameState && this.gameState.logs && state.logs) {
+          const localLogs = this.gameState.logs;
+          state.logs.forEach(newLog => {
+            const exists = localLogs.some(l => l.timestamp === newLog.timestamp && l.message === newLog.message);
+            if (!exists) {
+              localLogs.push(newLog);
+            }
+          });
+          if (localLogs.length > 100) localLogs.shift();
+          state.logs = localLogs;
         }
-      }
 
-      this.gameState = state;
-      if (!this.renderer) {
-        // Late state-update race (Watch AI / rejoin): initialize the map renderer on demand
-        this.renderer = new window.SVGRenderer('game-map-container', {
-          isEditor: false,
-          onTerritoryClick: (tid, e) => this.handleTerritoryClick(tid, e)
-        });
-      }
-      this.renderer.render(window.SocketClient.mapData || state.mapData, state);
-      
-      // Check for new dice rolls to play combat animation
-      if (state.lastDiceRolls && state.lastDiceRolls.rollId !== this.lastProcessedRollId) {
-        this.lastProcessedRollId = state.lastDiceRolls.rollId;
-        this.lastProcessedRoll = state.lastDiceRolls;
-        this.triggerCombatOverlay(state.lastDiceRolls);
-      }
+        // Bandwidth Optimization Merge: Reconstruct historical chat feed on client
+        if (this.gameState && this.gameState.chatArchive && state.chatArchive) {
+          const localChats = this.gameState.chatArchive;
+          state.chatArchive.forEach(newChat => {
+            const exists = localChats.some(c => c.timestamp === newChat.timestamp && c.text === newChat.text && c.senderName === newChat.senderName);
+            if (!exists) {
+              localChats.push(newChat);
+            }
+          });
+          if (localChats.length > 200) localChats.shift();
+          state.chatArchive = localChats;
+        }
 
-      // Reset selections if turn or phase changed
-      const currentPlayer = state.players[state.turnIndex];
-      const isMyTurn = (currentPlayer.id === window.SocketClient.socket.id) || !!state.generativeAIMode || !!window.SocketClient.spectatorMode;
+        // Reset selections if turn or stage changed
+        if (this.gameState) {
+          if (this.gameState.turnIndex !== state.turnIndex || this.gameState.turnStage !== state.turnStage) {
+            this.selectedSourceId = null;
+            this.selectedTargetId = null;
+            this.selectedLaunchPadId = null;
+            this.activeFiringWeaponType = null;
+            document.querySelectorAll('.nuke-badge').forEach(b => b.classList.remove('active-pulsing'));
+          }
+        }
 
-      this.updateUI(isMyTurn, currentPlayer);
+        this.gameState = state;
+
+        // Coalesce the expensive render work: rapid AI micro-steps can emit
+        // many gameStateUpdates per second and rebuilding the whole SVG map
+        // for each one progressively stalls the tab in long games. All cheap
+        // state merging happens above; the full redraw runs at most once per
+        // animation frame using the latest state.
+        this.scheduleMapRender();
+      } catch (err) {
+        console.error('[GameClient] updateGameState error:', err);
+        // Defensive fallback: attempt a minimal UI refresh so a single bad
+        // update can never permanently freeze the game screen.
+        try {
+          if (this.gameState && this.gameState.players) {
+            const cur = this.gameState.players[this.gameState.turnIndex];
+            if (cur) this.updateUI(true, cur);
+          }
+        } catch (e2) { /* ignore — avoid error loops */ }
+      }
+    }
+
+    // Schedule the full map redraw + UI refresh, coalesced to one run per frame
+    scheduleMapRender() {
+      if (this._renderQueued) return;
+      this._renderQueued = true;
+      const flush = () => {
+        this._renderQueued = false;
+        const t0 = performance.now();
+        try {
+          if (!this.gameState) return;
+          if (!this.renderer) {
+            // Late state-update race (Watch AI / rejoin): initialize the map renderer on demand
+            this.renderer = new window.SVGRenderer('game-map-container', {
+              isEditor: false,
+              onTerritoryClick: (tid, e) => this.handleTerritoryClick(tid, e)
+            });
+          }
+          const state = this.gameState;
+          this.renderer.render(window.SocketClient.mapData || state.mapData, state);
+
+          // Check for new dice rolls to play combat animation (latest only —
+          // collapsed updates intentionally animate just the freshest roll)
+          if (state.lastDiceRolls && state.lastDiceRolls.rollId !== this.lastProcessedRollId) {
+            this.lastProcessedRollId = state.lastDiceRolls.rollId;
+            this.lastProcessedRoll = state.lastDiceRolls;
+            this.triggerCombatOverlay(state.lastDiceRolls);
+          }
+
+          const currentPlayer = state.players && state.players[state.turnIndex];
+          if (!currentPlayer) return;
+          const isMyTurn = (currentPlayer.id === window.SocketClient.socket.id) || !!state.generativeAIMode || !!window.SocketClient.spectatorMode;
+
+          this.updateUI(isMyTurn, currentPlayer);
+        } catch (err) {
+          console.error('[GameClient] render pipeline error:', err);
+        } finally {
+          // Perf diagnostics: track render cost, report every 30s
+          if (this._perf) {
+            const dur = performance.now() - t0;
+            this._perf.renders++;
+            this._perf.totalMs += dur;
+            if (dur > this._perf.maxMs) this._perf.maxMs = dur;
+            const now = Date.now();
+            if (now - this._perf.lastReport > 30000) {
+              const avg = this._perf.renders > 0 ? (this._perf.totalMs / this._perf.renders).toFixed(1) : '0';
+              const domNodes = document.querySelectorAll('#game-map-container *').length;
+              console.log(`[GamePerf] 30s: updates=${this._perf.updates} renders=${this._perf.renders} avgRender=${avg}ms maxRender=${this._perf.maxMs.toFixed(1)}ms mapDomNodes=${domNodes}`);
+              this._perf = { updates: 0, renders: 0, totalMs: 0, maxMs: 0, lastReport: now };
+            }
+          }
+        }
+      };
+      if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(flush);
+      } else {
+        setTimeout(flush, 16);
+      }
     }
 
     updateUI(isMyTurn, currentPlayer) {
@@ -2243,31 +2378,6 @@ hasFullVisionOfPlayer(playerId) {
         return;
       } else {
         if (container) container.style.display = 'flex';
-      }
-
-      if (isFog) {
-        const totalTerritories = Object.keys(this.gameState.territories).length;
-        const mapData = window.SocketClient.mapData || this.gameState.mapData;
-        const visibleSet = this.renderer ? this.renderer.getVisibleTerritories(this.gameState, mapData, myId) : null;
-        
-        let visibleCount = 0;
-        let myCount = 0;
-        Object.keys(this.gameState.territories).forEach(tid => {
-          if (this.gameState.territories[tid]?.ownerId === myId) myCount++;
-          if (visibleSet && visibleSet.has(tid)) visibleCount++;
-        });
-
-        const myPct = Math.round((myCount / totalTerritories) * 100);
-        const fogPct = Math.round(((totalTerritories - visibleCount) / totalTerritories) * 100);
-        const knownOtherPct = 100 - myPct - fogPct;
-
-        bar.innerHTML = `
-          <div class="dominance-bar-segment" style="width: ${myPct}%; background-color: var(--primary);" title="Your Territory: ${myPct}%">${myPct >= 8 ? myPct + '%' : ''}</div>
-          <div class="dominance-bar-segment" style="width: ${knownOtherPct}%; background-color: #64748b;" title="Known Scouting: ${knownOtherPct}%">${knownOtherPct >= 8 ? knownOtherPct + '%' : ''}</div>
-          <div class="dominance-bar-segment" style="width: ${fogPct}%; background-color: #0f172a;" title="Unscouted Fog: ${fogPct}%">${fogPct >= 8 ? '🌫️ ' + fogPct + '%' : ''}</div>
-        `;
-        if (incomeBar) incomeBar.innerHTML = `<div class="dominance-bar-segment" style="width: 100%; background: #1e293b; color: #94a3b8; font-size: 10px;">🌫️ World Income Shrouded in Fog</div>`;
-        return;
       }
 
       const totalTerritories = Object.keys(this.gameState.territories).length;

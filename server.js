@@ -9,6 +9,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
 
+const UserDB = require('./server/user-db');
 const RoomManager = require('./server/room-manager');
 const GameEngine = require('./server/game-engine');
 const AIEngine = require('./server/ai-engine');
@@ -74,22 +75,29 @@ io.on('connection', (socket) => {
   RoomManager.initAIWatchdog(io);
 
   // 1. Create Room
-  socket.on('createRoom', ({ mapData, playerName, playerColor }, callback) => {
+  socket.on('createRoom', ({ mapData, playerName, playerColor, accountId }, callback) => {
     try {
       if (!mapData || !mapData.territories || mapData.territories.length === 0) {
         return callback({ error: 'Invalid map data' });
       }
       const room = RoomManager.createRoom(socket.id, playerName, playerColor, mapData);
+      room.io = io;
+      if (accountId && room.players[0]) {
+        room.players[0].accountId = accountId;
+        const acc = UserDB.getSafeUser(UserDB.loadUsers()[accountId.toLowerCase()]);
+        if (acc) {
+          room.players[0].level = acc.level || 1;
+          room.players[0].battleCard = acc.battleCard || { theme: 'default', option: 1, showcasedBadges: [] };
+        }
+      }
       socket.join(room.code);
-      console.log(`Room created: ${room.code} by ${playerName}`);
+      console.log(`Room created: ${room.code} by ${playerName} (Account: ${accountId || 'Guest'})`);
       callback({ success: true, roomCode: room.code, players: room.players });
     } catch (err) {
       console.error(err);
       callback({ error: 'Failed to create room' });
     }
   });
-
-  // 1b. Watch AI Battle — create an all-AI game the requester spectates
   socket.on('watchAIBattle', ({ mapData, aiCount, gameMode, asNormalMap, disableNations, honorPremadeAlliances, disabledNationIds, cardTradeRule, generativeAIMode, llmProviderConfig, reqBlizzardCount, reqStartingNukes, reqStartingThermonukes, reqAllowCrafting }, callback) => {
     try {
       if (!mapData) return callback({ error: 'Invalid map data' });
@@ -215,15 +223,42 @@ io.on('connection', (socket) => {
         };
 
         const randomizedNames = shuffleArray(aiNames);
-        const randomizedColors = shuffleArray(aiColors);
         const randomizedPersonalities = shuffleArray(personalities);
+
+        // Assign colors using greedy max-min selection for maximum visual
+        // distinctness between AI players. A plain random shuffle can place
+        // similar-hue colors (e.g. two reds or two blues) on different players,
+        // making commanders hard to tell apart on the battlefield. Instead we
+        // greedily pick the color that is furthest (in HSV space) from every
+        // color already selected, then shuffle the player-to-color mapping so
+        // the assignment is still random — only the *set* of colors used is
+        // guaranteed maximally spread.
+        const hueSortedColors = [...aiColors].sort(
+          (a, b) => GameEngine.hexToHsv(a).h - GameEngine.hexToHsv(b).h
+        );
+        const selectedColors = [hueSortedColors[0]];
+        while (selectedColors.length < count && selectedColors.length < hueSortedColors.length) {
+          let best = null, bestDist = -1;
+          for (const c of hueSortedColors) {
+            if (selectedColors.includes(c)) continue;
+            let minDist = Infinity;
+            for (const s of selectedColors) {
+              const d = GameEngine.colorDistanceHSV(c, s);
+              if (d < minDist) minDist = d;
+            }
+            if (minDist > bestDist) { bestDist = minDist; best = c; }
+          }
+          if (!best) break;
+          selectedColors.push(best);
+        }
+        const randomizedColors = shuffleArray(selectedColors);
 
         for (let i = 0; i < count; i++) {
           const id = `ai_${Math.random().toString(36).substr(2, 9)}`;
           room.players.push({
             id,
             name: randomizedNames[i % randomizedNames.length],
-            color: randomizedColors[i % randomizedColors.length],
+            color: randomizedColors[i],
             isHost: i === 0,
             isAI: true,
             autoDefend: true,
@@ -642,6 +677,9 @@ const actType = (actionStr || typeStr || '').toUpperCase();
           gameState.pacts = gameState.pacts || [];
           gameState.pacts.push({ playerA: prop.proposerId || prop.sender, playerB: activePlayer.id, type: prop.type });
           const propPlayer = gameState.players.find(p => p.id === proposerId);
+          // Achievements for forming a pact
+          GameEngine.grantPactFormationAchievements(room, prop.type, prop.proposerId || prop.sender, activePlayer.id);
+          GameEngine.grantSilverTongue(room, prop.proposerId || prop.sender, activePlayer.id);
           GameEngine.addLog(gameState, `🤝 ${activePlayer.name} accepted the ${prop.type === 'non_aggression' ? 'Non-Aggression Pact' : 'Full Alliance'} proposal from ${propPlayer ? propPlayer.name : proposerId}!`);
         }
       } else if (actType === 'REJECT_PACT' || actType === 'DECLINE_PACT') {
@@ -995,14 +1033,24 @@ const actType = (actionStr || typeStr || '').toUpperCase();
   });
 
   // 2. Join Room
-  socket.on('joinRoom', ({ roomCode, playerName, playerColor }, callback) => {
+  socket.on('joinRoom', ({ roomCode, playerName, playerColor, accountId }, callback) => {
     try {
       const res = RoomManager.joinRoom(socket.id, roomCode, playerName, playerColor);
       if (res.error) {
         return callback({ error: res.error });
       }
+      res.room.io = io;
+      const playerObj = res.room.players.find(p => p.id === socket.id);
+      if (playerObj && accountId) {
+        playerObj.accountId = accountId;
+        const acc = UserDB.getSafeUser(UserDB.loadUsers()[accountId.toLowerCase()]);
+        if (acc) {
+          playerObj.level = acc.level || 1;
+          playerObj.battleCard = acc.battleCard || { theme: 'default', option: 1, showcasedBadges: [] };
+        }
+      }
       socket.join(roomCode);
-      console.log(`Player ${playerName} joined room ${roomCode}`);
+      console.log(`Player ${playerName} (Account: ${accountId || 'Guest'}) joined room ${roomCode}`);
       
       io.to(roomCode).emit('playersUpdate', res.room.players);
       if (res.room.status === 'PLAYING') {
@@ -1201,7 +1249,11 @@ const actType = (actionStr || typeStr || '').toUpperCase();
       const res = GameEngine.selectCapital(room, socket.id, territoryId);
       if (res.error) return callback({ error: res.error });
 
-      io.to(roomCode).emit('gameStateUpdate', room.gameState);
+      // Sanitized broadcast: raw gameState includes the full history array
+      // (one full-board snapshot per turn), which grows unbounded in long
+      // games. Stringifying + sending it stalls the server event loop and
+      // freezes the client tab. Always broadcast the sanitized version.
+      io.to(roomCode).emit('gameStateUpdate', RoomManager.getSanitizedGameState(room.gameState));
       callback({ success: true });
 
       // Run AI logic if turn shifts to AI
@@ -1559,6 +1611,9 @@ const actType = (actionStr || typeStr || '').toUpperCase();
             playerA: socket.id,
             playerB: targetPlayerId
           });
+          // Achievements for forming a pact (proposer is a human socket / playerA)
+          GameEngine.grantPactFormationAchievements(room, pactType, socket.id, targetPlayerId);
+          GameEngine.grantSilverTongue(room, socket.id, targetPlayerId);
           
           gameState.logs.push({
             timestamp: new Date().toLocaleTimeString(),
@@ -1627,6 +1682,9 @@ const actType = (actionStr || typeStr || '').toUpperCase();
           playerA: prop.sender,
           playerB: prop.receiver
         });
+        // Achievements for forming a pact
+        GameEngine.grantPactFormationAchievements(room, prop.type, prop.sender, prop.receiver);
+        GameEngine.grantSilverTongue(room, prop.sender, prop.receiver);
 
         gameState.logs.push({
           timestamp: new Date().toLocaleTimeString(),
@@ -2169,7 +2227,51 @@ Reply in 1 short, punchy paragraph (1 to 3 sentences max). Maintain your charact
       }
     }
   });
+// Account System Events
+  socket.on('accountRegister', ({ username, password }, callback) => {
+    const res = UserDB.register(username, password);
+    if (callback) callback(res);
+  });
 
+  socket.on('accountLogin', ({ username, password }, callback) => {
+    const res = UserDB.login(username, password);
+    if (callback) callback(res);
+  });
+
+  socket.on('accountAutoLogin', ({ username, token }, callback) => {
+    const res = UserDB.autoLogin(username, token);
+    if (callback) callback(res);
+  });
+
+  socket.on('getAccountStats', ({ username }, callback) => {
+    const res = UserDB.getAccountStats(username);
+    if (callback) callback(res);
+  });
+
+  socket.on('updateBattleCard', ({ username, battleCard }, callback) => {
+    const res = UserDB.updateBattleCard(username, battleCard);
+    if (callback) callback(res);
+  });
+  socket.on('triggerSecretAchievement', ({ username, achId, roomCode, proof }, callback) => {
+    const room = RoomManager.getRoom(roomCode);
+    const isEligible = room && room.gameState && room.gameState.matchStartedWithMinTwoHumans;
+    // Allow-list: only these client-initiated secret actions may be granted, and
+    // each requires a server-side proof value sent by the client so a raw socket
+    // call can't self-grant arbitrary achievements.
+    const SECRET_ACHIEVEMENT_ACTIONS = {
+      secret_anime_scroll: (g, p) => !!p,
+      secret_choose_already: (g, p) => Number(p) >= 6
+    };
+    const validator = SECRET_ACHIEVEMENT_ACTIONS[achId];
+    if (!validator || !isEligible || !validator(room.gameState, proof)) {
+      if (callback) callback({ error: 'Not eligible' });
+      return;
+    }
+    const res = UserDB.grantAchievement(username, achId, isEligible);
+    if (callback) callback(res || { success: false });
+  });
+
+  
   // 14. Disconnect
   socket.on('disconnect', () => {
     console.log(`User disconnected: ${socket.id}`);
@@ -2182,7 +2284,9 @@ Reply in 1 short, punchy paragraph (1 to 3 sentences max). Maintain your charact
         } else if (res.status === 'PLAYING') {
           // Player became AI, notify room and push updated state
           io.to(res.code).emit('playersUpdate', room.players);
-          io.to(res.code).emit('gameStateUpdate', room.gameState);
+          // Sanitized broadcast: raw gameState includes the unbounded history
+          // array which stalls the event loop and client in long games.
+          io.to(res.code).emit('gameStateUpdate', RoomManager.getSanitizedGameState(room.gameState));
           
           // Broadcast system message about disconnect
           io.to(res.code).emit('chatMessage', {

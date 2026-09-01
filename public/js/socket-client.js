@@ -59,7 +59,8 @@
 
     // Emitters
     createRoom: (playerName, playerColor, mapData, callback) => {
-      socket.emit('createRoom', { mapData, playerName, playerColor }, (response) => {
+      const accountId = window.SocketClient.currentAccount?.username || null;
+      socket.emit('createRoom', { mapData, playerName, playerColor, accountId }, (response) => {
         if (response.success) {
           window.SocketClient.roomCode = response.roomCode;
         }
@@ -68,7 +69,8 @@
     },
 
     joinRoom: (roomCode, playerName, playerColor, callback) => {
-      socket.emit('joinRoom', { roomCode, playerName, playerColor }, (response) => {
+      const accountId = window.SocketClient.currentAccount?.username || null;
+      socket.emit('joinRoom', { roomCode, playerName, playerColor, accountId }, (response) => {
         if (response.success) {
           window.SocketClient.roomCode = response.roomCode;
         }
@@ -365,7 +367,66 @@ changePlayerColor: (targetPlayerId, newColor, callback) => {
       socket.emit('sendMessage', { roomCode: window.SocketClient.roomCode, text });
     },
 
-    // Global Listeners setup
+    // Account System
+    currentAccount: null,
+
+    registerAccount: (username, password, callback) => {
+      socket.emit('accountRegister', { username, password }, (res) => {
+        if (res.success) {
+          window.SocketClient.currentAccount = res.user;
+          localStorage.setItem('factional_risk_account', JSON.stringify({ username: res.user.username, token: res.user.token }));
+        }
+        if (callback) callback(res);
+      });
+    },
+
+    loginAccount: (username, password, callback) => {
+      socket.emit('accountLogin', { username, password }, (res) => {
+        if (res.success) {
+          window.SocketClient.currentAccount = res.user;
+          localStorage.setItem('factional_risk_account', JSON.stringify({ username: res.user.username, token: res.user.token }));
+        }
+        if (callback) callback(res);
+      });
+    },
+
+    autoLoginAccount: (username, token, callback) => {
+      socket.emit('accountAutoLogin', { username, token }, (res) => {
+        if (res.success) {
+          window.SocketClient.currentAccount = res.user;
+        } else {
+          localStorage.removeItem('factional_risk_account');
+        }
+        if (callback) callback(res);
+      });
+    },
+
+    getAccountStats: (username, callback) => {
+      socket.emit('getAccountStats', { username }, callback);
+    },
+    
+    updateBattleCard: (battleCard, callback) => {
+      const username = window.SocketClient.currentAccount?.username;
+      if (!username) return callback && callback({ error: 'Not logged in' });
+      socket.emit('updateBattleCard', { username, battleCard }, (res) => {
+        if (res.success && window.SocketClient.currentAccount) {
+          window.SocketClient.currentAccount.battleCard = res.battleCard;
+        }
+        if (callback) callback(res);
+      });
+    },
+
+    triggerSecretAchievement: (achId, proof, callback) => {
+      if (!window.SocketClient.roomCode) return callback && callback({ error: 'No room context' });
+      const username = window.SocketClient.currentAccount?.username;
+      if (!username) return callback && callback({ error: 'Not logged in' });
+      socket.emit('triggerSecretAchievement', { roomCode: window.SocketClient.roomCode, username, achId, proof }, callback);
+    },
+
+    logoutAccount: () => {
+      window.SocketClient.currentAccount = null;
+      localStorage.removeItem('factional_risk_account');
+    },
     onPlayersUpdate: (callback) => {
       socket.on('playersUpdate', callback);
     },
@@ -385,7 +446,13 @@ changePlayerColor: (targetPlayerId, newColor, callback) => {
 
     onGameStateUpdate: (callback) => {
       socket.on('gameStateUpdate', (compressedState) => {
-        callback(decompressState(compressedState));
+        try {
+          callback(decompressState(compressedState));
+        } catch (err) {
+          // A failed decompress/apply must never kill the socket listener for
+          // all future updates — log and keep the connection alive.
+          console.error('[SocketClient] gameStateUpdate handling error:', err);
+        }
       });
     },
 

@@ -28,6 +28,16 @@
       this.activeProjectileCount = 0;
     }
 
+    // Append a transient FX element (projectile, explosion, beam, etc.) to the
+    // map. Tagged with a creation timestamp so the game client can sweep any
+    // leftovers if rendering ever stalls mid-animation.
+    appendFx(el) {
+      try {
+        el.setAttribute('data-fx-created', String(Date.now()));
+      } catch (e) { /* ignore non-SVG / detached elements */ }
+      this.transformGroup.appendChild(el);
+    }
+
     render(mapData, gameState = null) {
       this.mapData = mapData;
       this.gameState = gameState;
@@ -998,7 +1008,7 @@ getVisibleTerritories(gameState, mapData, localPlayerId) {
         <rect x="-2" y="-3" width="16" height="6" rx="1.5" fill="${shooterColor}" stroke="#0f172a" stroke-width="1.2"/>
         <circle cx="16" cy="0" r="7" fill="#ffeedd" stroke="#ff6600" stroke-width="2" class="cannon-muzzle-flare"/>
       `;
-      this.transformGroup.appendChild(cannonGroup);
+      this.appendFx(cannonGroup);
 
       // Fade out cannon after shot
       setTimeout(() => {
@@ -1061,7 +1071,7 @@ getVisibleTerritories(gameState, mapData, localPlayerId) {
         projectileGroup.appendChild(projectileCore);
       }
 
-      this.transformGroup.appendChild(projectileGroup);
+      this.appendFx(projectileGroup);
 
       // Flight Animation
       const flightDuration = Math.min(480, Math.max(300, dist * 1.1));
@@ -1135,7 +1145,7 @@ getVisibleTerritories(gameState, mapData, localPlayerId) {
         sparks.push(spark);
       }
 
-      this.transformGroup.appendChild(expGroup);
+      this.appendFx(expGroup);
 
       if (typeof onImpact === 'function') {
         onImpact();
@@ -1294,7 +1304,7 @@ getVisibleTerritories(gameState, mapData, localPlayerId) {
             }
           }
 
-        this.transformGroup.appendChild(tg);
+        this.appendFx(tg);
         return { el: tg, cfg };
       });
 
@@ -1356,7 +1366,7 @@ getVisibleTerritories(gameState, mapData, localPlayerId) {
       ripple2.setAttribute("stroke-width", "3");
       conquestGroup.appendChild(ripple2);
 
-      this.transformGroup.appendChild(conquestGroup);
+      this.appendFx(conquestGroup);
 
       const startTime = performance.now();
       const duration = 1100;
@@ -1435,7 +1445,7 @@ getVisibleTerritories(gameState, mapData, localPlayerId) {
       const startY = cy - 8;
       const endY = cy - 42;
       textEl.setAttribute("transform", `translate(${cx}, ${startY})`);
-      this.transformGroup.appendChild(textEl);
+      this.appendFx(textEl);
 
       const record = {
         territoryId,
@@ -1675,28 +1685,16 @@ getVisibleTerritories(gameState, mapData, localPlayerId) {
       const svg = this.svg;
       if (!svg) return;
 
-      // Clean up previous window listeners to prevent memory leaks
-      if (this._onMouseMoveBound) {
-        window.removeEventListener('mousemove', this._onMouseMoveBound);
-      }
-      if (this._onMouseUpBound) {
-        window.removeEventListener('mouseup', this._onMouseUpBound);
-      }
+      // Clean up previous window listeners
+      if (this._onMouseMoveBound) window.removeEventListener('mousemove', this._onMouseMoveBound);
+      if (this._onMouseUpBound) window.removeEventListener('mouseup', this._onMouseUpBound);
 
-      // Prevent context menu popup on the map for right-click panning
-      svg.addEventListener('contextmenu', (e) => {
-        e.preventDefault();
-      });
+      svg.addEventListener('contextmenu', (e) => e.preventDefault());
 
+      // ==================== DESKTOP MOUSE PAN & ZOOM ====================
       svg.addEventListener('mousedown', (e) => {
         if (e.target.tagName === 'button' || e.target.closest('button')) return;
-        
-        // Prevent default browser behaviors (middle-click autoscroll & right-click menu)
-        if (e.button === 1 || e.button === 2) {
-          e.preventDefault();
-        }
-
-        // Allow panning with Left (0), Middle (1), or Right (2) mouse clicks
+        if (e.button === 1 || e.button === 2) e.preventDefault();
         if (e.button !== 0 && e.button !== 1 && e.button !== 2) return;
 
         this.isPanning = true;
@@ -1711,9 +1709,7 @@ getVisibleTerritories(gameState, mapData, localPlayerId) {
         if (!this.isPanning) return;
         const dx = e.clientX - this.startX;
         const dy = e.clientY - this.startY;
-        if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
-          this.hasDragged = true;
-        }
+        if (Math.abs(dx) > 5 || Math.abs(dy) > 5) this.hasDragged = true;
 
         const ctm = svg.getScreenCTM();
         if (!ctm || !isFinite(ctm.a) || ctm.a === 0) return;
@@ -1725,9 +1721,7 @@ getVisibleTerritories(gameState, mapData, localPlayerId) {
 
       this._onMouseUpBound = () => {
         this.isPanning = false;
-        setTimeout(() => {
-          this.hasDragged = false;
-        }, 0);
+        setTimeout(() => { this.hasDragged = false; }, 50);
       };
 
       window.addEventListener('mousemove', this._onMouseMoveBound);
@@ -1735,21 +1729,18 @@ getVisibleTerritories(gameState, mapData, localPlayerId) {
 
       svg.addEventListener('wheel', (e) => {
         e.preventDefault();
-
         const pt = svg.createSVGPoint();
         pt.x = e.clientX;
         pt.y = e.clientY;
         const ctm = svg.getScreenCTM();
         if (!ctm) return;
 
-        // Convert cursor screen position to SVG viewBox coordinates
         const viewBoxPoint = pt.matrixTransform(ctm.inverse());
         if (!isFinite(viewBoxPoint.x) || !isFinite(viewBoxPoint.y)) return;
 
         const zoomFactor = e.deltaY < 0 ? 1.15 : 0.85;
         const newScale = Math.min(20.0, Math.max(0.4, this.zoomScale * zoomFactor));
 
-        // Keep the exact SVG point under the mouse cursor stationary
         const newPanX = viewBoxPoint.x - (viewBoxPoint.x - this.panX) * (newScale / this.zoomScale);
         const newPanY = viewBoxPoint.y - (viewBoxPoint.y - this.panY) * (newScale / this.zoomScale);
 
@@ -1760,6 +1751,100 @@ getVisibleTerritories(gameState, mapData, localPlayerId) {
         this.zoomScale = newScale;
         this.applyTransform();
       }, { passive: false });
+
+      // ==================== MOBILE TOUCH PAN & PINCH-TO-ZOOM ====================
+      let touchStartDist = 0;
+      let touchStartScale = 1;
+      let touchStartMidPoint = { x: 0, y: 0 };
+      let lastTouchX = 0;
+      let lastTouchY = 0;
+
+      const getTouchDist = (t1, t2) => {
+        const dx = t1.clientX - t2.clientX;
+        const dy = t1.clientY - t2.clientY;
+        return Math.hypot(dx, dy);
+      };
+
+      const getTouchMid = (t1, t2) => ({
+        x: (t1.clientX + t2.clientX) / 2,
+        y: (t1.clientY + t2.clientY) / 2
+      });
+
+      svg.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 1) {
+          // 1 Finger: Pan or Tap
+          this.isPanning = true;
+          this.hasDragged = false;
+          this.startX = e.touches[0].clientX;
+          this.startY = e.touches[0].clientY;
+          lastTouchX = this.startX;
+          lastTouchY = this.startY;
+          this.startPanX = this.panX;
+          this.startPanY = this.panY;
+        } else if (e.touches.length === 2) {
+          // 2 Fingers: Pinch to Zoom
+          this.isPanning = false;
+          this.hasDragged = true;
+          touchStartDist = getTouchDist(e.touches[0], e.touches[1]);
+          touchStartScale = this.zoomScale;
+
+          const mid = getTouchMid(e.touches[0], e.touches[1]);
+          const pt = svg.createSVGPoint();
+          pt.x = mid.x;
+          pt.y = mid.y;
+          const ctm = svg.getScreenCTM();
+          if (ctm) {
+            touchStartMidPoint = pt.matrixTransform(ctm.inverse());
+          }
+        }
+      }, { passive: true });
+
+      svg.addEventListener('touchmove', (e) => {
+        if (e.touches.length === 1 && this.isPanning) {
+          e.preventDefault();
+          const curX = e.touches[0].clientX;
+          const curY = e.touches[0].clientY;
+          const dx = curX - this.startX;
+          const dy = curY - this.startY;
+
+          if (Math.abs(dx) > 6 || Math.abs(dy) > 6) {
+            this.hasDragged = true;
+          }
+
+          const ctm = svg.getScreenCTM();
+          if (!ctm || !isFinite(ctm.a) || ctm.a === 0) return;
+
+          this.panX = this.startPanX + (dx / ctm.a);
+          this.panY = this.startPanY + (dy / (ctm.d || ctm.a));
+          this.applyTransform();
+        } else if (e.touches.length === 2 && touchStartDist > 0) {
+          e.preventDefault();
+          const curDist = getTouchDist(e.touches[0], e.touches[1]);
+          const pinchFactor = curDist / touchStartDist;
+          const newScale = Math.min(20.0, Math.max(0.4, touchStartScale * pinchFactor));
+
+          if (isFinite(touchStartMidPoint.x) && isFinite(touchStartMidPoint.y)) {
+            const newPanX = touchStartMidPoint.x - (touchStartMidPoint.x - this.panX) * (newScale / this.zoomScale);
+            const newPanY = touchStartMidPoint.y - (touchStartMidPoint.y - this.panY) * (newScale / this.zoomScale);
+            if (isFinite(newPanX) && isFinite(newPanY)) {
+              this.panX = newPanX;
+              this.panY = newPanY;
+            }
+          }
+
+          this.zoomScale = newScale;
+          this.applyTransform();
+        }
+      }, { passive: false });
+
+      const onTouchEnd = () => {
+        this.isPanning = false;
+        touchStartDist = 0;
+        setTimeout(() => { this.hasDragged = false; }, 80);
+      };
+
+      svg.addEventListener('touchend', onTouchEnd, { passive: true });
+      svg.addEventListener('touchcancel', onTouchEnd, { passive: true });
     }
 
     bindZoomButtons() {
@@ -1877,7 +1962,7 @@ getVisibleTerritories(gameState, mapData, localPlayerId) {
           <circle cx="0" cy="0" r="14" fill="none" stroke="#fde047" stroke-width="1.5"/>
           <polygon points="0,-12 3,-3 12,-3 5,2 8,11 0,6 -8,11 -5,2 -12,-3 -3,-3" fill="#ff77a9" opacity="0.8"/>
         `;
-        this.transformGroup.appendChild(magicCircle);
+        this.appendFx(magicCircle);
 
         const slideDuration = 1100;
         const startTime = performance.now();
@@ -1903,7 +1988,7 @@ getVisibleTerritories(gameState, mapData, localPlayerId) {
             beam.setAttribute("stroke", "#ffffff");
             beam.setAttribute("stroke-width", isThermo ? "22" : "14");
             beam.style.filter = "drop-shadow(0 0 16px #ff77a9)";
-            this.transformGroup.appendChild(beam);
+            this.appendFx(beam);
 
             const mapContainer = document.getElementById('game-map-container');
             if (mapContainer) mapContainer.classList.add('shake-active');
@@ -1937,7 +2022,7 @@ getVisibleTerritories(gameState, mapData, localPlayerId) {
           <!-- Scanning target reticle -->
           <circle cx="0" cy="0" r="14" fill="none" stroke="#00f0ff" stroke-width="1.2" stroke-dasharray="3 3"/>
         `;
-        this.transformGroup.appendChild(satellite);
+        this.appendFx(satellite);
 
         // Slide the satellite horizontally from Launchpad to Target Orbit over 1200ms
         const slideDuration = 1200;
@@ -1964,7 +2049,7 @@ getVisibleTerritories(gameState, mapData, localPlayerId) {
             laser.setAttribute("stroke", "#ffffff");
             laser.setAttribute("stroke-width", isThermo ? "20" : "12");
             laser.style.filter = "drop-shadow(0 0 15px #00f0ff)";
-            this.transformGroup.appendChild(laser);
+            this.appendFx(laser);
 
             // Shudder the screen slightly during laser fire
             const mapContainer = document.getElementById('game-map-container');
@@ -2010,7 +2095,7 @@ getVisibleTerritories(gameState, mapData, localPlayerId) {
             <rect x="-3" y="-4" width="19" height="8" rx="2" fill="#c29d6d" stroke="#2c1e0f" stroke-width="1.5"/>
             <circle cx="18" cy="0" r="8" fill="#ffcca3" stroke="#ff4500" stroke-width="2.5" class="cannon-muzzle-flare"/>
           `;
-          this.transformGroup.appendChild(cannonGroup);
+          this.appendFx(cannonGroup);
 
           setTimeout(() => {
             cannonGroup.style.transition = "opacity 0.4s ease-out";
@@ -2025,7 +2110,7 @@ getVisibleTerritories(gameState, mapData, localPlayerId) {
             <circle r="7.5" fill="#2c251e" stroke="#8b765d" stroke-width="1.5"/>
             <circle r="4" fill="#ff4500" opacity="0.8" style="animation: pulse 0.1s infinite alternate;"/>
           `;
-          this.transformGroup.appendChild(projectile);
+          this.appendFx(projectile);
 
           const dist = Math.hypot(x2 - cx1, y2 - cy1) || 1;
           const flightDuration = 700 + Math.random() * 300;
@@ -2083,7 +2168,7 @@ getVisibleTerritories(gameState, mapData, localPlayerId) {
           <line x1="8" y1="-4" x2="-8" y2="4" stroke="#ff3333" stroke-width="0.8"/>
           <circle cx="0" cy="0" r="3" fill="#ff3333"/>
         `;
-        this.transformGroup.appendChild(silo);
+        this.appendFx(silo);
 
         if (window.MainController) {
           window.MainController.playSFX('imagesandsounds/conflict1.mp3');
@@ -2099,7 +2184,7 @@ getVisibleTerritories(gameState, mapData, localPlayerId) {
           <circle cx="0" cy="8" r="4.5" fill="#f97316" opacity="0.8" style="animation: pulse 0.1s infinite alternate;"/>
           <circle cx="0" cy="11" r="3" fill="#eab308" opacity="0.9" style="animation: pulse 0.08s infinite alternate;"/>
         `;
-        this.transformGroup.appendChild(missile);
+        this.appendFx(missile);
 
         const dist = Math.hypot(x2 - x1, y2 - y1) || 1;
         const arcHeight = Math.min(260, Math.max(90, dist * 0.42));
@@ -2229,7 +2314,7 @@ getVisibleTerritories(gameState, mapData, localPlayerId) {
       });
     }
 
-    this.transformGroup.appendChild(nukeGroup);
+    this.appendFx(nukeGroup);
 
     if (typeof onImpact === 'function') {
       onImpact();
@@ -2321,3 +2406,89 @@ getVisibleTerritories(gameState, mapData, localPlayerId) {
 
   window.SVGRenderer = SVGRenderer;
 })();
+
+// High-Definition SVG Vector Icon Registry for all 60 Achievements (Zero external font dependencies, No emojis)
+  window.getAchievementSvgIcon = function(achId, size = 26) {
+    const icons = {
+      // Combat & Conquest
+      first_blood: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><path d="M12 2L14.5 9.5H22L16 14L18.5 21.5L12 17L5.5 21.5L8 14L2 9.5H9.5L12 2Z" fill="#ef4444" fill-opacity="0.3"/><line x1="12" y1="6" x2="12" y2="15"/></svg>`,
+      lightning_advance: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#38bdf8"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
+      steamroller: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><rect x="3" y="11" width="18" height="8" rx="2" fill="#f59e0b" fill-opacity="0.25"/><circle cx="7" cy="19" r="2"/><circle cx="12" cy="19" r="2"/><circle cx="17" cy="19" r="2"/><path d="M6 11V6a3 3 0 0 1 3-3h6a3 3 0 0 1 3 3v5"/></svg>`,
+      relentless_vanguard: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#e11d48" stroke-width="2"><path d="M14.5 17.5L3 6V3h3l11.5 11.5"/><path d="M13 19l6-6"/><path d="M16 16l4 4"/><path d="M19 21l2-2"/></svg>`,
+      clean_sweep: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" fill="#10b981" fill-opacity="0.25"/><polyline points="9 12 11 14 15 10"/></svg>`,
+      decisive_strike: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#f43f5e" stroke-width="2"><circle cx="12" cy="12" r="10" stroke="#f43f5e"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/><circle cx="12" cy="12" r="3" fill="#f43f5e"/></svg>`,
+      continent_breaker: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2"><circle cx="12" cy="12" r="9" stroke="#38bdf8"/><path d="M3.6 9h16.8M3.6 15h16.8M11.5 3a17 17 0 0 0 0 18M12.5 3a17 17 0 0 1 0 18"/><line x1="4" y1="4" x2="20" y2="20" stroke="#ef4444" stroke-width="2.5"/></svg>`,
+      iron_citadel: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><path d="M12 2L4 5v6.09c0 5.05 3.41 9.76 8 10.91 4.59-1.15 8-5.86 8-10.91V5l-8-3z" fill="#334155"/><rect x="9" y="9" width="6" height="7" rx="1" fill="#64748b"/></svg>`,
+      garrison_master: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#f59e0b"><rect x="3" y="10" width="18" height="11" rx="2" fill="#78350f" stroke="#facc15" stroke-width="2"/><rect x="5" y="5" width="4" height="5" fill="#facc15"/><rect x="15" y="5" width="4" height="5" fill="#facc15"/><rect x="10" y="3" width="4" height="7" fill="#facc15"/></svg>`,
+      border_guard: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#0284c7" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2" fill="#0369a1" fill-opacity="0.3"/><line x1="6" y1="6" x2="6" y2="18"/><line x1="12" y1="6" x2="12" y2="18"/><line x1="18" y1="6" x2="18" y2="18"/></svg>`,
+      impenetrable_border: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#c084fc" stroke-width="2"><path d="M12 2l8 4v6c0 5.5-3.8 10.7-8 12-4.2-1.3-8-6.5-8-12V6l8-4z" fill="#581c87" fill-opacity="0.4"/><circle cx="12" cy="12" r="4" fill="#c084fc"/></svg>`,
+
+      // Nuclear Warfare
+      manhattan_project: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#22c55e"><circle cx="12" cy="12" r="10" fill="none" stroke="#22c55e" stroke-width="2"/><circle cx="12" cy="12" r="3"/><path d="M12 2v6M12 16v6M2 12h6M16 12h6"/></svg>`,
+      i_am_become_death: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#a855f7"><circle cx="12" cy="12" r="9" stroke="#c084fc" stroke-width="2" fill="#581c87" fill-opacity="0.5"/><path d="M12 3a9 9 0 0 1 7.8 4.5l-4.3 2.5a4 4 0 0 0-3.5-2z"/></svg>`,
+      trinity_test: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#ef4444"><path d="M12 2v8M12 14v8M2 12h8M14 12h8"/><circle cx="12" cy="12" r="4" fill="#facc15" stroke="#ef4444" stroke-width="1.5"/></svg>`,
+      total_scorched_earth: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#f97316"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>`,
+      nuclear_deterrent: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" fill="#3b0764"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><circle cx="12" cy="16" r="1.5" fill="#c084fc"/></svg>`,
+      extinction_protocol: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#dc2626"><circle cx="12" cy="12" r="10" stroke="#dc2626" stroke-width="2" fill="#450a0a"/><line x1="15" y1="9" x2="9" y2="15" stroke="#fff" stroke-width="2"/><line x1="9" y1="9" x2="15" y2="15" stroke="#fff" stroke-width="2"/></svg>`,
+      mutually_assured_destruction: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#e11d48"><path d="M4 15l4-8 4 8M12 15l4-8 4 8M2 19h20" stroke="#facc15" stroke-width="2"/></svg>`,
+      mass_demilitarization: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#c084fc"><path d="M12 2L2 22h20L12 2zm0 4l6.5 13H5.5L12 6z"/><circle cx="12" cy="15" r="1.5" fill="#facc15"/></svg>`,
+
+      // Diplomacy & Treachery
+      handshake_protocol: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2"><path d="M11 15h2a2 2 0 1 0 0-4h-3c-.6 0-1.1.2-1.4.6L3 17"/><path d="M7 11l4-4 4 4"/><path d="M13 15l4 4 4-4"/></svg>`,
+      blood_brothers: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#38bdf8"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>`,
+      the_coalition: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2"><circle cx="12" cy="7" r="4"/><path d="M5.5 21a6.5 6.5 0 0 1 13 0"/><circle cx="19" cy="11" r="3"/><circle cx="5" cy="11" r="3"/></svg>`,
+      et_tu_brute: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><path d="M14.5 17.5L3 6V3h3l11.5 11.5"/><path d="M19 5l-7 7"/><line x1="16" y1="2" x2="22" y2="8"/></svg>`,
+      cold_blooded_backstab: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#a855f7"><path d="M12 2L15 9H9L12 2zM12 22l-3-7h6l-3 7z"/><line x1="2" y1="12" x2="22" y2="12" stroke="#c084fc" stroke-width="2"/></svg>`,
+      switzerland: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#f8fafc"><rect x="3" y="3" width="18" height="18" rx="3" fill="#dc2626"/><rect x="10" y="6" width="4" height="12" fill="#fff"/><rect x="6" y="10" width="12" height="4" fill="#fff"/></svg>`,
+      silver_tongue: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#38bdf8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,
+      fool_me_twice: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M16 16s-1.5-2-4-2-4 2-4 2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>`,
+      the_red_wedding: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#991b1b"><path d="M5 16L3 5l5.5 5L12 4l3.5 6L21 5l-2 11H5zm14 3c0 .6-.4 1-1 1H6c-.6 0-1-.4-1-1v-1h14v1z"/></svg>`,
+
+      // Capital Rush
+      fortified_crown: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#facc15"><path d="M2 4l3 12h14l3-12-5 4-5-6-5 6-5-4zm3 14h14v2H5v-2z"/><circle cx="12" cy="12" r="2" fill="#78350f"/></svg>`,
+      near_death_sovereign: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2"><path d="M12 2l3 7h7l-5.5 4.5 2 7.5L12 17l-6.5 4 2-7.5L2 9h7z"/><path d="M12 9v6"/></svg>`,
+      capital_crusher: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#f59e0b"><path d="M5 16L3 5l5.5 5L12 4l3.5 6L21 5l-2 11H5z"/><line x1="2" y1="21" x2="22" y2="21" stroke="#f59e0b" stroke-width="2"/></svg>`,
+      ground_zero_capital: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#f43f5e"><circle cx="12" cy="12" r="10" stroke="#f43f5e" stroke-width="1.5"/><path d="M5 16L3 5l5.5 5L12 4l3.5 6L21 5l-2 11H5z" fill="#f43f5e"/></svg>`,
+
+      // Fog of War
+      omniscient_recon: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3" fill="#38bdf8"/></svg>`,
+      shared_horizons: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`,
+
+      // Dice Luck & RNG
+      blessed_by_rngesus: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#38bdf8"><rect x="3" y="3" width="18" height="18" rx="3" fill="#0369a1"/><circle cx="7.5" cy="7.5" r="1.5" fill="#fff"/><circle cx="7.5" cy="12" r="1.5" fill="#fff"/><circle cx="7.5" cy="16.5" r="1.5" fill="#fff"/><circle cx="16.5" cy="7.5" r="1.5" fill="#fff"/><circle cx="16.5" cy="12" r="1.5" fill="#fff"/><circle cx="16.5" cy="16.5" r="1.5" fill="#fff"/></svg>`,
+      wall_of_steel: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#38bdf8"><rect x="3" y="3" width="18" height="18" rx="3" fill="#334155" stroke="#38bdf8" stroke-width="2"/><circle cx="8" cy="8" r="2" fill="#38bdf8"/><circle cx="16" cy="16" r="2" fill="#38bdf8"/></svg>`,
+      snake_eyes_tragedy: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#ef4444"><rect x="3" y="3" width="18" height="18" rx="3" fill="#7f1d1d" stroke="#ef4444" stroke-width="1.5"/><circle cx="12" cy="12" r="2" fill="#fff"/></svg>`,
+      calculated_risk: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#c084fc" stroke-width="2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>`,
+
+      // Cards & Logistics
+      card_shark: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#c084fc"><rect x="4" y="2" width="12" height="16" rx="2" fill="#581c87" stroke="#c084fc" stroke-width="1.5"/><rect x="8" y="6" width="12" height="16" rx="2" fill="#3b0764" stroke="#c084fc" stroke-width="1.5"/></svg>`,
+      forced_liquidation: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#38bdf8"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" stroke="#38bdf8" stroke-width="2" fill="none"/></svg>`,
+      arms_race_escalation: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>`,
+      jokers_wild: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#c084fc"><polygon points="12 2 15 8.5 22 9.5 17 14.5 18.5 21.5 12 18 5.5 21.5 7 14.5 2 9.5 9 8.5 12 2" fill="#7c3aed" stroke="#c084fc" stroke-width="1.5"/></svg>`,
+      matching_soil: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#38bdf8"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>`,
+
+      // Tactics & Mastery
+      multiverse: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20M2 12h20"/></svg>`,
+      no_way_home: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#64748b"><circle cx="12" cy="12" r="10" stroke="#64748b" stroke-width="2"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07" stroke="#64748b" stroke-width="2"/></svg>`,
+      world_dominator: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#10b981"><circle cx="12" cy="12" r="10" fill="#064e3b" stroke="#10b981" stroke-width="2"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20" stroke="#10b981" stroke-width="1.5" fill="none"/></svg>`,
+      continent_master: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#38bdf8"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>`,
+      mother_russia: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2"><path d="M12 2v20M2 12h20M4.93 4.93l14.14 14.14M4.93 19.07L19.07 4.93"/><circle cx="12" cy="12" r="3" fill="#38bdf8"/></svg>`,
+      rags_to_riches: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#facc15"><path d="M12 2l3 7h7l-5.5 4.5 2 7.5L12 17l-6.5 4 2-7.5L2 9h7z"/><circle cx="12" cy="12" r="4" fill="#854d0e"/></svg>`,
+      the_silk_road: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><circle cx="4" cy="12" r="2"/><circle cx="12" cy="6" r="2"/><circle cx="20" cy="12" r="2"/><circle cx="12" cy="18" r="2"/><path d="M6 12h4m4 0h4M12 8v2m0 4v2" stroke-dasharray="2 2"/></svg>`,
+      the_colossus: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#facc15"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="#facc15" stroke-width="2" fill="none"/></svg>`,
+      human_wave_tactics: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#c084fc"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
+      minmaxing: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#c084fc" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5" fill="#c084fc"/><polyline points="21 15 16 10 5 21"/></svg>`,
+      blitzkrieg_world_tour: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#c084fc"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="#a855f7"/><circle cx="12" cy="12" r="9" stroke="#c084fc" stroke-width="1.5" fill="none"/></svg>`,
+      single_stack_wipeout: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#c084fc"><circle cx="6" cy="12" r="4" fill="#581c87"/><circle cx="18" cy="12" r="4" fill="#581c87"/><line x1="2" y1="2" x2="22" y2="22" stroke="#ef4444" stroke-width="2.5"/></svg>`,
+      the_comeback_kid: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#facc15" stroke="#facc15"><path d="M12 2l3 7h7l-5.5 4.5 2 7.5L12 17l-6.5 4 2-7.5L2 9h7z"/><circle cx="12" cy="12" r="3" fill="#000"/></svg>`,
+      nuclear_judas: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#38bdf8"><path d="M12 2v10l4-4M12 12l-4-4"/><circle cx="12" cy="16" r="4" fill="#0284c7"/></svg>`,
+
+      // Secret Feats
+      secret_anime_scroll: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#ff77a9"><circle cx="12" cy="12" r="10" fill="#4c1d35" stroke="#ff77a9" stroke-width="2"/><circle cx="9" cy="10" r="1.5" fill="#fff"/><circle cx="15" cy="10" r="1.5" fill="#fff"/><path d="M8 15s1.5 2 4 2 4-2 4-2" stroke="#fff" stroke-width="1.5" fill="none"/></svg>`,
+      secret_nuclear_bbq: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#c084fc"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>`,
+      secret_choose_already: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#38bdf8"><circle cx="12" cy="12" r="9" stroke="#38bdf8" stroke-width="2" fill="none"/><path d="M12 7v5l3 3"/></svg>`
+    };
+
+    if (icons[achId]) return icons[achId];
+    return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#facc15" stroke-width="2"><circle cx="12" cy="12" r="9" fill="#facc15" fill-opacity="0.2"/><polygon points="12,6 14,10 18,10 15,13 16,17 12,14 8,17 9,13 6,10 10,10"/></svg>`;
+  };

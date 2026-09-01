@@ -366,18 +366,51 @@ function handleCombatDialogue(room, io, rolls) {
   }
 }
 
-// Generate a unique color not currently taken by any player in the room
+// Generate a unique color not currently taken by any player in the room.
+// Unlike a simple exact-match check, this also avoids perceptually similar
+// colors (e.g. two slightly different reds) so that commanders are always
+// visually distinguishable on the battlefield.
 function getUniqueColor(room) {
-  const taken = new Set(room.players.map(p => p.color.toLowerCase()));
-  const presetColors = ['#ff3366', '#33ff66', '#3366ff', '#ffcc00', '#ff00ff', '#00ffff', '#ffffff', '#ff9900'];
+  const taken = new Set(room.players.map(p => (p.color || '').trim().toLowerCase()));
+
+  // Hue-sorted palette of 24 maximally distinct colors (same set as server.js aiColors)
+  const presetColors = [
+    '#ef4444', '#ff6633', '#f97316', '#d97706', '#ff9900', '#f59e0b', '#ffcc00',
+    '#84cc16', '#33ff66', '#10b981', '#059669', '#14b8a6', '#00ffff', '#06b6d4',
+    '#0284c7', '#3366ff', '#6366f1', '#8b5cf6', '#7c3aed', '#a855f7', '#ff00ff',
+    '#ec4899', '#e11d48', '#ff3366'
+  ];
+
+  // Helper: check if a candidate color is too similar to any taken color
+  function isTooSimilar(candidate) {
+    const candLower = candidate.toLowerCase();
+    if (taken.has(candLower)) return true; // exact duplicate
+    for (const t of taken) {
+      if (GameEngine.colorsAreSimilar(candLower, t)) return true;
+    }
+    return false;
+  }
+
+  // Try preset colors first (hue-sorted for even distribution)
   for (const col of presetColors) {
-    if (!taken.has(col.toLowerCase())) return col;
+    if (!isTooSimilar(col)) return col.toLowerCase();
   }
-  // dynamic fallback
-  while (true) {
+
+  // Dynamic fallback: generate random colors, checking perceptual similarity
+  // against all taken colors. Cap attempts to avoid infinite loops.
+  let attempts = 0;
+  while (attempts < 500) {
+    attempts++;
     const col = '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
-    if (!taken.has(col.toLowerCase())) return col;
+    if (!isTooSimilar(col)) return col.toLowerCase();
   }
+
+  // Last resort: return any non-exact-duplicate color
+  for (const col of presetColors) {
+    const colLower = col.toLowerCase();
+    if (!taken.has(colLower)) return colLower;
+  }
+  return '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
 }
 
 function createRoom(hostSocketId, playerName, playerColor, mapData) {
@@ -389,7 +422,7 @@ function createRoom(hostSocketId, playerName, playerColor, mapData) {
     status: 'LOBBY',
     gameMode: 'auto',
     fogOfWar: false,
-    allowCrafting: false, // Nuke crafting is opt-IN (matches unchecked lobby checkbox); enabled when host toggles "Allow Crafting of Nukes"
+    allowCrafting: false,
     mapData,
     players: [
       {
@@ -398,7 +431,9 @@ function createRoom(hostSocketId, playerName, playerColor, mapData) {
         color: (playerColor || '#00e5ff').trim().toLowerCase(),
         isHost: true,
         isAI: false,
-        autoDefend: true
+        autoDefend: true,
+        level: 1,
+        battleCard: { theme: 'default', option: 1, showcasedBadges: [] }
       }
     ],
     gameState: null
@@ -595,7 +630,13 @@ function addAIPlayer(roomCode, name, color) {
     isAI: true,
     autoDefend: true,
     trustScores: {},
-    personality: chosenPersonality
+    personality: chosenPersonality,
+    level: 1,
+    battleCard: {
+      theme: 'default',
+      option: Math.floor(Math.random() * 3) + 1,
+      showcasedBadges: []
+    }
   };
 
   room.players.push(aiPlayer);
@@ -734,6 +775,9 @@ function startGame(roomCode) {
   GameEngine.initializeGame(room, activeMapData, room.gameMode || 'conquest');
   if (room.gameState) {
     room.gameState.fogOfWar = !!room.fogOfWar;
+    // Achievements only unlock in games that started with >= 2 human players!
+    const humanCount = room.players.filter(p => !p.isAI).length;
+    room.gameState.matchStartedWithMinTwoHumans = humanCount >= 2;
   }
 
   return { success: true, room };
@@ -1151,6 +1195,9 @@ function runAITurn(room, io) {
                 playerA: currentPlayer.id,
                 playerB: targetPlayer.id
               });
+              // Achievements for forming a pact (AI-to-AI / AI-to-human path)
+              GameEngine.grantPactFormationAchievements(room, chosenType, currentPlayer.id, targetPlayer.id);
+              GameEngine.grantSilverTongue(room, currentPlayer.id, targetPlayer.id);
               gameState.logs.push({
                 timestamp: new Date().toLocaleTimeString(),
                 message: `🤝 Pact Formed: ${currentPlayer.name} and ${targetPlayer.name} formed a ${chosenType.replace('_', ' ')}!`
@@ -1452,6 +1499,8 @@ const actType = (actionStr || typeStr || '').toUpperCase();
       if (!pactExists) {
         gameState.pacts.push({ playerA: pId, playerB: activePlayer.id, type: prop.type });
         const propPlayer = gameState.players.find(p => p.id === proposerId);
+        GameEngine.grantPactFormationAchievements(room, prop.type, pId, activePlayer.id);
+        GameEngine.grantSilverTongue(room, pId, activePlayer.id);
         GameEngine.addLog(gameState, `🤝 ${activePlayer.name} accepted the ${prop.type === 'non_aggression' ? 'Non-Aggression Pact' : 'Full Alliance'} proposal from ${propPlayer ? propPlayer.name : proposerId}!`);
       }
     }
@@ -1764,6 +1813,7 @@ module.exports = {
   updateGameMode,
   handleCombatDialogue,
   changeAIPersonality,
+  getUniqueColor,
   getSanitizedGameState,
   sendAIChatMessage,
   sweepFinishedRooms,
