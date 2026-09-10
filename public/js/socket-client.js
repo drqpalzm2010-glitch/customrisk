@@ -31,7 +31,11 @@
     'nationId': 'nid',
     'nationName': 'nn',
     'eliminated': 'e',
-    'cards': 'ca_hand'
+    'cards': 'ca_hand',
+    'zombieMode': 'zm',
+    'supplyMode': 'sm',
+    'buildingsMode': 'bm',
+    'buildings': 'bg'
   };
 
   const REVERSE_KEY_MAP = {};
@@ -58,82 +62,102 @@
     roomCode: null,
 
     // Emitters
-    createRoom: (playerName, playerColor, mapData, callback) => {
-      const accountId = window.SocketClient.currentAccount?.username || null;
+    createRoom: (arg1, arg2, arg3, arg4) => {
+      let playerName, playerColor, mapData, callback;
+      if (typeof arg1 === 'object' && arg1 !== null && (arg1.territories || arg1.width)) {
+        mapData = arg1;
+        playerName = arg2;
+        playerColor = arg3;
+        callback = arg4;
+      } else {
+        playerName = arg1;
+        playerColor = arg2;
+        mapData = arg3;
+        callback = arg4;
+      }
+
+      let accountId = window.SocketClient.currentAccount?.username || null;
+      if (!accountId && window.MainController?.currentAccountData?.username) {
+        accountId = window.MainController.currentAccountData.username;
+      }
+      if (!accountId) {
+        try {
+          const saved = JSON.parse(localStorage.getItem('factional_risk_account') || '{}');
+          if (saved && saved.username) accountId = saved.username;
+        } catch (e) {}
+      }
+
       socket.emit('createRoom', { mapData, playerName, playerColor, accountId }, (response) => {
         if (response.success) {
           window.SocketClient.roomCode = response.roomCode;
+          // Creating a normal lobby room means we occupy a real player slot, not a
+          // spectator. Clear any stale spectator flag left over from a previous
+          // Watch AI battle / saved-campaign load so player-only features (e.g.
+          // nuke crafting) are never silently hidden in a new match.
+          window.SocketClient.spectatorMode = false;
         }
-        callback(response);
+        if (callback) callback(response);
       });
     },
 
     joinRoom: (roomCode, playerName, playerColor, callback) => {
-      const accountId = window.SocketClient.currentAccount?.username || null;
+      let accountId = window.SocketClient.currentAccount?.username || null;
+      if (!accountId && window.MainController?.currentAccountData?.username) {
+        accountId = window.MainController.currentAccountData.username;
+      }
+      if (!accountId) {
+        try {
+          const saved = JSON.parse(localStorage.getItem('factional_risk_account') || '{}');
+          if (saved && saved.username) accountId = saved.username;
+        } catch (e) {}
+      }
+
       socket.emit('joinRoom', { roomCode, playerName, playerColor, accountId }, (response) => {
         if (response.success) {
           window.SocketClient.roomCode = response.roomCode;
+          // Joining a real lobby room makes us a player, not a spectator. Clear the
+          // spectator flag so player-only features (e.g. nuke crafting) are shown.
+          window.SocketClient.spectatorMode = false;
         }
-        callback(response);
+        if (callback) callback(response);
       });
     },
 
-    watchAIBattle: (mapData, aiCount, gameMode, asNormalMap, disableNations, honorPremadeAlliances, disabledNationIds, cardTradeRule, generativeAIMode, llmProviderConfig, reqBlizzardCount, reqStartingNukes, reqStartingThermonukes, reqAllowCrafting, callback) => {
-      if (typeof gameMode === 'function') {
-        callback = gameMode;
-        gameMode = 'conquest';
-        asNormalMap = false;
-        disableNations = false;
-        honorPremadeAlliances = true;
-        disabledNationIds = [];
-        cardTradeRule = 'progressive';
-        generativeAIMode = false;
-        llmProviderConfig = null;
-      } else if (typeof asNormalMap === 'function') {
-        callback = asNormalMap;
-        asNormalMap = false;
-        disableNations = false;
-        honorPremadeAlliances = true;
-        disabledNationIds = [];
-        cardTradeRule = 'progressive';
-        generativeAIMode = false;
-        llmProviderConfig = null;
-      } else if (typeof disableNations === 'function') {
-        callback = disableNations;
-        disableNations = false;
-        honorPremadeAlliances = true;
-        disabledNationIds = [];
-        cardTradeRule = 'progressive';
-        generativeAIMode = false;
-        llmProviderConfig = null;
-      } else if (typeof honorPremadeAlliances === 'function') {
-        callback = honorPremadeAlliances;
-        honorPremadeAlliances = true;
-        disabledNationIds = [];
-        cardTradeRule = 'progressive';
-        generativeAIMode = false;
-        llmProviderConfig = null;
-      } else if (typeof disabledNationIds === 'function') {
-        callback = disabledNationIds;
-        disabledNationIds = [];
-        cardTradeRule = 'progressive';
-        generativeAIMode = false;
-        llmProviderConfig = null;
-      } else if (typeof cardTradeRule === 'function') {
-        callback = cardTradeRule;
-        cardTradeRule = 'progressive';
-        generativeAIMode = false;
-        llmProviderConfig = null;
-      } else if (typeof generativeAIMode === 'function') {
-        callback = generativeAIMode;
-        generativeAIMode = false;
-        llmProviderConfig = null;
-      } else if (typeof llmProviderConfig === 'function') {
-        callback = llmProviderConfig;
-        llmProviderConfig = null;
-      }
-      socket.emit('watchAIBattle', { mapData, aiCount, gameMode, asNormalMap, disableNations, honorPremadeAlliances, disabledNationIds, cardTradeRule, generativeAIMode, llmProviderConfig, reqBlizzardCount, reqStartingNukes, reqStartingThermonukes, reqAllowCrafting }, (response) => {
-        if (response.success) {
+    watchAIBattle: (...args) => {
+      // 1. Automatically grab the callback if passed as the last argument
+      let callback = typeof args[args.length - 1] === 'function' ? args.pop() : null;
+
+      // 2. Map all positional arguments safely into the payload object
+      const [
+        mapData, aiCount, gameMode, asNormalMap, disableNations,
+        honorPremadeAlliances, disabledNationIds, cardTradeRule,
+        generativeAIMode, llmProviderConfig, reqBlizzardCount,
+        reqStartingNukes, reqStartingThermonukes, reqAllowCrafting,
+        reqZombieMode, reqSupplyMode, reqBuildingsMode
+      ] = args;
+
+      const payload = {
+        mapData,
+        aiCount: aiCount || 4,
+        gameMode: gameMode || 'conquest',
+        asNormalMap: !!asNormalMap,
+        disableNations: !!disableNations,
+        honorPremadeAlliances: honorPremadeAlliances !== false,
+        disabledNationIds: Array.isArray(disabledNationIds) ? disabledNationIds : [],
+        cardTradeRule: cardTradeRule || 'progressive',
+        generativeAIMode: !!generativeAIMode,
+        llmProviderConfig: llmProviderConfig || null,
+        reqBlizzardCount: reqBlizzardCount || 0,
+        reqStartingNukes: reqStartingNukes || 0,
+        reqStartingThermonukes: reqStartingThermonukes || 0,
+        reqAllowCrafting: !!reqAllowCrafting,
+        reqZombieMode: !!reqZombieMode,
+        reqSupplyMode: !!reqSupplyMode,
+        reqBuildingsMode: !!reqBuildingsMode
+      };
+
+      socket.emit('watchAIBattle', payload, (response) => {
+        if (response && response.success) {
           window.SocketClient.roomCode = response.roomCode;
           window.SocketClient.spectatorMode = true;
         }
@@ -187,7 +211,8 @@
     },
 
     loadSavedCampaign: (saveData, callback) => {
-      socket.emit('loadSavedCampaign', { saveData }, (response) => {
+      const accountId = window.SocketClient.currentAccount?.username || null;
+      socket.emit('loadSavedCampaign', { saveData, accountId }, (response) => {
         if (response.success) {
           window.SocketClient.roomCode = response.roomCode;
           window.SocketClient.mapData = response.mapData;
@@ -214,6 +239,16 @@
     toggleSpecificNation: (nationId, disable, callback) => {
       if (!window.SocketClient.roomCode) return callback && callback({ error: 'No room context' });
       socket.emit('toggleSpecificNation', { roomCode: window.SocketClient.roomCode, nationId, disable }, callback);
+    },
+
+    updateTeamMode: (enabled, callback) => {
+      if (!window.SocketClient.roomCode) return callback && callback({ error: 'No room context' });
+      socket.emit('updateTeamMode', { roomCode: window.SocketClient.roomCode, enabled }, callback);
+    },
+
+    updateTeams: (teams, callback) => {
+      if (!window.SocketClient.roomCode) return callback && callback({ error: 'No room context' });
+      socket.emit('updateTeams', { roomCode: window.SocketClient.roomCode, teams }, callback);
     },
 
     updateNuclearSettings: (blizzardCount, startingNukes, startingThermonukes, allowCrafting, callback) => {
@@ -249,9 +284,24 @@ changePlayerColor: (targetPlayerId, newColor, callback) => {
       socket.emit('addAI', { roomCode: window.SocketClient.roomCode, name, color }, callback);
     },
 
-    startGame: (callback) => {
-      if (!window.SocketClient.roomCode) return callback({ error: 'No room context' });
-      socket.emit('startGame', { roomCode: window.SocketClient.roomCode }, callback);
+    startGame: (arg1, arg2) => {
+      if (!window.SocketClient.roomCode) {
+        const cb = typeof arg1 === 'function' ? arg1 : (typeof arg2 === 'function' ? arg2 : null);
+        return cb && cb({ error: 'No room context' });
+      }
+      // Back-compat signature shift: startGame(callback) or
+      // startGame(nuclearSettings, callback)
+      let nuclearSettings = null;
+      let callback = null;
+      if (typeof arg1 === 'function') {
+        callback = arg1;
+      } else if (arg1 && typeof arg1 === 'object') {
+        nuclearSettings = arg1;
+        callback = typeof arg2 === 'function' ? arg2 : null;
+      } else if (typeof arg2 === 'function') {
+        callback = arg2;
+      }
+      socket.emit('startGame', { roomCode: window.SocketClient.roomCode, nuclearSettings }, callback);
     },
 
     selectNation: (nationId, callback) => {
@@ -416,16 +466,107 @@ changePlayerColor: (targetPlayerId, newColor, callback) => {
       });
     },
 
-    triggerSecretAchievement: (achId, proof, callback) => {
-      if (!window.SocketClient.roomCode) return callback && callback({ error: 'No room context' });
+    updateBio: (bio, callback) => {
       const username = window.SocketClient.currentAccount?.username;
       if (!username) return callback && callback({ error: 'Not logged in' });
-      socket.emit('triggerSecretAchievement', { roomCode: window.SocketClient.roomCode, username, achId, proof }, callback);
+      socket.emit('updateBio', { username, bio }, (res) => {
+        if (res.success && window.SocketClient.currentAccount) {
+          window.SocketClient.currentAccount.bio = res.bio;
+        }
+        if (callback) callback(res);
+      });
+    },
+
+    triggerSecretAchievement: (achId, proof, callback) => {
+      // NOTE: No roomCode requirement here. Map-editor achievements
+      // (cartographer, worldbuilder, geopolitical_mastermind) are earned from
+      // the main menu where no room exists, and the server handler already
+      // treats roomCode as optional and validates every trigger itself.
+      const username = window.SocketClient.currentAccount?.username;
+      if (!username) return callback && callback({ error: 'Not logged in' });
+      socket.emit('triggerSecretAchievement', { roomCode: window.SocketClient.roomCode || null, username, achId, proof }, callback);
     },
 
     logoutAccount: () => {
+      const username = window.SocketClient.currentAccount?.username;
+      if (username) {
+        socket.emit('userLogout', { username });
+      }
       window.SocketClient.currentAccount = null;
       localStorage.removeItem('factional_risk_account');
+    },
+
+    // Friend System API
+    registerOnline: (callback) => {
+      const username = window.SocketClient.currentAccount?.username;
+      if (!username) return callback && callback({ error: 'Not logged in' });
+      socket.emit('userRegisterOnline', { username }, callback);
+    },
+
+    getFriends: (callback) => {
+      const username = window.SocketClient.currentAccount?.username;
+      if (!username) return callback && callback({ error: 'Not logged in' });
+      socket.emit('getFriends', { username }, callback);
+    },
+
+    sendFriendRequest: (toUsername, callback) => {
+      const username = window.SocketClient.currentAccount?.username;
+      if (!username) return callback && callback({ error: 'Not logged in' });
+      socket.emit('friendSendRequest', { username, toUsername }, callback);
+    },
+
+    respondFriendRequest: (fromUsername, accept, callback) => {
+      const username = window.SocketClient.currentAccount?.username;
+      if (!username) return callback && callback({ error: 'Not logged in' });
+      socket.emit('friendRespond', { username, fromUsername, accept }, callback);
+    },
+
+    removeFriend: (friendUsername, callback) => {
+      const username = window.SocketClient.currentAccount?.username;
+      if (!username) return callback && callback({ error: 'Not logged in' });
+      socket.emit('friendRemove', { username, friendUsername }, callback);
+    },
+
+    sendDirectMessage: (toUsername, text, callback) => {
+      const username = window.SocketClient.currentAccount?.username;
+      if (!username) return callback && callback({ error: 'Not logged in' });
+      socket.emit('sendDirectMessage', { username, toUsername, text }, callback);
+    },
+
+    getDirectMessages: (toUsername, callback) => {
+      const username = window.SocketClient.currentAccount?.username;
+      if (!username) return callback && callback({ error: 'Not logged in' });
+      socket.emit('getDirectMessages', { username, toUsername }, callback);
+    },
+
+    inviteFriendToLobby: (toUsername, roomCode, callback) => {
+      const username = window.SocketClient.currentAccount?.username;
+      if (!username) return callback && callback({ error: 'Not logged in' });
+      socket.emit('inviteFriendToLobby', { username, toUsername, roomCode }, callback);
+    },
+
+    onFriendRequestReceived: (callback) => {
+      socket.on('friendRequestReceived', callback);
+    },
+
+    onFriendRequestResolved: (callback) => {
+      socket.on('friendRequestResolved', callback);
+    },
+
+    onFriendPresenceUpdate: (callback) => {
+      socket.on('friendPresenceUpdate', callback);
+    },
+
+    onDirectMessageReceived: (callback) => {
+      socket.on('directMessageReceived', callback);
+    },
+
+    onLobbyInviteReceived: (callback) => {
+      socket.on('lobbyInviteReceived', callback);
+    },
+
+    onFriendRemoved: (callback) => {
+      socket.on('friendRemoved', callback);
     },
     onPlayersUpdate: (callback) => {
       socket.on('playersUpdate', callback);

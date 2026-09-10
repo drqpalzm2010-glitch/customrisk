@@ -47,8 +47,12 @@
                     <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #10b981; box-shadow: 0 0 6px #10b981;"></span>
                     <span style="font-size: 12px; font-weight: 700; color: #fff;" id="lbl-logged-in-username">Player</span>
                   </div>
-                  <div style="display: flex; gap: 6px;">
+                  <div style="display: flex; gap: 6px; align-items: center;">
                     <button id="btn-view-my-stats" class="btn outline-btn btn-sm" style="font-size: 11px; padding: 3px 8px;" title="View Lifetime Stats"><i class="fa-solid fa-chart-simple"></i> Stats</button>
+                    <button id="btn-open-friends-modal" class="btn outline-btn btn-sm" style="font-size: 11px; padding: 3px 8px; position: relative;" title="Friends & Messages">
+                      <i class="fa-solid fa-user-group"></i> Friends
+                      <span id="friends-req-badge" style="display: none; position: absolute; top: -5px; right: -5px; background: #ef4444; color: #fff; border-radius: 10px; font-size: 9px; font-weight: 800; padding: 1px 5px; box-shadow: 0 0 6px #ef4444;"></span>
+                    </button>
                     <button id="btn-account-logout" class="btn outline-btn btn-sm" style="font-size: 11px; padding: 3px 8px; border-color: #ef4444; color: #ef4444;" title="Sign Out"><i class="fa-solid fa-power-off"></i></button>
                   </div>
                 </div>
@@ -169,6 +173,22 @@
                 <span>Hammer Crafting of Nukes</span>
                 <input type="checkbox" id="chk-watch-ai-allow-crafting" style="cursor: pointer;">
               </label>
+              <!-- New Mode Toggles for Watch AI -->
+            <div style="margin-top: 6px; padding: 6px 8px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-glass); border-radius: 6px; display: flex; flex-direction: column; gap: 4px;">
+              <label style="font-size: 11px; font-weight: 700; color: #a855f7;"><i class="fa-solid fa-gamepad"></i> Tactical Game Modes</label>
+              <label for="chk-watch-ai-zombies" style="font-size: 11px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; color: #4ade80;">
+                <span><i class="fa-solid fa-biohazard"></i> Zombie Mode</span>
+                <input type="checkbox" id="chk-watch-ai-zombies" style="cursor: pointer;">
+              </label>
+              <label for="chk-watch-ai-supply" style="font-size: 11px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; color: #38bdf8;">
+                <span><i class="fa-solid fa-route"></i> Supply Lines Mode</span>
+                <input type="checkbox" id="chk-watch-ai-supply" style="cursor: pointer;">
+              </label>
+              <label for="chk-watch-ai-buildings" style="font-size: 11px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; color: #facc15;">
+                <span><i class="fa-solid fa-landmark-dome"></i> Buildings & Forts Mode</span>
+                <input type="checkbox" id="chk-watch-ai-buildings" style="cursor: pointer;">
+              </label>
+            </div>
             </div>
 
             <div style="margin-bottom: 8px;">
@@ -235,6 +255,9 @@
             <span class="label">ROOM CODE:</span>
             <span id="lobby-room-code" class="code">ABCD</span>
           </div>
+          <button id="btn-lobby-invite-friends" class="btn primary-btn w-full" style="margin-top: 10px; font-size: 11.5px; padding: 7px 12px; display: flex; align-items: center; justify-content: center; gap: 8px;">
+            <i class="fa-solid fa-user-plus"></i> Invite Friends to Lobby
+          </button>
         </div>
 
         <!-- Scenario Nations & Selection Box (Visible to both host and non-host players) -->
@@ -268,6 +291,25 @@
               <span class="info-tip" data-tip="Initializes active non-aggression alliances between nations defined in the scenario map. AIs in these alliances receive +10 initial trust. Alliances can be broken at any turn.">ℹ</span>
             </label>
             <input type="checkbox" id="chk-lobby-premade-alliances" checked style="cursor: pointer;">
+          </div>
+
+          <!-- Host Team Mode Toggle (Scenario + Honor Premade Alliances only) -->
+          <div id="lobby-team-mode-toggle-container" class="flex items-center justify-between" style="margin-bottom: 8px; display: none;">
+            <label for="chk-lobby-team-mode" style="cursor: pointer; font-weight: 600; color: #facc15; font-size: 11px;">
+              <i class="fa-solid fa-people-group"></i> Team Mode (Permanent Teams)
+              <span class="info-tip" data-tip="Groups scenario nations into permanent teams. Teammates share full alliance benefits (shared vision, fortify through teammates) and win together. Teams can NEVER be left or betrayed, and team members cannot form any pacts with players outside their team. Solo (independent) players may still ally with each other, but not with teams. Rewards (XP/ELO/achievements) require at least 2 opposing factions with human players.">ℹ</span>
+            </label>
+            <input type="checkbox" id="chk-lobby-team-mode" style="cursor: pointer;">
+          </div>
+
+          <!-- Team Editor (host only, team mode enabled) -->
+          <div id="lobby-team-editor-container" style="display: none; margin-bottom: 8px; padding: 8px; background: rgba(0,0,0,0.35); border: 1px solid rgba(250,204,21,0.4); border-radius: 6px;">
+            <div style="font-size: 11px; font-weight: 600; color: #facc15; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;">
+              <span><i class="fa-solid fa-people-group"></i> Team Assignments</span>
+              <button id="btn-lobby-add-team" class="btn outline-btn btn-sm" style="padding: 2px 8px; font-size: 10px;"><i class="fa-solid fa-plus"></i> Add Team</button>
+            </div>
+            <div id="lobby-teams-list" style="display: flex; flex-direction: column; gap: 6px;"></div>
+            <p class="map-hint" style="margin-top: 6px;">Nations left unassigned play as Independent (solo) commanders.</p>
           </div>
 
           <!-- Host Enable/Disable Specific Nations Controls -->
@@ -388,7 +430,23 @@
 
             <p class="map-hint">Connect your API key or use Manual Clipboard to export prompts.</p>
           </div>
-
+          <div class="map-select-box" style="margin-top: 12px; border-color: rgba(168, 85, 247, 0.3); background: rgba(168, 85, 247, 0.02);">
+            <h3><i class="fa-solid fa-chess"></i> Advanced Game Modes</h3>
+            <div style="display: flex; flex-direction: column; gap: 6px; font-size: 12px;">
+              <label for="chk-lobby-zombies" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; color: #4ade80;">
+                <span><i class="fa-solid fa-biohazard"></i> Zombie Mode</span>
+                <input type="checkbox" id="chk-lobby-zombies" style="cursor: pointer;">
+              </label>
+              <label for="chk-lobby-supply" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; color: #38bdf8;">
+                <span><i class="fa-solid fa-route"></i> Supply Lines Mode (Capitals)</span>
+                <input type="checkbox" id="chk-lobby-supply" style="cursor: pointer;">
+              </label>
+              <label for="chk-lobby-buildings" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; color: #facc15;">
+                <span><i class="fa-solid fa-landmark-dome"></i> Buildings Mode</span>
+                <input type="checkbox" id="chk-lobby-buildings" style="cursor: pointer;">
+              </label>
+            </div>
+          </div>
           <div class="map-select-box" style="margin-top: 12px; border-color: rgba(245,158,11,0.3); background: rgba(245,158,11,0.02);">
             <h3><i class="fa-solid fa-radiation"></i> Blizzards & Nuclear Settings
               <span class="info-tip" data-tip="Enable and configure weapons of mass destruction or unpredictable environmental hazards for heuristic maps!">ℹ</span>
@@ -465,7 +523,12 @@
             <h3 style="margin: 0; font-size: 13px; font-weight: 700; color: var(--primary); text-transform: uppercase; letter-spacing: 1px;">
               <i class="fa-solid fa-id-card"></i> Commanders Joined (<span id="lobby-player-count">1</span>/8)
             </h3>
-            <span style="font-size: 11px; color: var(--text-muted);">Click any card to inspect player stats</span>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <button id="btn-roster-invite-friends" class="btn success-btn btn-sm" style="font-size: 11px; padding: 3px 10px;">
+                <i class="fa-solid fa-paper-plane"></i> Invite Friends
+              </button>
+              <span style="font-size: 11px; color: var(--text-muted);">Click card to inspect</span>
+            </div>
           </div>
           <div id="lobby-battlecards-container" class="battlecards-grid">
             <!-- Dynamic Battle Cards (2 to 8 players) render here -->
@@ -630,6 +693,7 @@
             <div id="game-players-list">
               <!-- Dynamic players status -->
             </div>
+            <button id="btn-territory-intel" class="btn outline-btn w-full mt-2"><i class="fa-solid fa-map-location-dot"></i> Territory Intel (Player Holdings)</button>
           </div>
 
           <!-- Active Diplomacy Pacts -->
@@ -677,6 +741,13 @@
       <!-- Center: Map view area -->
       <div class="game-viewport" style="flex: 1;">
         <div class="viewport-header glass" style="flex-direction: column; gap: 6px; padding: 10px 16px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+          <!-- Top Active Turn Commander Battle Card Display -->
+          <div id="game-active-turn-card-container" style="flex: 1; cursor: pointer; margin-bottom: 2px;" title="Click to inspect commander dossier">
+            <!-- Active Player's Battle Card dynamically rendered here -->
+          </div>
+          <button type="button" id="btn-toggle-battlecard" class="btn-toggle-battlecard" title="Show/Hide Battle Card & Instructions"><i class="fa-solid fa-chevron-up"></i></button>
+          </div>
           <div class="instructions" id="game-instruction-banner">
             Click on an empty territory to claim it.
           </div>
@@ -692,6 +763,17 @@
               <button class="btn btn-batch-step" data-step="ALL">ALL</button>
             </div>
             <button id="btn-open-draft-modal" class="btn outline-btn btn-sm" style="font-size: 11px; padding: 3px 8px;" title="Custom Draft Amount Modal"><i class="fa-solid fa-sliders"></i> Custom</button>
+          </div>
+          <!-- In-Game Building Construction Toolbar -->
+          <div id="building-construct-toolbar" class="draft-batch-toolbar" style="display: none; background: rgba(30, 41, 59, 0.85); border-color: #facc15;">
+            <span class="draft-batch-label" style="color: #facc15;"><i class="fa-solid fa-hammer"></i> Build:</span>
+            <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+              <button class="btn btn-sm outline-btn btn-build-action" data-btype="fortress" data-base-title="Cost: 3. Defend with 3 dice!" title="Cost: 3. Defend with 3 dice!">🏰 Fort (3)</button>
+              <button class="btn btn-sm outline-btn btn-build-action" data-btype="supply_depot" data-base-title="Cost: 3. +1 free troop every turn!" title="Cost: 3. +1 free troop every turn!">📦 Depot (3)</button>
+              <button class="btn btn-sm outline-btn btn-build-action" data-btype="watchtower" data-base-title="Cost: 2. Reveals 3 tiles out! (Requires Fog of War)" title="Cost: 2. Reveals 3 tiles out! (Requires Fog of War)">🗼 Tower (2)</button>
+              <button class="btn btn-sm outline-btn btn-build-action" data-btype="bunker" data-base-title="Cost: 3. Absorbs 50% nuke damage! (Requires nukes in play)" title="Cost: 3. Absorbs 50% nuke damage! (Requires nukes in play)">🛡️ Bunker (3)</button>
+              <button class="btn btn-sm outline-btn btn-build-action" data-btype="outpost" data-base-title="Cost: 2. +1 to all attack dice!" title="Cost: 2. +1 to all attack dice!">⚔️ Outpost (2)</button>
+            </div>
           </div>
         </div>
 
@@ -885,6 +967,9 @@
             <div style="display: flex; gap: 8px; margin-top: 8px;">
               <button id="btn-editor-undo" class="btn outline-btn btn-sm w-full" style="border-color: var(--warning); color: var(--warning);"><i class="fa-solid fa-rotate-left"></i> UNDO (Ctrl+Z)</button>
               <button id="btn-editor-detect-links" class="btn outline-btn btn-sm w-full" style="border-color: var(--primary); color: var(--primary);" title="Find touching or overlapping territories that lack a land or sea connection"><i class="fa-solid fa-link-slash"></i> Find Missing Links</button>
+            </div>
+<div style="display: flex; gap: 8px; margin-top: 8px;">
+              <button id="btn-editor-fix-ghosts" class="btn outline-btn btn-sm w-full" style="border-color: var(--danger); color: var(--danger);" title="Remove dead territory IDs still listed in continents (ghosts) that permanently block that continent's reinforcement bonus"><i class="fa-solid fa-ghost"></i> Fix Ghost Territories</button>
             </div>
             <div class="form-group mt-3">
               <label class="flex justify-between">
@@ -1201,6 +1286,11 @@
         </div>
       </div>
 
+      <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+        <button id="btn-post-attack-half" type="button" class="btn outline-btn w-full" style="flex: 1; font-size: 11px; padding: 6px;"><i class="fa-solid fa-percent"></i> Send 50%</button>
+        <button id="btn-post-attack-max" type="button" class="btn outline-btn w-full" style="flex: 1; font-size: 11px; padding: 6px;"><i class="fa-solid fa-forward-fast"></i> Send Max</button>
+      </div>
+
       <button id="btn-submit-post-attack" class="btn success-btn w-full mt-4"><i class="fa-solid fa-truck-ramp-box"></i> Transfer Forces</button>
     </div>
   </div>
@@ -1253,6 +1343,25 @@
       <div id="defend-dice-options" class="flex justify-around" style="margin: 25px 0;">
         <button class="btn btn-dice" id="btn-defend-dice-1" data-dice="1">1 <i class="fa-solid fa-dice-one"></i></button>
         <button class="btn btn-dice" id="btn-defend-dice-2" data-dice="2">2 <i class="fa-solid fa-dice-two"></i></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== TERRITORY INTEL MODAL ==================== -->
+  <div id="territory-intel-modal" class="modal">
+    <div class="modal-content glass" style="max-width: 460px;">
+      <div class="modal-header">
+        <h2>Territory Intel</h2>
+        <span class="close-btn" id="btn-close-territory-intel">&times;</span>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="select-intel-player" style="display: block; margin-bottom: 6px; font-size: 12px; color: rgba(255,255,255,0.7);">Select a Commander</label>
+          <select id="select-intel-player" style="width: 100%; background: rgba(0,0,0,0.4); border: 1px solid var(--border-glass); color: #fff; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 13px;"></select>
+        </div>
+        <div id="intel-territory-list" class="continents-list" style="max-height: 340px; overflow-y: auto; margin-top: 10px;">
+          <!-- Dynamic territory list -->
+        </div>
       </div>
     </div>
   </div>
@@ -1440,18 +1549,23 @@
         <span class="close-btn" id="btn-close-stats-modal">&times;</span>
       </div>
 
-      <!-- Level Progress Bar -->
+      <!-- Level & Elo Header -->
       <div style="background: rgba(0,0,0,0.4); border: 1px solid var(--border-glass); border-radius: 10px; padding: 10px 14px; margin-bottom: 14px;">
         <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: 700; margin-bottom: 4px;">
-          <span style="color: #38bdf8;">Level <span id="lbl-profile-level-num">1</span></span>
+          <span style="color: #38bdf8;">Level <span id="lbl-profile-level-num">1</span> • <span style="color:#10b981;"><i class="fa-solid fa-trophy"></i> Rating: <strong id="lbl-profile-elo">1200</strong></span></span>
           <span style="color: #facc15;"><span id="lbl-profile-xp-current">0</span> / <span id="lbl-profile-xp-needed">100</span> XP</span>
         </div>
         <div style="height: 8px; background: rgba(255,255,255,0.08); border-radius: 4px; overflow: hidden;">
           <div id="profile-xp-bar-fill" style="width: 0%; height: 100%; background: linear-gradient(90deg, #38bdf8, #a855f7); transition: width 0.3s ease;"></div>
         </div>
-        <p style="font-size: 10px; color: var(--text-muted); margin-top: 4px; margin-bottom: 0;">
-          XP is earned in multiplayer matches with at least 2 human commanders.
-        </p>
+        <!-- Bio Editor -->
+        <div style="margin-top: 8px;">
+          <label style="font-size: 10px; color: var(--text-muted); text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 3px;">Commander Bio:</label>
+          <div style="display: flex; gap: 6px;">
+            <input type="text" id="input-profile-bio" placeholder="Write your motto or bio..." maxlength="150" style="flex: 1; background: rgba(0,0,0,0.5); border: 1px solid var(--border-glass); color: #fff; padding: 4px 8px; border-radius: 6px; font-size: 11px;">
+            <button id="btn-save-bio" class="btn outline-btn btn-sm" style="padding: 3px 8px; font-size: 10px;"><i class="fa-solid fa-check"></i> Save</button>
+          </div>
+        </div>
       </div>
 
       <!-- Tabs: Multiplayer vs Solo vs Battle Card vs Achievements -->
@@ -1514,6 +1628,13 @@
         </div>
 
         <div>
+          <label style="font-size: 11px; font-weight: 700; color: #38bdf8; display: block; margin-bottom: 3px;">Equipped Commander Title (Unlocked via Achievements):</label>
+          <select id="select-card-title" style="width: 100%; background: #000; border: 1px solid var(--border-glass); color: #facc15; font-weight: 700; padding: 6px; border-radius: 6px; font-size: 12px; margin-bottom: 8px;">
+            <option value="">-- No Title Equipped --</option>
+          </select>
+        </div>
+
+        <div>
           <label style="font-size: 11px; font-weight: 700; color: var(--text-muted); display: block; margin-bottom: 6px;">Live Battle Card Preview:</label>
           <div id="my-card-preview-render"></div>
         </div>
@@ -1561,7 +1682,7 @@
 
   <!-- ==================== MODAL: INSPECT OTHER COMMANDER ==================== -->
   <div id="inspect-player-modal" class="modal">
-    <div class="modal-content glass" style="max-width: 480px; padding: 22px;">
+    <div class="modal-content glass" style="max-width: 620px; width: 92%; padding: 22px; max-height: 90vh; overflow-y: auto;">
       <div class="modal-header" style="padding: 0 0 10px 0; margin-bottom: 12px; border-bottom: 1px solid var(--border-glass);">
         <h2 style="font-size: 17px; color: var(--primary); margin: 0; display: flex; align-items: center; gap: 8px;">
           <i class="fa-solid fa-magnifying-glass"></i> Commander Dossier
@@ -1574,6 +1695,102 @@
     </div>
   </div>
 
+  <!-- ==================== MODAL: FRIENDS & DIRECT MESSAGES ==================== -->
+  <div id="friends-modal" class="modal">
+    <div class="modal-content glass" style="max-width: 580px; width: 94%; padding: 20px; max-height: 90vh; display: flex; flex-direction: column;">
+      <div class="modal-header" style="padding: 0 0 10px 0; margin-bottom: 12px; border-bottom: 1px solid var(--border-glass); display: flex; justify-content: space-between; align-items: center;">
+        <h2 style="font-size: 17px; color: var(--primary); margin: 0; display: flex; align-items: center; gap: 8px;">
+          <i class="fa-solid fa-user-group"></i> Friends & Comms
+        </h2>
+        <span class="close-btn" id="btn-close-friends-modal">&times;</span>
+      </div>
+
+      <!-- Active Lobby Banner -->
+      <div id="friends-lobby-banner" style="display: none; background: rgba(34, 197, 94, 0.12); border: 1px solid rgba(34, 197, 94, 0.35); border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; font-size: 11.5px; color: #4ade80; justify-content: space-between; align-items: center;">
+        <span><i class="fa-solid fa-gamepad"></i> Active Campaign: <strong id="friends-lobby-code" style="color: #fff; letter-spacing: 1px;">ABCD</strong></span>
+        <span style="font-size: 10.5px; color: rgba(255,255,255,0.7);">Click <strong>Invite</strong> next to online friends below</span>
+      </div>
+
+      <!-- Add Friend Bar -->
+      <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+        <input type="text" id="input-add-friend-username" placeholder="Enter commander username..." style="flex: 1; padding: 7px 12px; font-size: 12px; background: rgba(0,0,0,0.35); border: 1px solid var(--border-glass); border-radius: 6px; color: #fff;">
+        <button id="btn-send-friend-request" class="btn primary-btn btn-sm" style="white-space: nowrap; font-size: 11px;">
+          <i class="fa-solid fa-user-plus"></i> Add Friend
+        </button>
+      </div>
+
+      <!-- Nav Tabs -->
+      <div style="display: flex; gap: 6px; margin-bottom: 12px;">
+        <button id="tab-friends-list" class="btn primary-btn btn-sm w-full active" style="font-size: 11px; position: relative;">
+          <i class="fa-solid fa-users"></i> Friends (<span id="lbl-friends-count">0</span>)
+          <span id="lbl-friends-unread-badge" style="display: none; background: #ef4444; color: #fff; border-radius: 8px; font-size: 9px; padding: 1px 5px; margin-left: 4px;"></span>
+        </button>
+        <button id="tab-friends-requests" class="btn outline-btn btn-sm w-full" style="font-size: 11px; position: relative;">
+          <i class="fa-solid fa-envelope"></i> Requests
+          <span id="lbl-requests-badge" style="display: none; background: #ef4444; color: #fff; border-radius: 8px; font-size: 9px; padding: 1px 5px; margin-left: 4px;"></span>
+        </button>
+      </div>
+
+      <!-- Main Friends Content View -->
+      <div id="view-friends-main" style="flex: 1; min-height: 250px; max-height: 380px; overflow-y: auto;">
+        <!-- Friends List Pane -->
+        <div id="pane-friends-list">
+          <div id="friends-list-container" style="display: flex; flex-direction: column; gap: 8px;">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+
+        <!-- Requests Pane -->
+        <div id="pane-friends-requests" style="display: none;">
+          <div style="margin-bottom: 10px;">
+            <div style="font-size: 11px; font-weight: 700; color: var(--primary); margin-bottom: 6px; text-transform: uppercase;">Incoming Requests</div>
+            <div id="incoming-requests-container" style="display: flex; flex-direction: column; gap: 6px;">
+              <!-- Populated dynamically -->
+            </div>
+          </div>
+          <div>
+            <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase;">Sent Requests</div>
+            <div id="sent-requests-container" style="display: flex; flex-direction: column; gap: 6px;">
+              <!-- Populated dynamically -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Direct Messaging View (Sub-panel) -->
+      <div id="view-friends-dm" style="display: none; flex: 1; flex-direction: column; min-height: 320px; max-height: 420px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border-glass);">
+          <button id="btn-back-to-friends-list" class="btn outline-btn btn-sm" style="font-size: 11px; padding: 2px 8px;">
+            <i class="fa-solid fa-arrow-left"></i> Friends List
+          </button>
+          <div style="font-size: 12px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 6px;">
+            <span id="dm-active-friend-dot" style="width: 8px; height: 8px; border-radius: 50%; display: inline-block;"></span>
+            <span id="dm-active-friend-name">Commander</span>
+          </div>
+          <div style="width: 60px;"></div>
+        </div>
+
+        <!-- Chat History -->
+        <div id="dm-messages-container" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 10px; background: rgba(0,0,0,0.3); border-radius: 8px; border: 1px solid var(--border-glass); margin-bottom: 8px;">
+          <!-- Populated dynamically -->
+        </div>
+
+        <!-- Message Input -->
+        <div style="display: flex; gap: 6px;">
+          <input type="text" id="input-dm-text" placeholder="Type a transmission..." style="flex: 1; padding: 8px 12px; font-size: 12px; background: rgba(0,0,0,0.4); border: 1px solid var(--border-glass); border-radius: 6px; color: #fff;">
+          <button id="btn-send-dm" class="btn primary-btn btn-sm" style="font-size: 11px; padding: 0 14px;">
+            <i class="fa-solid fa-paper-plane"></i> Send
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+  <!-- ==================== DYNAMIC TOOLTIP ==================== -->
+  <div id="game-tooltip" class="tooltip" style="display: none;"></div>
+
+  <!-- Chart.js Library -->
+
   <!-- Chart.js Library -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
@@ -1581,11 +1798,11 @@
   <script src="/socket.io/socket.io.js"></script>
 
   <!-- Frontend JS Scripts -->
-  <script src="js/socket-client.js"></script>
-  <script src="js/renderer.js"></script>
-  <script src="js/editor.js"></script>
-  <script src="js/game-client.js"></script>
-  <script src="js/main-controller.js"></script>
+  <script src="js/socket-client.js?v=5"></script>
+  <script src="js/renderer.js?v=5"></script>
+  <script src="js/editor.js?v=5"></script>
+  <script src="js/game-client.js?v=5"></script>
+  <script src="js/main-controller.js?v=5"></script>
 
 </body>
 </html>

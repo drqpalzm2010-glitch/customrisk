@@ -1,6 +1,6 @@
 (function() {
 
-  function showToast(message, type = 'info') {
+  function showToast(message, type = 'info', customDuration = null) {
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
     toast.innerHTML = message;
@@ -15,15 +15,19 @@
     }, 10);
 
     const durations = { info: 4500, success: 4000, warning: 5500, error: 7500 };
-    const delay = durations[type] || 4500;
+    const delay = customDuration || durations[type] || 4500;
 
-    setTimeout(() => {
+    let removed = false;
+    const dismiss = () => {
+      if (removed) return;
+      removed = true;
       toast.style.opacity = '0';
       toast.style.transform = 'translateY(20px)';
-      setTimeout(() => {
-        toast.remove();
-      }, 300);
-    }, delay);
+      setTimeout(() => toast.remove(), 300);
+    };
+
+    setTimeout(dismiss, delay);
+    return toast;
   }
 
   // Expose the toast system globally so editor.js and main-controller.js can
@@ -58,6 +62,10 @@
       // Cards selected for trading
       this.selectedCardIndices = [];
       this.lastProcessedRollId = null;
+
+      // Building Construction "arm mode": player clicks a build button, then
+      // clicks a territory on the map (repeats for each additional building)
+      this.armedBuildingType = null;
 
       // Combat Overlay Timeout references
       this.combatRevealTimeout = null;
@@ -100,6 +108,13 @@
       this.btnCloseDiplomacy = document.getElementById('btn-close-diplomacy-modal');
       this.selectDiplomacyTarget = document.getElementById('propose-target-player');
       this.selectDiplomacyType = document.getElementById('propose-pact-type');
+
+      // Territory Intel modal elements
+      this.territoryIntelModal = document.getElementById('territory-intel-modal');
+      this.btnTerritoryIntel = document.getElementById('btn-territory-intel');
+      this.btnCloseTerritoryIntel = document.getElementById('btn-close-territory-intel');
+      this.selectIntelPlayer = document.getElementById('select-intel-player');
+      this.intelTerritoryList = document.getElementById('intel-territory-list');
       this.btnSubmitDiplomacy = document.getElementById('btn-submit-pact');
       this.incomingProposalsList = document.getElementById('incoming-proposals-list');
 
@@ -361,6 +376,16 @@ hasFullVisionOfPlayer(playerId) {
 
       // Tab panel switching for Right Sidebar removed — reverted to merged panel layout
 
+      // Battle Card & Instructions toggle
+      const btnToggleBattleCard = document.getElementById('btn-toggle-battlecard');
+      const viewportHeader = document.querySelector('.viewport-header');
+      if (btnToggleBattleCard && viewportHeader) {
+        btnToggleBattleCard.addEventListener('click', () => {
+          const collapsed = viewportHeader.classList.toggle('battlecard-collapsed');
+          btnToggleBattleCard.classList.toggle('collapsed', collapsed);
+        });
+      }
+
       // Sidebar Collapsing/Drawer handles
       const btnToggleLeft = document.getElementById('btn-toggle-left-sidebar');
       const leftSidebar = document.getElementById('game-left-sidebar');
@@ -566,6 +591,29 @@ hasFullVisionOfPlayer(playerId) {
         });
       }
 
+      // Building Construction Toolbar actions — arm/disarm build mode.
+      // Clicking a button ARMS that building type; the NEXT territory click on
+      // the map constructs it there (see handleTerritoryClick). Clicking the
+      // same button again disarms. This replaces the old "must select a
+      // territory first" flow, which conflicted with draft placement.
+      document.querySelectorAll('.btn-build-action').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const btype = btn.getAttribute('data-btype');
+          if (this.armedBuildingType === btype) {
+            // Toggle off
+            this.armedBuildingType = null;
+            btn.classList.remove('active');
+            showToast('Construction cancelled.', 'info');
+            return;
+          }
+          this.armedBuildingType = btype;
+          document.querySelectorAll('.btn-build-action').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          const label = btn.textContent.trim();
+          this.lblInstructions.innerHTML = `<i class="fa-solid fa-landmark-dome" style="color:#facc15"></i> <strong>${label}</strong> armed — click one of YOUR territories to build. Click the button again to cancel.`;
+        });
+      });
+
       // Draft Batch Toolbar step buttons
       const batchBtns = document.querySelectorAll('.btn-batch-step');
       batchBtns.forEach(btn => {
@@ -656,6 +704,23 @@ hasFullVisionOfPlayer(playerId) {
       this.btnSubmitDiplomacy.addEventListener('click', () => {
         this.submitPactProposal();
       });
+
+      // Territory Intel modal toggle
+      if (this.btnTerritoryIntel) {
+        this.btnTerritoryIntel.addEventListener('click', () => {
+          this.openTerritoryIntelModal();
+        });
+      }
+      if (this.btnCloseTerritoryIntel) {
+        this.btnCloseTerritoryIntel.addEventListener('click', () => {
+          this.territoryIntelModal.classList.remove('active');
+        });
+      }
+      if (this.selectIntelPlayer) {
+        this.selectIntelPlayer.addEventListener('change', () => {
+          this.renderTerritoryIntelList();
+        });
+      }
 
       // Toggle Auto Defend
       if (this.chkAutoDefend) {
@@ -769,17 +834,47 @@ hasFullVisionOfPlayer(playerId) {
         });
       }
 
-      // Submit Post-Attack Move
+      // Shared submit path for the slider and the quick-transfer buttons.
+      const submitPostAttackMove = (amount) => {
+        amount = parseInt(amount) || 0;
+        window.SocketClient.postAttackMove(amount, (res) => {
+          if (this.postAttackModal) this.postAttackModal.classList.remove('active');
+          if (res && res.error) {
+            // Auto-heal fallback to release player from stuck state
+            window.SocketClient.postAttackMove(0, () => {});
+          }
+        });
+      };
+
+      // Submit Post-Attack Move (slider)
       if (this.btnSubmitPostAttack) {
         this.btnSubmitPostAttack.addEventListener('click', () => {
-          const amount = parseInt(this.sliderPostAttack.value) || 0;
-          window.SocketClient.postAttackMove(amount, (res) => {
-            if (this.postAttackModal) this.postAttackModal.classList.remove('active');
-            if (res && res.error) {
-              // Auto-heal fallback to release player from stuck state
-              window.SocketClient.postAttackMove(0, () => {});
-            }
-          });
+          submitPostAttackMove(this.sliderPostAttack ? this.sliderPostAttack.value : 0);
+        });
+      }
+
+      // Quick-transfer buttons: send half or all of the movable stack immediately.
+      const computePostAttackAdditional = (mode) => {
+        const ctx = this.gameState && this.gameState.postAttackContext;
+        if (!ctx) return 0;
+        const minMove = parseInt(ctx.minMove) || 0;
+        const additionalMax = parseInt(ctx.additionalMax) || 0;
+        if (mode === 'max') return additionalMax;
+        // 50% of the total movable stack, clamped to at least the forced minimum.
+        const totalArmies = minMove + additionalMax;
+        const half = Math.max(minMove, Math.round(totalArmies / 2));
+        return Math.min(additionalMax, Math.max(0, half - minMove));
+      };
+      const btnPostAttackHalf = document.getElementById('btn-post-attack-half');
+      if (btnPostAttackHalf) {
+        btnPostAttackHalf.addEventListener('click', () => {
+          submitPostAttackMove(computePostAttackAdditional('half'));
+        });
+      }
+      const btnPostAttackMax = document.getElementById('btn-post-attack-max');
+      if (btnPostAttackMax) {
+        btnPostAttackMax.addEventListener('click', () => {
+          submitPostAttackMove(computePostAttackAdditional('max'));
         });
       }
 
@@ -1241,10 +1336,20 @@ hasFullVisionOfPlayer(playerId) {
     }
 
     updateUI(isMyTurn, currentPlayer) {
-      // 1. Header indicators
+      // 1. Header indicators & Active Commander Battle Card Display
       this.lblTurnName.textContent = currentPlayer.name;
       this.lblTurnName.style.color = currentPlayer.color;
       this.lblPhaseName.textContent = this.gameState.turnStage.replace('_', ' ');
+
+      const activeCardBox = document.getElementById('game-active-turn-card-container');
+      if (activeCardBox && window.MainController && window.MainController.renderBattleCardHTML) {
+        activeCardBox.innerHTML = window.MainController.renderBattleCardHTML(currentPlayer, currentPlayer.id === window.SocketClient.socket.id, currentPlayer.isHost);
+        activeCardBox.onclick = () => {
+          if (window.MainController.openPlayerInspectorModal) {
+            window.MainController.openPlayerInspectorModal(currentPlayer);
+          }
+        };
+      }
 
       // 2. Hide / Show Phase buttons
       const stage = this.gameState.turnStage;
@@ -1268,13 +1373,25 @@ hasFullVisionOfPlayer(playerId) {
       }
 
       // 3. Draft/Reinforcements count badge & Draft batch toolbar
-      if (isMyTurn && stage === 'DRAFT') {
+      // Building toolbar shows in DRAFT and SETUP_FORTIFY (both are legal
+      // construction phases per the Buildings Mode spec)
+      const buildToolbar = document.getElementById('building-construct-toolbar');
+      if (isMyTurn && (stage === 'DRAFT' || stage === 'SETUP_FORTIFY')) {
+        if (buildToolbar) {
+          buildToolbar.style.display = (this.gameState && this.gameState.buildingsMode) ? 'flex' : 'none';
+          if (this.gameState && this.gameState.buildingsMode) this.updateBuildButtonsAvailability();
+        }
         this.badgeReinforcements.style.display = 'inline-block';
-        this.lblReinforcementsCount.textContent = this.gameState.draftPool;
+        this.lblReinforcementsCount.textContent = this.gameState.draftPool !== undefined ? this.gameState.draftPool : this.gameState.players[this.gameState.turnIndex].startingArmiesPool;
         if (this.draftBatchToolbar) {
-          this.draftBatchToolbar.style.display = this.gameState.draftPool > 0 ? 'flex' : 'none';
+          this.draftBatchToolbar.style.display = stage === 'DRAFT' && this.gameState.draftPool > 0 ? 'flex' : 'none';
         }
       } else {
+        if (buildToolbar) buildToolbar.style.display = 'none';
+        if (this.armedBuildingType) {
+          this.armedBuildingType = null;
+          document.querySelectorAll('.btn-build-action').forEach(b => b.classList.remove('active'));
+        }
         this.badgeReinforcements.style.display = 'none';
         if (this.draftBatchToolbar) {
           this.draftBatchToolbar.style.display = 'none';
@@ -1310,7 +1427,6 @@ hasFullVisionOfPlayer(playerId) {
       const lblTactCount = document.getElementById('lbl-nuke-count');
       const lblTherCount = document.getElementById('lbl-thermonuke-count');
 
-      const isGenerative = !!this.gameState.generativeAIMode || !!window.SocketClient.spectatorMode;
       const mePlayer = this.gameState.players.find(p => p.id === window.SocketClient.socket.id);
 
       // Only show nuclear arsenal & controls if: at least one player has a nuke OR crafting is enabled
@@ -1324,16 +1440,23 @@ hasFullVisionOfPlayer(playerId) {
         if (lblTactCount) lblTactCount.textContent = mePlayer ? (mePlayer.nukes || 0) : 0;
         if (lblTherCount) lblTherCount.textContent = mePlayer ? (mePlayer.thermonukes || 0) : 0;
 
-        // Crafting buttons row only shows if crafting is enabled and it's the player's draft stage
-        if (isMyTurn && stage === 'DRAFT' && isCraftingEnabled && !isGenerative) {
-          document.getElementById('nuke-craft-buttons-row').style.display = 'flex';
-          
+        // Crafting buttons row only shows if crafting is enabled and we are an
+        // actual player (not a spectator) on our own DRAFT stage. Previously this
+        // was gated on `!isGenerative`, which also hid crafting for real human
+        // players whenever Generative AI mode (or a stale spectator flag) was on.
+        // In Watch AI / spectator mode `mePlayer` is null (no player slot), so the
+        // row stays hidden there even though `isMyTurn` is force-enabled.
+        const isActualPlayer = !!mePlayer;
+        const craftRow = document.getElementById('nuke-craft-buttons-row');
+        if (isMyTurn && stage === 'DRAFT' && isCraftingEnabled && isActualPlayer) {
+          if (craftRow) craftRow.style.display = 'flex';
+
           // Crafting validation: 3 cards of any type for Tactical Nuke
           if (btnCraftTact) btnCraftTact.disabled = !(mePlayer && mePlayer.cards && mePlayer.cards.length >= 3);
           // Crafting validation: 3 cards forming a valid set for Thermonuke
           if (btnCraftTher) btnCraftTher.disabled = !this.isValidCardSetSelected();
-        } else {
-          document.getElementById('nuke-craft-buttons-row').style.display = 'none';
+        } else if (craftRow) {
+          craftRow.style.display = 'none';
         }
       } else if (nukesPanel) {
         nukesPanel.style.display = 'none';
@@ -1420,11 +1543,25 @@ hasFullVisionOfPlayer(playerId) {
           const armyVal = document.getElementById('victory-stat-armies');
           
           if (title && winner) {
-            title.textContent = `${winner.name.toUpperCase()} WINS!`;
-            title.style.color = winner.color;
-          }
-          if (subtitle && winner) {
-            subtitle.innerHTML = `<span style="color:${winner.color}; font-weight:700;">Commander ${winner.name}</span> has achieved total domination!`;
+            // TEAM MODE: show the winning team (with members) when one exists
+            const teamModeActive = !!(this.gameState.teamMode && this.gameState.players.some(p => p.teamId));
+            const winningTeam = teamModeActive && this.gameState.winningTeamId && (this.gameState.teams || []).find(t => t.id === this.gameState.winningTeamId);
+            if (winningTeam) {
+              const members = this.gameState.players.filter(p => p.teamId === winningTeam.id && !p.eliminated).map(p => p.name);
+              title.textContent = `${String(winningTeam.name).toUpperCase()} WINS!`;
+              title.style.color = winningTeam.color || winner.color;
+              if (subtitle) {
+                subtitle.innerHTML = `<span style="color:${winningTeam.color || winner.color}; font-weight:700;">Team ${winningTeam.name}</span> has achieved total domination!<br>
+                  <span style="font-size:11px; color:rgba(255,255,255,0.75);">Teamwork makes the dream work!</span>
+                  ${members.length ? `<div style="margin-top:6px; font-size:11px; color:rgba(255,255,255,0.85);"><i class="fa-solid fa-people-group" style="color:${winningTeam.color || '#facc15'};"></i> ${members.join(' • ')}</div>` : ''}`;
+              }
+            } else {
+              title.textContent = `${winner.name.toUpperCase()} WINS!`;
+              title.style.color = winner.color;
+              if (subtitle) {
+                subtitle.innerHTML = `<span style="color:${winner.color}; font-weight:700;">Commander ${winner.name}</span> has achieved total domination!`;
+              }
+            }
           }
           if (modeVal) {
             modeVal.textContent = this.gameState.gameMode === 'capital_rush' ? 'Capital Rush' : 'Conquest';
@@ -1936,6 +2073,45 @@ hasFullVisionOfPlayer(playerId) {
              (player.name && ownerId && player.name.trim().toLowerCase() === String(ownerId).trim().toLowerCase());
     }
 
+    // Conditionally enable/disable building buttons per game rules:
+    // - Watchtower: only when Fog of War mode is ON (its reveal is meaningless otherwise)
+    // - Bunker: only when nukes are in play (crafting enabled OR anyone holds a nuke/thermonuke)
+    // All costs / ownership / draft-pool checks remain enforced server-side;
+    // this is a UX affordance so illegal builds are visibly unavailable.
+    updateBuildButtonsAvailability() {
+      const gs = this.gameState;
+      if (!gs) return;
+      const me = gs.players ? gs.players.find(p => p.id === window.SocketClient.socket.id) : null;
+      const nukesInPlay = !!gs.allowCrafting || (gs.players ? gs.players.some(p => (p.nukes > 0) || (p.thermonukes > 0)) : false);
+
+      document.querySelectorAll('.btn-build-action').forEach(btn => {
+        const btype = btn.getAttribute('data-btype');
+        let available = true;
+        let reason = '';
+        if (btype === 'watchtower' && !gs.fogOfWar) {
+          available = false;
+          reason = 'Requires Fog of War mode';
+        } else if (btype === 'bunker' && !nukesInPlay) {
+          available = false;
+          reason = 'Requires nukes (crafting on or a nuke in play)';
+        }
+        btn.disabled = !available;
+        btn.style.opacity = available ? '1' : '0.35';
+        btn.style.cursor = available ? 'pointer' : 'not-allowed';
+        btn.title = available
+          ? btn.getAttribute('data-base-title') || btn.title
+          : reason;
+        if (available && btn.getAttribute('data-base-title')) {
+          btn.title = btn.getAttribute('data-base-title');
+        }
+        // Disarm if the armed building just became unavailable
+        if (!available && this.armedBuildingType === btype) {
+          this.armedBuildingType = null;
+          btn.classList.remove('active');
+        }
+      });
+    }
+
     handleTerritoryClick(territoryId, event) {
       const stage = this.gameState.turnStage;
       const activePlayer = this.gameState.players[this.gameState.turnIndex];
@@ -1946,6 +2122,27 @@ hasFullVisionOfPlayer(playerId) {
 
       const territory = this.gameState.territories[territoryId];
       if (!territory) return;
+
+      // Armed building construction intercept (Buildings Mode): if a build
+      // button is armed and we're in a stage where construction is legal,
+      // this click BUILDS instead of the normal stage action. The arm stays
+      // active afterwards so the player can immediately build again elsewhere.
+      if (this.armedBuildingType && (stage === 'DRAFT' || stage === 'SETUP_FORTIFY') && isMyTurn) {
+        const btype = this.armedBuildingType;
+        window.SocketClient.socket.emit('constructBuilding', {
+          roomCode: window.SocketClient.roomCode,
+          territoryId,
+          buildingType: btype
+        }, (res) => {
+          if (res.error) {
+            showToast(res.error, 'error');
+          } else {
+            showToast(`<i class="fa-solid fa-landmark-dome"></i> Construction complete!`, 'success');
+            this.updateBuildButtonsAvailability();
+          }
+        });
+        return;
+      }
 
       const isOwnedByMe = isGenerative ? this.isPlayerOwner(activePlayer, territory.ownerId) : (this.isPlayerOwner({ id: window.SocketClient.socket.id }, territory.ownerId) || territory.ownerId === window.SocketClient.socket.id);
 
@@ -2298,9 +2495,24 @@ hasFullVisionOfPlayer(playerId) {
           ? '<span style="font-size: 10px; font-weight: 700; margin-top: 1px;"><span style="color: #22c55e;"><i class="fa-solid fa-radiation"></i> ' + (p.nukes || 0) + '</span> <span style="color: #a855f7;"><i class="fa-solid fa-rocket"></i> ' + (p.thermonukes || 0) + '</span></span>'
           : '';
 
+        item.style.cursor = 'pointer';
+        item.onclick = () => {
+          if (window.MainController && window.MainController.openPlayerInspectorModal) {
+            window.MainController.openPlayerInspectorModal(p);
+          }
+        };
+
+        // Team badge (Team Mode): shows the permanent team this player belongs to
+        const playerTeam = (this.gameState.teamMode && p.teamId)
+          ? (this.gameState.teams || []).find(t => t.id === p.teamId)
+          : null;
+        const teamBadgeHtml = playerTeam
+          ? `<span title="Permanent Team" style="font-size:9px; font-weight:800; padding:1px 5px; border-radius:4px; background:rgba(0,0,0,0.55); color:${playerTeam.color || '#facc15'}; border:1px solid ${playerTeam.color || '#facc15'}; margin-left:4px; display:inline-flex; align-items:center; gap:2px;"><i class="fa-solid fa-people-group"></i>${playerTeam.name}</span>`
+          : '';
+
         item.innerHTML = `
           <div class="player-color-dot" style="background-color: ${p.color};"></div>
-          <span class="game-player-name">${p.name} ${p.isAI ? '(AI)' : ''}${pBadgeHtml}</span>
+          <span class="game-player-name">${p.name} ${p.isAI ? '(AI)' : ''}${pBadgeHtml}${teamBadgeHtml}</span>
           ${selectHtml}
           <span class="game-player-stats" style="display: flex; flex-direction: column; align-items: flex-end; line-height: 1.25;">
             <span><i class="fa-solid fa-earth-americas"></i> ${displayTerrCount} | <i class="fa-solid fa-person-military-pointing"></i> ${displayArmiesCount}</span>
@@ -2846,6 +3058,10 @@ hasFullVisionOfPlayer(playerId) {
     sendChatMessage() {
       const text = this.chatInput.value.trim();
       if (text) {
+        this.sentChatCount = (this.sentChatCount || 0) + 1;
+        if (this.sentChatCount >= 15 && window.SocketClient && window.SocketClient.triggerSecretAchievement) {
+          window.SocketClient.triggerSecretAchievement('drama_queen', this.sentChatCount, () => {});
+        }
         window.SocketClient.sendMessage(text);
         this.chatInput.value = '';
       }
@@ -2901,6 +3117,77 @@ hasFullVisionOfPlayer(playerId) {
       this.logMessages.scrollTop = this.logMessages.scrollHeight;
     }
 
+    // Territory Intel modal: pick a player, list every territory they own
+    openTerritoryIntelModal() {
+      if (!this.gameState || !this.gameState.players) return;
+      this.territoryIntelModal.classList.add('active');
+
+      // Repopulate the dropdown with ALL players (AI included)
+      this.selectIntelPlayer.innerHTML = '';
+      this.gameState.players.forEach(p => {
+        const option = document.createElement('option');
+        option.value = p.id;
+        option.textContent = `${p.name} ${p.isAI ? '(AI)' : (p.eliminated ? '(Eliminated)' : '')}`;
+        option.style.color = p.color;
+        this.selectIntelPlayer.appendChild(option);
+      });
+
+      if (this.selectIntelPlayer.children.length === 0) {
+        this.selectIntelPlayer.innerHTML = '<option value="">-- No commanders --</option>';
+      }
+
+      this.renderTerritoryIntelList();
+    }
+
+    renderTerritoryIntelList() {
+      if (!this.gameState || !this.gameState.territories || !this.intelTerritoryList) return;
+
+      // Territory display names come from the map data (SocketClient wins if
+      // both exist, mirroring the renderer's resolution order)
+      const mapData = window.SocketClient.mapData || this.gameState.mapData;
+      const territoryNames = {};
+      if (mapData && Array.isArray(mapData.territories)) {
+        mapData.territories.forEach(t => { territoryNames[t.id] = t.name || t.id; });
+      }
+
+      const selectedId = this.selectIntelPlayer.value;
+      const selectedPlayer = this.gameState.players.find(p => p.id === selectedId);
+
+      if (!selectedId || !selectedPlayer) {
+        this.intelTerritoryList.innerHTML = '<p class="empty-state">Select a commander to view their territories.</p>';
+        return;
+      }
+
+      const owned = Object.entries(this.gameState.territories)
+        .filter(([tid, t]) => t && t.ownerId === selectedId)
+        .map(([tid, t]) => ({ id: tid, name: territoryNames[tid] || tid, armies: t.armies || 0 }))
+        .sort((a, b) => b.armies - a.armies || a.name.localeCompare(b.name));
+
+      const headerColor = selectedPlayer.color || '#00e5ff';
+      let html = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border-glass);">
+          <span style="display: inline-flex; align-items: center; gap: 6px; font-weight: 700; font-size: 12.5px; color: #fff;">
+            <span style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: ${headerColor}; border: 1px solid #fff; box-shadow: 0 0 6px ${headerColor};"></span>
+            ${selectedPlayer.name}
+          </span>
+          <span style="font-size: 11px; color: #9ca3af;">${owned.length} territor${owned.length === 1 ? 'y' : 'ies'} • ${owned.reduce((s, t) => s + t.armies, 0)} armies</span>
+        </div>
+      `;
+
+      if (owned.length === 0) {
+        html += '<p class="empty-state">This commander holds no territories.</p>';
+      } else {
+        html += owned.map(t => `
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; margin-bottom: 4px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-glass); border-radius: 6px; font-size: 12px;">
+            <span style="color: #e5e7eb;">${t.name}</span>
+            <span style="color: var(--primary); font-weight: 700;">${t.armies} <i class="fa-solid fa-shield-halved" style="font-size: 10px;"></i></span>
+          </div>
+        `).join('');
+      }
+
+      this.intelTerritoryList.innerHTML = html;
+    }
+
     // Treaties & Pact modal
     openDiplomacyModal() {
       this.diplomacyModal.classList.add('active');
@@ -2915,15 +3202,23 @@ hasFullVisionOfPlayer(playerId) {
 
       // Populate targets dropdown
       this.selectDiplomacyTarget.innerHTML = '';
+      const myPlayer = this.gameState.players.find(p => p.id === window.SocketClient.socket.id);
+      const teamModeActive = !!(this.gameState.teamMode && this.gameState.players.some(p => p.teamId));
+      // TEAM MODE: members of a team can never pact with anyone (teams are
+      // permanent and all cross-faction pacts are banned). Solo players may
+      // still pact with other solo players, but never with team members.
+      const iAmOnTeam = !!(teamModeActive && myPlayer && myPlayer.teamId);
       this.gameState.players.forEach(p => {
-        // filter out self, eliminated, or players we already have pacts with
+        // filter out self, eliminated, teammates, or players we already have pacts with
         const isSelf = p.id === window.SocketClient.socket.id;
+        const isTeammate = !!(teamModeActive && myPlayer && myPlayer.teamId && p.teamId === myPlayer.teamId);
+        const isBannedByTeam = !!(teamModeActive && (iAmOnTeam || p.teamId));
         const isPactActive = this.gameState.pacts.some(
           pac => (pac.playerA === window.SocketClient.socket.id && pac.playerB === p.id) ||
                  (pac.playerB === window.SocketClient.socket.id && pac.playerA === p.id)
         );
 
-        if (!isSelf && !p.eliminated && !isPactActive) {
+        if (!isSelf && !p.eliminated && !isTeammate && !isBannedByTeam && !isPactActive) {
           const option = document.createElement('option');
           option.value = p.id;
           option.textContent = `${p.name} ${p.isAI ? '(AI)' : ''}`;
@@ -2932,7 +3227,9 @@ hasFullVisionOfPlayer(playerId) {
       });
 
       if (this.selectDiplomacyTarget.children.length === 0) {
-        this.selectDiplomacyTarget.innerHTML = '<option value="">-- No available commanders --</option>';
+        this.selectDiplomacyTarget.innerHTML = iAmOnTeam
+          ? '<option value="">-- Team members cannot form pacts --</option>'
+          : '<option value="">-- No available commanders --</option>';
         this.btnSubmitDiplomacy.disabled = true;
       } else {
         this.btnSubmitDiplomacy.disabled = false;

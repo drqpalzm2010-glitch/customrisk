@@ -16,8 +16,16 @@
       this.gameState = null;
       this.activeTool = 'draw-territory';
 
-      // Bind tooltip
+      // Bind tooltip (self-heal: recreate the element if it is missing from
+      // the DOM so territory hover info can never silently break)
       this.tooltip = document.getElementById('game-tooltip');
+      if (!this.tooltip) {
+        this.tooltip = document.createElement('div');
+        this.tooltip.id = 'game-tooltip';
+        this.tooltip.className = 'tooltip';
+        this.tooltip.style.display = 'none';
+        document.body.appendChild(this.tooltip);
+      }
 
       // Zoom & Pan states
       this.zoomScale = 1.0;
@@ -297,7 +305,10 @@
         if (!isFogged) {
           if (gameState && gameState.territories[terr.id]) {
             const tState = gameState.territories[terr.id];
-            if (tState.ownerId === 'dummy') {
+            if (tState.ownerId === 'zombie') {
+              ownerColor = '#15803d'; // necrotic green
+              ownerName = 'Zombies';
+            } else if (tState.ownerId === 'dummy') {
               ownerColor = '#475569'; // neutral slate
               ownerName = 'Neutral Forces (Dummy)';
             } else {
@@ -342,6 +353,7 @@
 
         // Blizzard and Radiation modifications
         const isBlizzard = !isFogged && gameState && gameState.blizzards && gameState.blizzards.includes(terr.id);
+        const isZombie = !isFogged && gameState && gameState.territories[terr.id] && gameState.territories[terr.id].ownerId === 'zombie';
         const isPendingImpact = this.pendingImpactTerritories && this.pendingImpactTerritories.has(terr.id);
         const isRadioactive = !isFogged && !isPendingImpact && gameState && gameState.radiation && gameState.radiation[terr.id] > 0;
         const isNukeRuins = !isFogged && !isPendingImpact && gameState && gameState.territories[terr.id] && gameState.territories[terr.id].ownerId === null && gameState.territories[terr.id].armies === 0 && gameState.territories[terr.id].nuked;
@@ -354,6 +366,11 @@
           polygon.style.fillOpacity = '0.9';
           polygon.style.stroke = '#94a3b8';
           polygon.style.strokeWidth = '2px';
+        } else if (isZombie) {
+          polygon.style.fill = '#15803d'; // Necrotic Zombie Green
+          polygon.style.fillOpacity = '0.85';
+          polygon.style.stroke = '#22c55e';
+          polygon.style.strokeWidth = '2.5px';
         } else if (isRadioactive) {
           polygon.style.fill = '#22c55e';
           polygon.style.fillOpacity = '0.45';
@@ -411,7 +428,11 @@
           if (gameState && gameState.territories[terr.id]) {
             const tState = gameState.territories[terr.id];
             troopCount = tState.armies;
-            if (tState.ownerId === 'dummy') {
+            if (tState.ownerId === 'zombie') {
+              ownerColor = '#15803d'; // necrotic green
+              ownerName = 'Zombies';
+              isNeutral = false;
+            } else if (tState.ownerId === 'dummy') {
               ownerColor = '#475569';
               ownerName = 'Neutral Forces (Dummy)';
               isNeutral = true;
@@ -446,6 +467,24 @@
               isNeutral = true;
             }
           }
+        }
+        // Draw Structure / Building Icon Badge
+        const building = !isFogged && gameState && gameState.buildings ? gameState.buildings[terr.id] : null;
+        if (building) {
+          const bGroup = document.createElementNS(svgNamespace, "g");
+          bGroup.setAttribute("transform", `translate(${terr.center[0] - 18}, ${terr.center[1] - 18}) scale(0.9)`);
+          bGroup.style.pointerEvents = "none";
+
+          const ICONS = {
+            fortress: '<circle cx="0" cy="0" r="10" fill="#1e293b" stroke="#facc15" stroke-width="1.5"/><text x="0" y="4" text-anchor="middle" font-size="11">🏰</text>',
+            supply_depot: '<circle cx="0" cy="0" r="10" fill="#1e293b" stroke="#38bdf8" stroke-width="1.5"/><text x="0" y="4" text-anchor="middle" font-size="11">📦</text>',
+            watchtower: '<circle cx="0" cy="0" r="10" fill="#1e293b" stroke="#a855f7" stroke-width="1.5"/><text x="0" y="4" text-anchor="middle" font-size="11">🗼</text>',
+            bunker: '<circle cx="0" cy="0" r="10" fill="#1e293b" stroke="#22c55e" stroke-width="1.5"/><text x="0" y="4" text-anchor="middle" font-size="11">🛡️</text>',
+            outpost: '<circle cx="0" cy="0" r="10" fill="#1e293b" stroke="#ef4444" stroke-width="1.5"/><text x="0" y="4" text-anchor="middle" font-size="11">⚔️</text>'
+          };
+
+          bGroup.innerHTML = ICONS[building.type] || '';
+          g.appendChild(bGroup);
         }
 
         // Army Badge background circle
@@ -892,11 +931,33 @@ getVisibleTerritories(gameState, mapData, localPlayerId) {
         }
       });
 
-      // 2. Territories bordering owned/allied territories
+      // 2. Territories bordering owned/allied territories + Watchtower 3-Hop radius
       const directlyOwnedAndAllied = Array.from(visibleSet);
       directlyOwnedAndAllied.forEach(tid => {
         const adj = this.getAdjacentTerritories(tid);
         adj.forEach(adjId => visibleSet.add(adjId));
+
+        // Watchtower 3-Hop radius expansion
+        if (gameState.buildings && gameState.buildings[tid]?.type === 'watchtower') {
+          // Dedicated visited set (NOT visibleSet) so the BFS can traverse
+          // through already-visible territories to reach ones beyond them.
+          // Without this, the chain stops at the first already-visible hop.
+          const wtVisited = new Set([tid]);
+          let currentHop = [tid];
+          for (let hop = 0; hop < 3; hop++) {
+            const nextHop = [];
+            currentHop.forEach(curr => {
+              this.getAdjacentTerritories(curr).forEach(neighbor => {
+                if (!wtVisited.has(neighbor)) {
+                  wtVisited.add(neighbor);
+                  visibleSet.add(neighbor);
+                  nextHop.push(neighbor);
+                }
+              });
+            });
+            currentHop = nextHop;
+          }
+        }
       });
 
       return visibleSet;
@@ -1601,7 +1662,9 @@ getVisibleTerritories(gameState, mapData, localPlayerId) {
         if (this.gameState && this.gameState.territories && this.gameState.territories[terr.id]) {
           const tState = this.gameState.territories[terr.id];
           troopText = tState.armies;
-          if (tState.ownerId === 'dummy') {
+          if (tState.ownerId === 'zombie') {
+            ownerName = 'Zombies';
+          } else if (tState.ownerId === 'dummy') {
             ownerName = 'Neutral Forces (Dummy)';
           } else {
             const owner = this.gameState.players ? this.gameState.players.find(p => p.id === tState.ownerId) : null;
@@ -2407,13 +2470,13 @@ getVisibleTerritories(gameState, mapData, localPlayerId) {
   window.SVGRenderer = SVGRenderer;
 })();
 
-// High-Definition SVG Vector Icon Registry for all 60 Achievements (Zero external font dependencies, No emojis)
+// High-Definition SVG Vector Icon Registry for all 91 Achievements (100% Unique & Vector Illustrated)
   window.getAchievementSvgIcon = function(achId, size = 26) {
     const icons = {
-      // Combat & Conquest
-      first_blood: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><path d="M12 2L14.5 9.5H22L16 14L18.5 21.5L12 17L5.5 21.5L8 14L2 9.5H9.5L12 2Z" fill="#ef4444" fill-opacity="0.3"/><line x1="12" y1="6" x2="12" y2="15"/></svg>`,
+      // 1. Combat & Conquest
+      first_blood: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><path d="M12 2L14.5 9.5H22L16 14L18.5 21.5L12 17L5.5 21.5L8 14L2 9.5H9.5L12 2Z" fill="#ef4444" fill-opacity="0.3"/><circle cx="12" cy="12" r="2" fill="#ef4444"/></svg>`,
       lightning_advance: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#38bdf8"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
-      steamroller: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><rect x="3" y="11" width="18" height="8" rx="2" fill="#f59e0b" fill-opacity="0.25"/><circle cx="7" cy="19" r="2"/><circle cx="12" cy="19" r="2"/><circle cx="17" cy="19" r="2"/><path d="M6 11V6a3 3 0 0 1 3-3h6a3 3 0 0 1 3 3v5"/></svg>`,
+      steamroller: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><rect x="3" y="11" width="18" height="8" rx="2" fill="#f59e0b" fill-opacity="0.25"/><circle cx="7" cy="19" r="2" fill="#f59e0b"/><circle cx="12" cy="19" r="2" fill="#f59e0b"/><circle cx="17" cy="19" r="2" fill="#f59e0b"/><path d="M6 11V6a3 3 0 0 1 3-3h6a3 3 0 0 1 3 3v5"/></svg>`,
       relentless_vanguard: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#e11d48" stroke-width="2"><path d="M14.5 17.5L3 6V3h3l11.5 11.5"/><path d="M13 19l6-6"/><path d="M16 16l4 4"/><path d="M19 21l2-2"/></svg>`,
       clean_sweep: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" fill="#10b981" fill-opacity="0.25"/><polyline points="9 12 11 14 15 10"/></svg>`,
       decisive_strike: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#f43f5e" stroke-width="2"><circle cx="12" cy="12" r="10" stroke="#f43f5e"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/><circle cx="12" cy="12" r="3" fill="#f43f5e"/></svg>`,
@@ -2422,8 +2485,12 @@ getVisibleTerritories(gameState, mapData, localPlayerId) {
       garrison_master: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#f59e0b"><rect x="3" y="10" width="18" height="11" rx="2" fill="#78350f" stroke="#facc15" stroke-width="2"/><rect x="5" y="5" width="4" height="5" fill="#facc15"/><rect x="15" y="5" width="4" height="5" fill="#facc15"/><rect x="10" y="3" width="4" height="7" fill="#facc15"/></svg>`,
       border_guard: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#0284c7" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2" fill="#0369a1" fill-opacity="0.3"/><line x1="6" y1="6" x2="6" y2="18"/><line x1="12" y1="6" x2="12" y2="18"/><line x1="18" y1="6" x2="18" y2="18"/></svg>`,
       impenetrable_border: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#c084fc" stroke-width="2"><path d="M12 2l8 4v6c0 5.5-3.8 10.7-8 12-4.2-1.3-8-6.5-8-12V6l8-4z" fill="#581c87" fill-opacity="0.4"/><circle cx="12" cy="12" r="4" fill="#c084fc"/></svg>`,
+      hold_the_line: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2.2"><path d="M3 12h18M3 6h18M3 18h18"/><circle cx="12" cy="12" r="4" fill="#22c55e"/></svg>`,
+      one_man_army: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#f59e0b"><circle cx="12" cy="6" r="3.5"/><path d="M7 21v-5a5 5 0 0 1 10 0v5"/><path d="M12 12l5 6" stroke="#fff" stroke-width="2"/></svg>`,
+      david_vs_goliath: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#facc15" stroke-width="2"><circle cx="6" cy="16" r="3" fill="#facc15"/><circle cx="17" cy="8" r="6" stroke="#ef4444" stroke-width="2"/><line x1="8" y1="14" x2="13" y2="10" stroke="#facc15" stroke-dasharray="2 2"/></svg>`,
+      last_stand_thermopylae: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><path d="M12 2L3 6v6c0 6 9 10 9 10s9-4 9-10V6l-9-4z" fill="#7f1d1d"/><path d="M12 7v10M8 11h8" stroke="#facc15" stroke-width="2"/></svg>`,
 
-      // Nuclear Warfare
+      // 2. Nuclear Warfare
       manhattan_project: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#22c55e"><circle cx="12" cy="12" r="10" fill="none" stroke="#22c55e" stroke-width="2"/><circle cx="12" cy="12" r="3"/><path d="M12 2v6M12 16v6M2 12h6M16 12h6"/></svg>`,
       i_am_become_death: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#a855f7"><circle cx="12" cy="12" r="9" stroke="#c084fc" stroke-width="2" fill="#581c87" fill-opacity="0.5"/><path d="M12 3a9 9 0 0 1 7.8 4.5l-4.3 2.5a4 4 0 0 0-3.5-2z"/></svg>`,
       trinity_test: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#ef4444"><path d="M12 2v8M12 14v8M2 12h8M14 12h8"/><circle cx="12" cy="12" r="4" fill="#facc15" stroke="#ef4444" stroke-width="1.5"/></svg>`,
@@ -2432,8 +2499,9 @@ getVisibleTerritories(gameState, mapData, localPlayerId) {
       extinction_protocol: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#dc2626"><circle cx="12" cy="12" r="10" stroke="#dc2626" stroke-width="2" fill="#450a0a"/><line x1="15" y1="9" x2="9" y2="15" stroke="#fff" stroke-width="2"/><line x1="9" y1="9" x2="15" y2="15" stroke="#fff" stroke-width="2"/></svg>`,
       mutually_assured_destruction: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#e11d48"><path d="M4 15l4-8 4 8M12 15l4-8 4 8M2 19h20" stroke="#facc15" stroke-width="2"/></svg>`,
       mass_demilitarization: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#c084fc"><path d="M12 2L2 22h20L12 2zm0 4l6.5 13H5.5L12 6z"/><circle cx="12" cy="15" r="1.5" fill="#facc15"/></svg>`,
+      nuclear_gandhi: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><circle cx="12" cy="12" r="10" stroke="#f59e0b"/><path d="M12 2v20M2 12h20" stroke="#ef4444"/><circle cx="12" cy="12" r="3" fill="#ef4444"/></svg>`,
 
-      // Diplomacy & Treachery
+      // 3. Diplomacy & Treachery
       handshake_protocol: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2"><path d="M11 15h2a2 2 0 1 0 0-4h-3c-.6 0-1.1.2-1.4.6L3 17"/><path d="M7 11l4-4 4 4"/><path d="M13 15l4 4 4-4"/></svg>`,
       blood_brothers: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#38bdf8"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>`,
       the_coalition: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2"><circle cx="12" cy="7" r="4"/><path d="M5.5 21a6.5 6.5 0 0 1 13 0"/><circle cx="19" cy="11" r="3"/><circle cx="5" cy="11" r="3"/></svg>`,
@@ -2443,31 +2511,36 @@ getVisibleTerritories(gameState, mapData, localPlayerId) {
       silver_tongue: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#38bdf8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,
       fool_me_twice: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M16 16s-1.5-2-4-2-4 2-4 2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>`,
       the_red_wedding: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#991b1b"><path d="M5 16L3 5l5.5 5L12 4l3.5 6L21 5l-2 11H5zm14 3c0 .6-.4 1-1 1H6c-.6 0-1-.4-1-1v-1h14v1z"/></svg>`,
+      machiavelli_disciple: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#c084fc" stroke-width="2"><path d="M12 2l4 7-4 7-4-7 4-7z" fill="#581c87"/><circle cx="12" cy="9" r="2" fill="#facc15"/><path d="M2 19h20" stroke="#f43f5e" stroke-width="2.5"/></svg>`,
 
-      // Capital Rush
+      // 4. Capital Rush
       fortified_crown: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#facc15"><path d="M2 4l3 12h14l3-12-5 4-5-6-5 6-5-4zm3 14h14v2H5v-2z"/><circle cx="12" cy="12" r="2" fill="#78350f"/></svg>`,
       near_death_sovereign: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2"><path d="M12 2l3 7h7l-5.5 4.5 2 7.5L12 17l-6.5 4 2-7.5L2 9h7z"/><path d="M12 9v6"/></svg>`,
       capital_crusher: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#f59e0b"><path d="M5 16L3 5l5.5 5L12 4l3.5 6L21 5l-2 11H5z"/><line x1="2" y1="21" x2="22" y2="21" stroke="#f59e0b" stroke-width="2"/></svg>`,
       ground_zero_capital: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#f43f5e"><circle cx="12" cy="12" r="10" stroke="#f43f5e" stroke-width="1.5"/><path d="M5 16L3 5l5.5 5L12 4l3.5 6L21 5l-2 11H5z" fill="#f43f5e"/></svg>`,
 
-      // Fog of War
+      // 5. Fog of War
       omniscient_recon: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3" fill="#38bdf8"/></svg>`,
       shared_horizons: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`,
 
-      // Dice Luck & RNG
+      // 6. Dice Luck & RNG
       blessed_by_rngesus: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#38bdf8"><rect x="3" y="3" width="18" height="18" rx="3" fill="#0369a1"/><circle cx="7.5" cy="7.5" r="1.5" fill="#fff"/><circle cx="7.5" cy="12" r="1.5" fill="#fff"/><circle cx="7.5" cy="16.5" r="1.5" fill="#fff"/><circle cx="16.5" cy="7.5" r="1.5" fill="#fff"/><circle cx="16.5" cy="12" r="1.5" fill="#fff"/><circle cx="16.5" cy="16.5" r="1.5" fill="#fff"/></svg>`,
       wall_of_steel: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#38bdf8"><rect x="3" y="3" width="18" height="18" rx="3" fill="#334155" stroke="#38bdf8" stroke-width="2"/><circle cx="8" cy="8" r="2" fill="#38bdf8"/><circle cx="16" cy="16" r="2" fill="#38bdf8"/></svg>`,
       snake_eyes_tragedy: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#ef4444"><rect x="3" y="3" width="18" height="18" rx="3" fill="#7f1d1d" stroke="#ef4444" stroke-width="1.5"/><circle cx="12" cy="12" r="2" fill="#fff"/></svg>`,
       calculated_risk: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#c084fc" stroke-width="2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>`,
+      lucky_skirmish: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="3" fill="#064e3b"/><circle cx="9" cy="9" r="1.5" fill="#34d399"/><circle cx="15" cy="15" r="1.5" fill="#34d399"/></svg>`,
 
-      // Cards & Logistics
+      // 7. Cards & Logistics
       card_shark: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#c084fc"><rect x="4" y="2" width="12" height="16" rx="2" fill="#581c87" stroke="#c084fc" stroke-width="1.5"/><rect x="8" y="6" width="12" height="16" rx="2" fill="#3b0764" stroke="#c084fc" stroke-width="1.5"/></svg>`,
       forced_liquidation: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#38bdf8"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" stroke="#38bdf8" stroke-width="2" fill="none"/></svg>`,
       arms_race_escalation: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>`,
       jokers_wild: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#c084fc"><polygon points="12 2 15 8.5 22 9.5 17 14.5 18.5 21.5 12 18 5.5 21.5 7 14.5 2 9.5 9 8.5 12 2" fill="#7c3aed" stroke="#c084fc" stroke-width="1.5"/></svg>`,
       matching_soil: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#38bdf8"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>`,
+      double_bonus: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2.2"><circle cx="8" cy="12" r="5" fill="#78350f"/><circle cx="16" cy="12" r="5" fill="#78350f"/><path d="M8 10v4M16 10v4"/></svg>`,
+      plunder_king: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#eab308"><path d="M4 10l8-6 8 6-3 10H7L4 10z" fill="#854d0e"/><circle cx="12" cy="14" r="2.5" fill="#facc15"/></svg>`,
+      infinite_supply_lines: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2"><path d="M18.18 8.18a5.5 5.5 0 0 0-7.78 0L9 9.58l-1.4-1.4a5.5 5.5 0 1 0-7.78 7.78l1.4 1.4 6.38 6.38a1 1 0 0 0 1.4 0l6.38-6.38 1.4-1.4a5.5 5.5 0 0 0 0-7.78z" fill="#581c87" fill-opacity="0.3"/></svg>`,
 
-      // Tactics & Mastery
+      // 8. Tactics & Mastery
       multiverse: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20M2 12h20"/></svg>`,
       no_way_home: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#64748b"><circle cx="12" cy="12" r="10" stroke="#64748b" stroke-width="2"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07" stroke="#64748b" stroke-width="2"/></svg>`,
       world_dominator: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#10b981"><circle cx="12" cy="12" r="10" fill="#064e3b" stroke="#10b981" stroke-width="2"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20" stroke="#10b981" stroke-width="1.5" fill="none"/></svg>`,
@@ -2482,11 +2555,36 @@ getVisibleTerritories(gameState, mapData, localPlayerId) {
       single_stack_wipeout: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#c084fc"><circle cx="6" cy="12" r="4" fill="#581c87"/><circle cx="18" cy="12" r="4" fill="#581c87"/><line x1="2" y1="2" x2="22" y2="22" stroke="#ef4444" stroke-width="2.5"/></svg>`,
       the_comeback_kid: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#facc15" stroke="#facc15"><path d="M12 2l3 7h7l-5.5 4.5 2 7.5L12 17l-6.5 4 2-7.5L2 9h7z"/><circle cx="12" cy="12" r="3" fill="#000"/></svg>`,
       nuclear_judas: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#38bdf8"><path d="M12 2v10l4-4M12 12l-4-4"/><circle cx="12" cy="16" r="4" fill="#0284c7"/></svg>`,
+      iron_curtain: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2.2"><rect x="2" y="4" width="20" height="16" rx="2" fill="#450a0a"/><line x1="6" y1="4" x2="6" y2="20"/><line x1="10" y1="4" x2="10" y2="20"/><line x1="14" y1="4" x2="14" y2="20"/><line x1="18" y1="4" x2="18" y2="20"/></svg>`,
+      unbroken_fortress: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2"><path d="M3 21h18M5 21V7l4-3 4 3 4-3 4 3v14" fill="#0c4a6e"/></svg>`,
+      d_day: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#0ea5e9" stroke-width="2"><path d="M2 18c3-2 6 2 9 0s6-2 9 0"/><path d="M5 14l3-8h8l3 8H5z" fill="#0369a1"/></svg>`,
+      speedrunner: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#facc15" stroke-width="2"><circle cx="12" cy="12" r="9"/><polyline points="12 6 12 12 16 14"/><polygon points="20 4 22 2 18 2 20 4" fill="#facc15"/></svg>`,
+      cyber_general: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#00f0ff" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="3" fill="#05192d"/><circle cx="12" cy="12" r="3" fill="#00f0ff"/></svg>`,
+      grand_emperor: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#c29d6d"><path d="M4 18l2-12 6 5 6-5 2 12H4z" fill="#382718" stroke="#c29d6d" stroke-width="1.8"/><circle cx="12" cy="7" r="2"/></svg>`,
+      modern_strategist: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><circle cx="12" cy="12" r="9" stroke="#10b981"/><path d="M12 7v10M7 12h10"/></svg>`,
+      kawaii_commander: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#ff77a9"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>`,
+      cartographer: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>`,
+      worldbuilder: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20M2 12h20"/><circle cx="12" cy="12" r="3" fill="#a855f7"/></svg>`,
+      geopolitical_mastermind: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/><circle cx="14" cy="7" r="2" fill="#facc15"/></svg>`,
+      party_host: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#facc15"><polygon points="12 2 15 9 22 9 17 14 19 21 12 17 5 21 7 14 2 9 9 9 12 2"/></svg>`,
+      literally_hitler: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#dc2626"><circle cx="12" cy="12" r="10" fill="#450a0a" stroke="#dc2626" stroke-width="2"/><path d="M6 12h12M12 6v12" stroke="#fff" stroke-width="2.5"/></svg>`,
+      twenty_eight_turns_later: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2"><circle cx="12" cy="12" r="10" fill="#14532d"/><path d="M12 6v6l4 2"/><circle cx="12" cy="12" r="2" fill="#22c55e"/></svg>`,
+      quarantine: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#f59e0b"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="#f59e0b" stroke-width="2" fill="#78350f"/></svg>`,
+      train_to_busan: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><rect x="4" y="3" width="16" height="16" rx="2" fill="#7f1d1d"/><path d="M4 11h16M12 3v8"/></svg>`,
+      incompetent_government: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#a855f7"><circle cx="12" cy="12" r="10" stroke="#a855f7" stroke-width="2"/><path d="M8 15s1.5-2 4-2 4 2 4 2M9 9h.01M15 9h.01"/></svg>`,
 
-      // Secret Feats
+      // 9. Secret Feats
       secret_anime_scroll: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#ff77a9"><circle cx="12" cy="12" r="10" fill="#4c1d35" stroke="#ff77a9" stroke-width="2"/><circle cx="9" cy="10" r="1.5" fill="#fff"/><circle cx="15" cy="10" r="1.5" fill="#fff"/><path d="M8 15s1.5 2 4 2 4-2 4-2" stroke="#fff" stroke-width="1.5" fill="none"/></svg>`,
       secret_nuclear_bbq: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#c084fc"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>`,
-      secret_choose_already: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#38bdf8"><circle cx="12" cy="12" r="9" stroke="#38bdf8" stroke-width="2" fill="none"/><path d="M12 7v5l3 3"/></svg>`
+      secret_choose_already: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#38bdf8"><circle cx="12" cy="12" r="9" stroke="#38bdf8" stroke-width="2" fill="none"/><path d="M12 7v5l3 3"/></svg>`,
+      samurai: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><circle cx="12" cy="12" r="9" fill="#fee2e2"/><circle cx="12" cy="12" r="4.5" fill="#dc2626"/><path d="M4 20L20 4" stroke="#7f1d1d" stroke-width="2.5"/></svg>`,
+      instructions_unclear: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#ef4444"><circle cx="12" cy="12" r="10" fill="#450a0a" stroke="#ef4444" stroke-width="2"/><path d="M12 8v4M12 16h.01" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/></svg>`,
+      drama_queen: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#ec4899"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" fill="#831843"/><circle cx="9" cy="10" r="1.5" fill="#fff"/><circle cx="15" cy="10" r="1.5" fill="#fff"/></svg>`,
+      dj_commander: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><circle cx="6" cy="18" r="3" fill="#0284c7"/><circle cx="18" cy="18" r="3" fill="#0284c7"/></svg>`,
+      napoleonic_mastermind: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#c29d6d"><path d="M12 2l3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1 3-6z" fill="#78350f" stroke="#facc15" stroke-width="1.5"/></svg>`,
+      pro_vs_creator: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#10b981"><rect x="2" y="3" width="20" height="14" rx="2" fill="#064e3b" stroke="#10b981" stroke-width="2"/><path d="M8 21h8M12 17v4" stroke="#10b981" stroke-width="2"/><polyline points="7 8 10 10 7 12" stroke="#34d399" stroke-width="2"/></svg>`,
+      suicide_charge: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#ef4444"><polygon points="12 2 15 8 22 9 17 14 18 21 12 17 6 21 7 14 2 9 9 8 12 2" fill="#991b1b"/><line x1="2" y1="22" x2="22" y2="2" stroke="#facc15" stroke-width="2.5"/></svg>`,
+      main_character_syndrome: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#facc15"><polygon points="12 2 15 8.5 22 9.5 17 14.5 18.5 21.5 12 18 5.5 21.5 7 14.5 2 9.5 9 8.5 12 2" fill="#fb7185" stroke="#facc15" stroke-width="2"/><circle cx="12" cy="12" r="3" fill="#fff"/></svg>`
     };
 
     if (icons[achId]) return icons[achId];

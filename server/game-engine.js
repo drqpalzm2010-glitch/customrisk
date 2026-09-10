@@ -14,6 +14,85 @@ function checkAndGrantAchievement(room, playerId, achId) {
   }
 }
 
+// ==================== TEAM MODE HELPERS ====================
+// Team Mode: scenario nations are grouped into permanent teams. Teammates
+// share full-alliance benefits, can never attack each other, and can never
+// form pacts (alliance OR non-aggression) with outside factions. A "faction"
+// is either a team (all players sharing teamId) or a solo player (their own
+// id). Rewards (XP/ELO/achievements) are only eligible when >=2 distinct
+// factions each contain at least one human commander.
+
+function isTeamMode(gameState) {
+  return !!(gameState && gameState.teamMode && Array.isArray(gameState.teams) && gameState.teams.length > 0);
+}
+
+function getTeamById(gameState, teamId) {
+  if (!gameState || !teamId || !Array.isArray(gameState.teams)) return null;
+  return gameState.teams.find(t => t.id === teamId) || null;
+}
+
+// A faction key uniquely identifies who a player "belongs" with for win/ELO
+// purposes: their teamId if they are on a team, otherwise their own player id.
+function getFactionKey(player) {
+  if (!player) return null;
+  return player.teamId || player.id;
+}
+
+function isOnTeam(gameState, playerId) {
+  if (!isTeamMode(gameState) || !playerId) return false;
+  const p = (gameState.players || []).find(p => p.id === playerId);
+  return !!(p && p.teamId);
+}
+
+function isSameTeam(gameState, idA, idB) {
+  if (!isTeamMode(gameState) || !idA || !idB || idA === idB) return false;
+  const a = (gameState.players || []).find(p => p.id === idA);
+  const b = (gameState.players || []).find(p => p.id === idB);
+  if (!a || !b) return false;
+  return !!(a.teamId && a.teamId === b.teamId);
+}
+
+function getFactionMembers(gameState, factionKey) {
+  return (gameState.players || []).filter(p => getFactionKey(p) === factionKey);
+}
+
+// Record a player's elimination with a real-time timestamp (used for the
+// "survived longest" runner-up placement) plus their territory count at the
+// start of the current turn (tie-break if two eliminations share the exact
+// same millisecond — read from the most recent history snapshot).
+function recordElimination(gameState, player) {
+  if (!player || player.eliminated) return;
+  player.eliminated = true;
+  player.eliminatedAt = Date.now();
+  const history = gameState.history || [];
+  const lastSnapshot = history.length > 0 ? history[history.length - 1] : null;
+  player.territoriesAtTurnStart = lastSnapshot && lastSnapshot.territories
+    ? Object.values(lastSnapshot.territories).filter(t => t && t.ownerId === player.id).length
+    : 0;
+}
+
+// Distinct surviving factions (teams and solo players still in the match)
+function getActiveFactions(gameState) {
+  const map = new Map();
+  (gameState.players || []).forEach(p => {
+    if (p.eliminated) return;
+    const key = getFactionKey(p);
+    if (!map.has(key)) map.set(key, { factionKey: key, teamId: p.teamId || null, playerIds: [] });
+    map.get(key).playerIds.push(p.id);
+  });
+  return [...map.values()];
+}
+
+// Number of distinct factions that contain at least one alive, connected human
+function countHumanFactions(gameState) {
+  const factions = new Set();
+  (gameState.players || []).forEach(p => {
+    if (p.isAI || p.disconnected) return;
+    factions.add(getFactionKey(p));
+  });
+  return factions.size;
+}
+
 // Server-side mirror of the client's getVisibleTerritories() algorithm, used to
 // grant the Fog of War achievements (Omniscient Recon / Shared Horizons). Returns
 // the Set of territory IDs the given player can currently see.
@@ -22,6 +101,13 @@ function computeVisibleTerritories(gameState, mapData, playerId) {
   if (!gameState || !mapData || !mapData.territories) return visibleSet;
 
   const alliedOwners = new Set([playerId]);
+  // Teams always share full vision (permanent full-alliance benefit)
+  if (gameState && isTeamMode(gameState)) {
+    const me = gameState.players.find(p => p.id === playerId);
+    if (me && me.teamId) {
+      gameState.players.forEach(p => { if (p.teamId === me.teamId) alliedOwners.add(p.id); });
+    }
+  }
   if (gameState.pacts) {
     gameState.pacts.forEach(p => {
       if (p.type === 'alliance') {
@@ -56,11 +142,24 @@ function computeVisibleTerritories(gameState, mapData, playerId) {
 }
 
 // Shared helper: applies the achievement checks for a newly formed pact (used by
-// every pact-formation code path to avoid duplication). grantInFavorOf is the
-// account-bearing player id that should receive the single-player achievements.
+// every pact-formation code path to avoid duplication).
 function grantPactFormationAchievements(room, pactType, playerAId, playerBId) {
   if (!room || !room.gameState) return;
   const gameState = room.gameState;
+
+  // Track treaty/alliance formation count on both players
+  const pA = gameState.players.find(p => p.id === playerAId);
+  const pB = gameState.players.find(p => p.id === playerBId);
+  if (pA) {
+    pA.stats = pA.stats || { drafted: 0, killed: 0, lost: 0, territoriesConquered: 0 };
+    pA.stats.treatiesFormed = (pA.stats.treatiesFormed || 0) + 1;
+    pA.stats.alliancesFormed = (pA.stats.alliancesFormed || 0) + 1;
+  }
+  if (pB) {
+    pB.stats = pB.stats || { drafted: 0, killed: 0, lost: 0, territoriesConquered: 0 };
+    pB.stats.treatiesFormed = (pB.stats.treatiesFormed || 0) + 1;
+    pB.stats.alliancesFormed = (pB.stats.alliancesFormed || 0) + 1;
+  }
 
   if (pactType === 'handshake' || pactType === 'non_aggression') {
     checkAndGrantAchievement(room, playerAId, 'handshake_protocol');
@@ -206,12 +305,19 @@ function getShortestPath(connections, startId, endId) {
 
 // Breadth-First Search to find if there is an allied path between start and end territories
 // Support traversing through allied territories (Alliances)
-function hasAlliedPath(territories, connections, startId, endId, ownerId, pacts = []) {
+function hasAlliedPath(territories, connections, startId, endId, ownerId, pacts = [], gameState = null) {
   if (startId === endId) return true;
   if (territories[startId].ownerId !== ownerId || territories[endId].ownerId !== ownerId) return false;
 
-  // Build list of allied player IDs
+  // Build list of allied player IDs (full-alliance pacts + permanent teammates)
   const alliedOwners = new Set([ownerId]);
+  if (gameState && isTeamMode(gameState)) {
+    (gameState.players || []).forEach(p => {
+      if (p.teamId && p.teamId === (gameState.players.find(x => x.id === ownerId) || {}).teamId && p.id !== ownerId) {
+        alliedOwners.add(p.id);
+      }
+    });
+  }
   if (pacts) {
     pacts.forEach(p => {
       if (p.type === 'alliance') {
@@ -378,24 +484,46 @@ function initializeGame(room, mapData, gameMode = 'auto') {
       }
     }
 
+    // Resolve custom mode flags
+    const zombieMode = !!room.zombieMode;
+    const supplyMode = !!room.supplyMode && effectiveGameMode === 'capital_rush';
+    const buildingsMode = !!room.buildingsMode;
+
+    // Scenario starting pool — the standard startingArmies calculation further
+    // below lives in the non-scenario branch, so compute it here as well
+    // (fixes a TDZ ReferenceError for scenario games).
+    let startingArmies = 35;
+    if (numPlayers === 2) startingArmies = 40;
+    else if (numPlayers === 4) startingArmies = 30;
+    else if (numPlayers === 5) startingArmies = 25;
+    else if (numPlayers >= 6) startingArmies = 20;
+
     room.gameState = {
       gameMode: effectiveGameMode,
       cardTradeRule: room.cardTradeRule || 'progressive',
+      mapData, // kept on gameState so zombie blitz paths resolve map data without depending on room.mapData
       blizzards,
       radiation: {},
       allowCrafting: room.allowCrafting === true,
+      fogOfWar: !!room.fogOfWar,
+      zombieMode,
+      supplyMode,
+      buildingsMode,
+      buildings: {}, // territoryId -> { type: 'fortress'|'supply_depot'|'watchtower'|'bunker'|'outpost', ownerId }
+      zombieTurnCounter: 0,
       capitals: {},
       turnIndex: 0,
-      turnStage: 'DRAFT', // Skip SETUP_CLAIM / SETUP_FORTIFY / CAPITAL_SELECTION completely!
-      isScenario: true,
+      turnStage: isScenario ? 'DRAFT' : 'SETUP_CLAIM',
       players: players.map(p => ({
         ...p,
         cards: [],
-        nukes: p.startingNukes !== undefined ? p.startingNukes : (parseInt(room.startingNukes) || 0),
-        thermonukes: p.startingThermonukes !== undefined ? p.startingThermonukes : (parseInt(room.startingThermonukes) || 0),
+        nukes: parseInt(room.startingNukes) || 0,
+        thermonukes: parseInt(room.startingThermonukes) || 0,
         cardsTradedCount: 0,
-        startingArmiesPool: 0,
+        startingArmiesPool: startingArmies,
         eliminated: false,
+        noLossStreak: 0,
+        lostTerritorySinceLastTurn: false,
         stats: { drafted: 0, killed: 0, lost: 0, territoriesConquered: 0 }
       })),
       territories: {},
@@ -439,9 +567,18 @@ function initializeGame(room, mapData, gameMode = 'auto') {
             });
           }
 
-          // +10 AI Trust Boost for premade alliance partners
+          // +10 AI Trust Boost for premade alliance partners and count towards treaties formed
           const pA = room.gameState.players.find(p => p.id === pA_id);
           const pB = room.gameState.players.find(p => p.id === pB_id);
+
+          if (pA) {
+            pA.stats = pA.stats || { drafted: 0, killed: 0, lost: 0, territoriesConquered: 0 };
+            pA.stats.treatiesFormed = (pA.stats.treatiesFormed || 0) + 1;
+          }
+          if (pB) {
+            pB.stats = pB.stats || { drafted: 0, killed: 0, lost: 0, territoriesConquered: 0 };
+            pB.stats.treatiesFormed = (pB.stats.treatiesFormed || 0) + 1;
+          }
 
           if (pA && pA.isAI) {
             pA.trustScores = pA.trustScores || {};
@@ -467,6 +604,33 @@ function initializeGame(room, mapData, gameMode = 'auto') {
         armies: Math.max(1, armies)
       };
     });
+
+    // --- ZOMBIE MODE SPAWNING (scenario) ---
+    // Continents with >= 2 active (non-blizzard) territories spawn 1 zombie nest with 5 troops.
+    // Runs AFTER territory population so nests aren't wiped by the loop above.
+    if (zombieMode && mapData.continents) {
+      const blizzardSet = new Set(room.gameState.blizzards);
+      mapData.continents.forEach(cont => {
+        const validTids = cont.territoryIds.filter(tid => {
+          const existing = room.gameState.territories[tid];
+          if (!existing) return false;
+          if (blizzardSet.has(tid)) return false;
+          // Still count owned (non-dummy) territories as valid for infestation,
+          // but skip a territory that is a pre-set capital in capital rush.
+          if (room.gameState.capitals && Object.values(room.gameState.capitals).includes(tid)) return false;
+          return true;
+        });
+        if (validTids.length >= 2) {
+          const spawnTid = validTids[Math.floor(Math.random() * validTids.length)];
+          room.gameState.territories[spawnTid] = {
+            ownerId: 'zombie',
+            armies: 5,
+            zombieNest: true
+          };
+        }
+      });
+      addLog(room.gameState, `🧟 INFECTION DETECTED: The Zombie Horde has spawned across continents with 5 troops per nest!`);
+    }
 
     // Calculate draft pool for first player so they can draft and attack immediately
     if (room.gameState.players.length > 0) {
@@ -542,6 +706,13 @@ function initializeGame(room, mapData, gameMode = 'auto') {
     blizzards,
     radiation: {},
     allowCrafting: room.allowCrafting === true,
+    fogOfWar: !!room.fogOfWar,
+    zombieMode: !!room.zombieMode,
+    supplyMode: !!room.supplyMode && effectiveGameMode === 'capital_rush',
+    buildingsMode: !!room.buildingsMode,
+    buildings: {}, // territoryId -> { type: 'fortress'|'supply_depot'|'watchtower'|'bunker'|'outpost', ownerId }
+    zombieTurnCounter: 0,
+    mapData, // kept on gameState so zombie blitz/paths resolve map data without depending on room.mapData
     capitals: {},
     turnIndex: 0,
     turnStage: 'SETUP_CLAIM',
@@ -553,6 +724,8 @@ function initializeGame(room, mapData, gameMode = 'auto') {
       cardsTradedCount: 0,
       startingArmiesPool: startingArmies,
       eliminated: false,
+      noLossStreak: 0,
+      lostTerritorySinceLastTurn: false,
       stats: { drafted: 0, killed: 0, lost: 0, territoriesConquered: 0 }
     })),
     territories: {},
@@ -575,6 +748,29 @@ function initializeGame(room, mapData, gameMode = 'auto') {
       armies: blizzardSet.has(t.id) ? 0 : 0
     };
   });
+
+  // --- ZOMBIE MODE SPAWNING (normal map) ---
+  // Continents with >= 2 active (non-blizzard) territories spawn 1 zombie nest with 5 troops.
+  // Runs AFTER territory population so nests aren't wiped by the loop above.
+  if (room.gameState.zombieMode && mapData.continents) {
+    mapData.continents.forEach(cont => {
+      const validTids = cont.territoryIds.filter(tid => {
+        const existing = room.gameState.territories[tid];
+        if (!existing) return false;
+        if (blizzardSet.has(tid)) return false;
+        return true;
+      });
+      if (validTids.length >= 2) {
+        const spawnTid = validTids[Math.floor(Math.random() * validTids.length)];
+        room.gameState.territories[spawnTid] = {
+          ownerId: 'zombie',
+          armies: 5,
+          zombieNest: true
+        };
+      }
+    });
+    addLog(room.gameState, `🧟 INFECTION DETECTED: The Zombie Horde has spawned across continents with 5 troops per nest!`);
+  }
 
   addLog(room.gameState, 'Game initialized. Setup phase started: claim territories.');
 }
@@ -754,6 +950,72 @@ function advanceSetupTurn(gameState) {
   );
 }
 
+// Construct a building on owned territory (costs draft armies or starting setup armies)
+function constructBuilding(room, playerId, territoryId, buildingType) {
+  const gameState = room.gameState;
+  if (!gameState || !gameState.buildingsMode) return { error: 'Buildings mode is disabled.' };
+
+  const currentPlayer = gameState.players[gameState.turnIndex];
+  if (currentPlayer.id !== playerId) return { error: 'Not your turn.' };
+
+  const territory = gameState.territories[territoryId];
+  if (!territory || territory.ownerId !== playerId) return { error: 'You do not own this territory.' };
+  if (gameState.buildings[territoryId]) return { error: 'This territory already has a structure!' };
+
+  const BUILDING_COSTS = {
+    fortress: 3,
+    supply_depot: 3,
+    watchtower: 2,
+    bunker: 3,
+    outpost: 2
+  };
+
+  const cost = BUILDING_COSTS[buildingType];
+  if (!cost) return { error: 'Invalid building type.' };
+
+  if (buildingType === 'watchtower' && !gameState.fogOfWar) {
+    return { error: 'Watchtowers require Fog of War mode to be enabled.' };
+  }
+  if (buildingType === 'bunker' && !gameState.allowCrafting && !gameState.players.some(p => (p.nukes || 0) > 0 || (p.thermonukes || 0) > 0)) {
+    return { error: 'Bunkers require nuclear weapons or crafting to be enabled.' };
+  }
+
+  // Setup Fortify phase: pay with startingArmiesPool
+  if (gameState.turnStage === 'SETUP_FORTIFY') {
+    if (currentPlayer.startingArmiesPool < cost) return { error: `Requires ${cost} starting armies (you have ${currentPlayer.startingArmiesPool}).` };
+    currentPlayer.startingArmiesPool -= cost;
+    gameState.buildings[territoryId] = { type: buildingType, ownerId: playerId };
+    addLog(gameState, `🏗️ ${currentPlayer.name} constructed a ${buildingType.replace('_', ' ').toUpperCase()} on ${getTerritoryName(room.mapData, territoryId)}!`);
+
+    // Check if player has exhausted starting pool
+    const armiesLeft = gameState.players.reduce((sum, p) => sum + Math.max(0, p.startingArmiesPool), 0);
+    if (armiesLeft <= 0) {
+      gameState.turnStage = 'DRAFT';
+      gameState.turnIndex = 0;
+      const firstPlayer = gameState.players[0];
+      gameState.draftPool = calculateReinforcements(gameState, room.mapData, firstPlayer.id);
+    } else {
+      advanceSetupTurn(gameState);
+    }
+    return { success: true };
+  }
+
+  // Draft phase: pay with draftPool
+  if (gameState.turnStage === 'DRAFT') {
+    if (gameState.draftPool < cost) return { error: `Requires ${cost} draft armies (you have ${gameState.draftPool}).` };
+    gameState.draftPool -= cost;
+    gameState.buildings[territoryId] = { type: buildingType, ownerId: playerId };
+    addLog(gameState, `🏗️ ${currentPlayer.name} constructed a ${buildingType.replace('_', ' ').toUpperCase()} on ${getTerritoryName(room.mapData, territoryId)}!`);
+
+    if (gameState.draftPool === 0 && currentPlayer.cards.length < 5) {
+      gameState.turnStage = 'ATTACK';
+    }
+    return { success: true };
+  }
+
+  return { error: 'Buildings can only be constructed during Draft or Setup Fortify.' };
+}
+
 // Place draft units during player's turn
 function placeDraft(room, playerId, territoryId, amount) {
   const gameState = room.gameState;
@@ -765,6 +1027,16 @@ function placeDraft(room, playerId, territoryId, amount) {
   const territory = gameState.territories[territoryId];
   if (!territory) return { error: 'Invalid territory ID' };
   if (territory.ownerId !== playerId) return { error: 'You do not own this territory' };
+  // Supply Lines Mode: Prevent drafting to unsupplied territories
+  if (gameState.supplyMode && gameState.capitals) {
+    const myCap = gameState.capitals[playerId];
+    if (myCap && territoryId !== myCap) {
+      const isSupplied = hasAlliedPath(gameState.territories, room.mapData.connections, territoryId, myCap, playerId, gameState.pacts, gameState);
+      if (!isSupplied) {
+        return { error: 'Cannot draft armies to an UNSUPPLIED territory (no path to Capital)!' };
+      }
+    }
+  }
 
   if (amount <= 0 || amount > gameState.draftPool) {
     return { error: 'Invalid amount of armies' };
@@ -821,6 +1093,11 @@ function executeAttack(room, playerId, sourceId, targetId, diceCount) {
   if (!source || !target) return { error: 'Invalid territories' };
   if (source.ownerId !== playerId) return { error: 'You do not own the source territory' };
   if (target.ownerId === playerId) return { error: 'Cannot attack your own territory' };
+
+  // Teams are permanent — teammates can never attack each other (no betrayal path)
+  if (isSameTeam(gameState, playerId, target.ownerId)) {
+    return { error: 'You cannot attack your own teammate — teams are permanent!' };
+  }
 
   // Adjacency check
   const adjacent = getAdjacentTerritories(room.mapData.connections, sourceId);
@@ -924,6 +1201,11 @@ function executeBlitzAttack(room, playerId, sourceId, targetId) {
   if (!source || !target) return { error: 'Invalid territories' };
   if (source.ownerId !== playerId) return { error: 'You do not own the source territory' };
   if (target.ownerId === playerId) return { error: 'Cannot attack your own territory' };
+
+  // Teams are permanent — teammates can never attack each other (no betrayal path)
+  if (isSameTeam(gameState, playerId, target.ownerId)) {
+    return { error: 'You cannot Blitz your own teammate — teams are permanent!' };
+  }
 
   const adjacent = getAdjacentTerritories(room.mapData.connections, sourceId);
   if (!adjacent.includes(targetId)) return { error: 'Territories are not adjacent' };
@@ -1053,6 +1335,13 @@ function resolveCombatRolls(room, sourceId, targetId, attackerDiceCount, defende
   const defenderId = target.ownerId;
   const defenderPlayer = gameState.players.find(p => p.id === defenderId);
 
+  // Zombie attacks: the zombie is not a player in gameState.players, so
+  // currentPlayer may be the *human whose turn it happens to be*. All
+  // player-specific logic (capitals, supply, achievements, stats) must be
+  // skipped when the source territory is zombie-held.
+  const isZombieAttacker = source.ownerId === 'zombie';
+  const attackerName = isZombieAttacker ? 'The Zombie Horde' : (currentPlayer ? currentPlayer.name : 'An unknown force');
+
   // Declare all outcome flags at the top of the function to prevent ReferenceErrors on failed attacks
   let eliminatedPlayerId = null;
   let killerPlayerId = null;
@@ -1065,14 +1354,46 @@ function resolveCombatRolls(room, sourceId, targetId, attackerDiceCount, defende
   attackerDiceCount = Math.max(1, Math.min(3, Math.floor(attackerDiceCount) || 1));
   defenderDiceCount = Math.max(1, Math.min(2, Math.floor(defenderDiceCount) || 1));
 
-  // Roll dice
+  // Determine Supply Line status
+  let attSupplied = true;
+  let defSupplied = true;
+  if (gameState.supplyMode && gameState.capitals) {
+    const attOwnerId = isZombieAttacker ? null : currentPlayer.id;
+    const myCap = attOwnerId ? gameState.capitals[attOwnerId] : null;
+    if (myCap && sourceId !== myCap) {
+      attSupplied = hasAlliedPath(gameState.territories, room.mapData.connections, sourceId, myCap, attOwnerId, gameState.pacts, gameState);
+    }
+    const defCap = gameState.capitals[defenderId];
+    if (defCap && targetId !== defCap && defenderId !== 'dummy' && defenderId !== 'zombie') {
+      defSupplied = hasAlliedPath(gameState.territories, room.mapData.connections, targetId, defCap, defenderId, gameState.pacts, gameState);
+    }
+  }
+
+  // Check Outpost on Attacker & Fortress on Defender
+  const sourceBuilding = gameState.buildings ? gameState.buildings[sourceId] : null;
+  const targetBuilding = gameState.buildings ? gameState.buildings[targetId] : null;
+  const hasAttackerOutpost = sourceBuilding && sourceBuilding.type === 'outpost';
+  const hasDefenderFortress = targetBuilding && targetBuilding.type === 'fortress' && target.armies >= 3;
+
+  if (hasDefenderFortress) {
+    defenderDiceCount = Math.min(3, target.armies); // Fortress allows rolling 3 defense dice!
+  }
+
+  // Roll attacker dice
   const attackerRolls = [];
   for (let i = 0; i < attackerDiceCount; i++) {
-    attackerRolls.push(Math.floor(Math.random() * 6) + 1);
+    let roll = Math.floor(Math.random() * 6) + 1;
+    if (hasAttackerOutpost) roll = Math.min(6, roll + 1); // Outpost buff: +1 to attack rolls
+    if (!attSupplied) roll = Math.max(1, roll - 1); // Supply penalty: -1 to unsupplied rolls
+    attackerRolls.push(roll);
   }
+
+  // Roll defender dice
   const defenderRolls = [];
   for (let i = 0; i < defenderDiceCount; i++) {
-    defenderRolls.push(Math.floor(Math.random() * 6) + 1);
+    let roll = Math.floor(Math.random() * 6) + 1;
+    if (!defSupplied) roll = Math.max(1, roll - 1); // Supply penalty: -1 to unsupplied rolls
+    defenderRolls.push(roll);
   }
 
   // Sort descending
@@ -1083,8 +1404,8 @@ function resolveCombatRolls(room, sourceId, targetId, attackerDiceCount, defende
   let attackerLosses = 0;
   let defenderLosses = 0;
 
-  // Track consecutive turns attacked for bullying evaluation
-  if (defenderPlayer && defenderPlayer.isAI) {
+  // Track consecutive turns attacked for bullying evaluation (zombies never bully)
+  if (!isZombieAttacker && defenderPlayer && defenderPlayer.isAI) {
     const turnNum = Math.floor(gameState.history.length / gameState.players.length) + 1;
     defenderPlayer.lastAttackRecord = defenderPlayer.lastAttackRecord || {};
     
@@ -1120,17 +1441,26 @@ function resolveCombatRolls(room, sourceId, targetId, attackerDiceCount, defende
   }
 
   // Check diplomacy breach before executing combat!
+  // (Zombies cannot betray — skip the whole pact/trust block.)
+  let betrayed = false;
+  let brokenPactType = null;
+  if (!isZombieAttacker) {
   const activePactIndex = gameState.pacts.findIndex(
     p => (p.playerA === currentPlayer.id && p.playerB === defenderId) ||
          (p.playerB === currentPlayer.id && p.playerA === defenderId)
   );
 
-  let betrayed = false;
-  let brokenPactType = null;
   if (activePactIndex !== -1) {
     betrayed = true;
     brokenPactType = gameState.pacts[activePactIndex] ? gameState.pacts[activePactIndex].type : null;
     gameState.pacts.splice(activePactIndex, 1);
+
+    // Track Pro vs Game Creator
+    const creatorNames = ['daniel', 'dan', 'danny', 'drqpalzm', 'danilla'];
+    const defNameCheck = (defenderPlayer ? (defenderPlayer.name + ' ' + (defenderPlayer.accountId || '')) : '').toLowerCase();
+    if (creatorNames.some(cn => defNameCheck.includes(cn))) {
+      checkAndGrantAchievement(room, currentPlayer.id, 'pro_vs_creator');
+    }
 
     // Achievement: Et Tu, Brute? (break an active Full Alliance by direct attack)
     if (brokenPactType === 'alliance') {
@@ -1173,6 +1503,7 @@ function resolveCombatRolls(room, sourceId, targetId, attackerDiceCount, defende
 
     addLog(gameState, `⚠️ BETRAYAL! ${currentPlayer.name} broke their pact and attacked ${defenderPlayer ? defenderPlayer.name : 'an ally'}!`);
   }
+  } // end zombie-skip: no betrayal/trust processing for zombie attackers
 
   // Track consecutive battle losses to trigger Bad Dice commentary
   const checkBadDice = (player, losses) => {
@@ -1193,22 +1524,82 @@ function resolveCombatRolls(room, sourceId, targetId, attackerDiceCount, defende
   const attPlayerObj = gameState.players.find(p => p.id === currentPlayer.id);
   const defPlayerObj = gameState.players.find(p => p.id === defenderId);
 
-  if (attPlayerObj && checkBadDice(attPlayerObj, attackerLosses)) {
-    badDicePlayerId = attPlayerObj.id;
-  } else if (defPlayerObj && checkBadDice(defPlayerObj, defenderLosses)) {
-    badDicePlayerId = defPlayerObj.id;
+  if (!isZombieAttacker) {
+    if (attPlayerObj && checkBadDice(attPlayerObj, attackerLosses)) {
+      badDicePlayerId = attPlayerObj.id;
+    } else if (defPlayerObj && checkBadDice(defPlayerObj, defenderLosses)) {
+      badDicePlayerId = defPlayerObj.id;
+    }
+  }
+
+  // David vs. Goliath pre-battle conditions — declared at FUNCTION scope
+  // because they are consumed later inside the capture block below.
+  const targetHad20Plus = target.armies >= 20;
+  const allNeighborsSmaller = isZombieAttacker ? true : getAdjacentTerritories(room.mapData.connections, targetId).every(adjId => {
+    const t = gameState.territories[adjId];
+    return !t || t.ownerId !== currentPlayer.id || t.armies < target.armies;
+  });
+
+  // Track Suicide Charge feat (attacking 20+ stack from 2 armies) & Lucky
+  // Skirmish (2v2 with 0 losses) — real-player-only achievements
+  if (!isZombieAttacker) {
+    if (source.armies === 2 && target.armies >= 20) {
+      checkAndGrantAchievement(room, currentPlayer.id, 'suicide_charge');
+    }
+    if (source.armies === 2 && target.armies === 2 && attackerLosses === 0 && defenderLosses > 0) {
+      checkAndGrantAchievement(room, currentPlayer.id, 'lucky_skirmish');
+    }
+  }
+
+  // Track 1-army defense streak (Last Stand at Thermopylae)
+  if (target.armies === 1 && defenderLosses === 0 && attackerLosses > 0 && defenderPlayer) {
+    target.thermopylaeDefends = (target.thermopylaeDefends || 0) + 1;
+    if (target.thermopylaeDefends >= 5) {
+      checkAndGrantAchievement(room, defenderPlayer.id, 'last_stand_thermopylae');
+    }
+  }
+
+  // Track Hold the Line (3 separate defenses of same territory in 1 round)
+  if (defenderLosses < attackerLosses && defenderPlayer) {
+    const roundKey = `r_${gameState.turnNum || 0}`;
+    target.holdTheLineRounds = target.holdTheLineRounds || {};
+    target.holdTheLineRounds[roundKey] = (target.holdTheLineRounds[roundKey] || 0) + 1;
+    if (target.holdTheLineRounds[roundKey] >= 3) {
+      checkAndGrantAchievement(room, defenderPlayer.id, 'hold_the_line');
+    }
   }
 
   // Apply casualties — source must always keep at least 1 army
+  const sourceArmiesBeforeCombat = source.armies;
   source.armies = Math.max(1, source.armies - attackerLosses);
   target.armies = Math.max(0, target.armies - defenderLosses);
+  // Zombie 50% Casualty Resurrection (only when >= 2 active non-zombie players remain)
+  if (gameState.zombieMode && source.ownerId !== 'zombie' && target.ownerId !== 'zombie') {
+    const totalDeaths = attackerLosses + defenderLosses;
+    const activeHumansAndBots = gameState.players.filter(p => !p.eliminated && p.id !== 'zombie').length;
+    
+    if (activeHumansAndBots > 1 && totalDeaths > 0) {
+      const zombieTerritories = Object.keys(gameState.territories).filter(tid => gameState.territories[tid].ownerId === 'zombie');
+      if (zombieTerritories.length > 0) {
+        for (let d = 0; d < totalDeaths; d++) {
+          if (Math.random() < 0.50) {
+            const randomZomb = zombieTerritories[Math.floor(Math.random() * zombieTerritories.length)];
+            gameState.territories[randomZomb].armies += 1;
+          }
+        }
+      }
+    }
+  }
 
   // Achievement Checks: Dice Roll Outliers
+  if (!isZombieAttacker) {
   if (attackerRolls.filter(r => r === 6).length === 3) checkAndGrantAchievement(room, currentPlayer.id, 'blessed_by_rngesus');
   if (attackerRolls.length === 3 && attackerRolls.every(r => r === 1)) checkAndGrantAchievement(room, currentPlayer.id, 'snake_eyes_tragedy');
+  }
   if (defenderRolls.filter(r => r === 6).length === 2 && defenderPlayer) checkAndGrantAchievement(room, defenderPlayer.id, 'wall_of_steel');
 
   // Calculated Risk (10 consecutive dice comparisons won in a turn without taking a loss)
+  if (!isZombieAttacker) {
   if (attackerLosses === 0 && defenderLosses > 0) {
     currentPlayer.consecutiveDiceWins = (currentPlayer.consecutiveDiceWins || 0) + defenderLosses;
     if (currentPlayer.consecutiveDiceWins >= 10) checkAndGrantAchievement(room, currentPlayer.id, 'calculated_risk');
@@ -1219,6 +1610,7 @@ function resolveCombatRolls(room, sourceId, targetId, attackerDiceCount, defende
   // Decisive Strike (30+ kills in one turn)
   currentPlayer.turnKills = (currentPlayer.turnKills || 0) + defenderLosses;
   if (currentPlayer.turnKills >= 30) checkAndGrantAchievement(room, currentPlayer.id, 'decisive_strike');
+  }
 
   // Iron Citadel (Defend when outnumbered 3-to-1)
   if (source.armies >= 3 * Math.max(1, target.armies) && defenderLosses < attackerLosses && defenderPlayer) {
@@ -1227,12 +1619,76 @@ function resolveCombatRolls(room, sourceId, targetId, attackerDiceCount, defende
 
   let captured = false;
   if (target.armies === 0) {
-    captured = true;
-    gameState.conqueredThisTurn = true;
-    target.ownerId = currentPlayer.id;
+    // Destroy existing building on conquered territory
+    if (gameState.buildings && gameState.buildings[targetId]) {
+      delete gameState.buildings[targetId];
+      addLog(gameState, `💥 Structure on ${getTerritoryName(room.mapData, targetId)} was demolished in combat!`);
+    }
 
+    // Zombie Combat Trait: Zombies gain +1 army per defender killed in the attacking territory
+    if (source.ownerId === 'zombie') {
+      source.armies += defenderLosses;
+    }
+
+    // Zombie Conquest Tracking (only when a real player's territory is converted)
+    if (defenderId === 'zombie') {
+      if (currentPlayer.id !== 'zombie' && currentPlayer.id !== 'dummy') {
+        currentPlayer.zombieConquestsThisTurn = (currentPlayer.zombieConquestsThisTurn || 0) + 1;
+        if (currentPlayer.zombieConquestsThisTurn >= 3) {
+          checkAndGrantAchievement(room, currentPlayer.id, 'train_to_busan');
+        }
+
+        // Check Quarantine: Is this the last zombie territory in the world?
+        const remainingZombies = Object.values(gameState.territories).filter(t => t.ownerId === 'zombie').length;
+        if (remainingZombies === 0) {
+          checkAndGrantAchievement(room, currentPlayer.id, 'quarantine');
+          addLog(gameState, `☣️ QUARANTINE COMPLETE: ${currentPlayer.name} purged the final zombie nest from the earth!`);
+        }
+      }
+    }
+    captured = true;
+    if (isZombieAttacker) {
+      target.ownerId = 'zombie';
+    } else {
+      gameState.conqueredThisTurn = true;
+      target.ownerId = currentPlayer.id;
+    }
+
+    // Rescue the achievement block so it only fires for REAL players (not zombies)
+    if (currentPlayer.id !== 'zombie' && currentPlayer.id !== 'dummy') {
     // Trigger Combat & Conquest Achievements
     checkAndGrantAchievement(room, currentPlayer.id, 'first_blood');
+
+    // One-Man Army: Conquering with 2 armies (1 die roll)
+    if (sourceArmiesBeforeCombat === 2) {
+      checkAndGrantAchievement(room, currentPlayer.id, 'one_man_army');
+    }
+
+    // David vs Goliath: Conquered 20+ stack when all adjacent borders had fewer armies
+    if (targetHad20Plus && allNeighborsSmaller) {
+      checkAndGrantAchievement(room, currentPlayer.id, 'david_vs_goliath');
+    }
+
+    // Samurai: Conquer a territory named Japan 3 times
+    const terrNameLower = (getTerritoryName(room.mapData, targetId) || '').toLowerCase();
+    if (terrNameLower.includes('japan')) {
+      currentPlayer.japanConquests = (currentPlayer.japanConquests || 0) + 1;
+      if (currentPlayer.japanConquests >= 3) {
+        checkAndGrantAchievement(room, currentPlayer.id, 'samurai');
+      }
+    }
+
+    // D-Day: Conquering across sea routes 4+ times in 1 turn
+    const isSeaAttack = (room.mapData.connections || []).some(c => 
+      c && typeof c === 'object' && !Array.isArray(c) && c.type === 'sea' &&
+      ((c.from === sourceId && c.to === targetId) || (c.from === targetId && c.to === sourceId))
+    );
+    if (isSeaAttack) {
+      currentPlayer.seaConquestsThisTurn = (currentPlayer.seaConquestsThisTurn || 0) + 1;
+      if (currentPlayer.seaConquestsThisTurn >= 4) {
+        checkAndGrantAchievement(room, currentPlayer.id, 'd_day');
+      }
+    }
 
     currentPlayer.turnConquests = (currentPlayer.turnConquests || 0) + 1;
     if (currentPlayer.turnConquests >= 5) checkAndGrantAchievement(room, currentPlayer.id, 'lightning_advance');
@@ -1268,6 +1724,7 @@ function resolveCombatRolls(room, sourceId, targetId, attackerDiceCount, defende
         checkAndGrantAchievement(room, currentPlayer.id, 'blitzkrieg_world_tour');
       }
     }
+    } // end real-player-only achievement block (zombies skip player achievements)
 
     // Move-in: at least attackerDiceCount armies, clamped so source keeps at least 1
     const minMove = Math.min(attackerDiceCount, source.armies - 1);
@@ -1293,7 +1750,7 @@ function resolveCombatRolls(room, sourceId, targetId, attackerDiceCount, defende
         lostCapitalOwnerId = capOwnerId;
 
         // The Red Wedding: broke an alliance and captured the ex-ally's capital on the same turn
-        if (currentPlayer.brokeAllianceWithThisTurn === capOwnerId) {
+        if (!isZombieAttacker && currentPlayer.brokeAllianceWithThisTurn === capOwnerId) {
           checkAndGrantAchievement(room, currentPlayer.id, 'the_red_wedding');
         }
 
@@ -1311,18 +1768,23 @@ function resolveCombatRolls(room, sourceId, targetId, attackerDiceCount, defende
       );
 
       if (defenderTerritories.length === 0) {
-        defenderPlayer.eliminated = true;
+        recordElimination(gameState, defenderPlayer);
         eliminatedPlayerId = defenderPlayer.id;
-        killerPlayerId = currentPlayer.id;
+        killerPlayerId = isZombieAttacker ? 'zombie' : currentPlayer.id;
         addLog(gameState, `💀 ${defenderPlayer.name} has been eliminated!`);
 
         // Achievement: No Way Home (Be eliminated)
         checkAndGrantAchievement(room, defenderPlayer.id, 'no_way_home');
 
-        // Achievement: Single-Stack Wipeout (Eliminate 2 players in 1 turn with same source)
-        currentPlayer.eliminatedInTurn = (currentPlayer.eliminatedInTurn || 0) + 1;
-        if (currentPlayer.eliminatedInTurn >= 2) {
-          checkAndGrantAchievement(room, currentPlayer.id, 'single_stack_wipeout');
+        // Achievement: Single-Stack Wipeout & Tyrant of the Board (real players only)
+        if (!isZombieAttacker) {
+          currentPlayer.eliminatedInTurn = (currentPlayer.eliminatedInTurn || 0) + 1;
+          if (currentPlayer.eliminatedInTurn >= 2) {
+            checkAndGrantAchievement(room, currentPlayer.id, 'single_stack_wipeout');
+          }
+          if (currentPlayer.eliminatedInTurn >= 3) {
+            checkAndGrantAchievement(room, currentPlayer.id, 'literally_hitler');
+          }
         }
 
         // Achievement: Cold-Blooded Backstab (Eliminate former ally after breaking treaty)
@@ -1341,17 +1803,27 @@ function resolveCombatRolls(room, sourceId, targetId, attackerDiceCount, defende
           }
         }
 
-        // Transfer cards to attacker
+        // Transfer cards to attacker & check Plunder King (zombies loot nothing)
         const transferredCardsCount = defenderPlayer.cards.length;
-        currentPlayer.cards.push(...defenderPlayer.cards);
-        defenderPlayer.cards = [];
-        addLog(gameState, `${currentPlayer.name} received ${transferredCardsCount > 0 ? transferredCardsCount : 'all'} cards from ${defenderPlayer.name}.`);
+        if (isZombieAttacker) {
+          defenderPlayer.cards = []; // cards are lost with the fallen commander
+          addLog(gameState, `💀 ${defenderPlayer.name}'s card hand was lost to the undead.`);
+        } else {
+          if (transferredCardsCount >= 4) {
+            checkAndGrantAchievement(room, currentPlayer.id, 'plunder_king');
+          }
+          currentPlayer.cards.push(...defenderPlayer.cards);
+          defenderPlayer.cards = [];
+          addLog(gameState, `${currentPlayer.name} received ${transferredCardsCount > 0 ? transferredCardsCount : 'all'} cards from ${defenderPlayer.name}.`);
+        }
       }
     }
 
-    // POST_ATTACK_MOVE: only if source has extra armies to move (source.armies > 1 means there's at least 1 moveable)
+    // POST_ATTACK_MOVE: only if source has extra armies to move (source.armies > 1 means there's at least 1 moveable).
+    // Zombies never get a post-attack move — the human whose turn is active must
+    // never be left stuck in POST_ATTACK_MOVE by a zombie conquest.
     const additionalMax = Math.max(0, source.armies - 1);
-    if (additionalMax > 0) {
+    if (additionalMax > 0 && !isZombieAttacker) {
       gameState.turnStage = 'POST_ATTACK_MOVE';
       gameState.postAttackContext = {
         sourceId,
@@ -1359,7 +1831,7 @@ function resolveCombatRolls(room, sourceId, targetId, attackerDiceCount, defende
         minMove: actualMove, // Now stores the base move-in amount for total calculations
         additionalMax
       };
-    } else {
+    } else if (!isZombieAttacker) {
       // No additional armies to move — check for forced card trade or continue attacking
       if (currentPlayer.cards.length >= 6) {
         gameState.turnStage = 'DRAFT';
@@ -1370,7 +1842,7 @@ function resolveCombatRolls(room, sourceId, targetId, attackerDiceCount, defende
     }
   } else {
     gameState.turnStage = 'ATTACK'; // stay in attack stage after failed attack
-    addLog(gameState, `${currentPlayer.name} attacked ${getTerritoryName(room.mapData, targetId)}. Rolls — Attacker: [${attackerRolls.join(', ')}], Defender: [${defenderRolls.join(', ')}]. Attacker lost ${attackerLosses}, Defender lost ${defenderLosses}.`);
+    addLog(gameState, `${attackerName} attacked ${getTerritoryName(room.mapData, targetId)}. Rolls — Attacker: [${attackerRolls.join(', ')}], Defender: [${defenderRolls.join(', ')}]. Attacker lost ${attackerLosses}, Defender lost ${defenderLosses}.`);
   }
 
   // Track territory casualties with timestamps (for battlescarred 2-turn expiry)
@@ -1390,8 +1862,8 @@ function resolveCombatRolls(room, sourceId, targetId, attackerDiceCount, defende
     if (attackerLosses > 0) gameState.territories[sourceId].lastBattleTurn = currentTurnNum;
   }
 
-  // Update stats
-  if (attackerPlayer) {
+  // Update stats (zombie attackers never mutate player stats — they have no player object)
+  if (!isZombieAttacker && attackerPlayer) {
     attackerPlayer.stats = attackerPlayer.stats || { drafted: 0, killed: 0, lost: 0, territoriesConquered: 0 };
     attackerPlayer.stats.killed += defenderLosses;
     if (attackerPlayer.accountId && gameState.matchStartedWithMinTwoHumans) {
@@ -1452,6 +1924,8 @@ function resolveCombatRolls(room, sourceId, targetId, attackerDiceCount, defende
       if (defenderPlayer.stats.currentTurnLost > (defenderPlayer.stats.maxTerritoriesLostInTurn || 0)) {
         defenderPlayer.stats.maxTerritoriesLostInTurn = defenderPlayer.stats.currentTurnLost;
       }
+      defenderPlayer.lostTerritorySinceLastTurn = true;
+      defenderPlayer.noLossStreak = 0;
     }
   }
 
@@ -1459,7 +1933,7 @@ function resolveCombatRolls(room, sourceId, targetId, attackerDiceCount, defende
     rollId: Math.random().toString(36).substr(2, 9),
     sourceId,
     targetId,
-    attackerId: currentPlayer.id,
+    attackerId: isZombieAttacker ? 'zombie' : currentPlayer.id,
     defenderId,
     attackerRolls,
     defenderRolls,
@@ -1547,7 +2021,7 @@ function executeFortify(room, playerId, sourceId, targetId, amount) {
   if (amount <= 0) return { error: 'Invalid amount' };
 
   // Verify allied path exists
-  const pathExists = hasAlliedPath(gameState.territories, room.mapData.connections, sourceId, targetId, playerId, gameState.pacts);
+  const pathExists = hasAlliedPath(gameState.territories, room.mapData.connections, sourceId, targetId, playerId, gameState.pacts, gameState);
   if (!pathExists) return { error: 'No allied path connecting these territories' };
 
   source.armies -= amount;
@@ -1611,15 +2085,61 @@ function endTurn(room) {
   }
 
   // Achievement Check: Border Guard (3 turns) & Impenetrable Border (5 turns) without losing territory
-  if ((currentPlayer.stats?.currentTurnLost || 0) === 0) {
+  // Requires surviving X of YOUR consecutive turns (and all intervening opponent actions) without losing territory
+  if (!currentPlayer.lostTerritorySinceLastTurn) {
     currentPlayer.noLossStreak = (currentPlayer.noLossStreak || 0) + 1;
     if (currentPlayer.noLossStreak >= 3) checkAndGrantAchievement(room, currentPlayer.id, 'border_guard');
     if (currentPlayer.noLossStreak >= 5) checkAndGrantAchievement(room, currentPlayer.id, 'impenetrable_border');
   } else {
     currentPlayer.noLossStreak = 0;
   }
+  currentPlayer.lostTerritorySinceLastTurn = false;
 
-  // Achievement Check: Minmaxing (<20% territories but >80% active armies)
+  // Achievement Check: Iron Curtain (8 consecutive connected border territories with >=5 armies)
+  const myBorders5Plus = Object.keys(gameState.territories).filter(tid => {
+    const t = gameState.territories[tid];
+    if (!t || t.ownerId !== currentPlayer.id || t.armies < 5) return false;
+    return getAdjacentTerritories(room.mapData.connections, tid).some(adjId => gameState.territories[adjId]?.ownerId !== currentPlayer.id);
+  });
+  if (myBorders5Plus.length >= 8) {
+    // Check if at least 8 form a connected chain
+    for (const startTid of myBorders5Plus) {
+      let chainCount = 0;
+      const visitedChain = new Set();
+      const q = [startTid];
+      visitedChain.add(startTid);
+      while (q.length > 0) {
+        const curr = q.shift();
+        chainCount++;
+        getAdjacentTerritories(room.mapData.connections, curr).forEach(adjId => {
+          if (myBorders5Plus.includes(adjId) && !visitedChain.has(adjId)) {
+            visitedChain.add(adjId);
+            q.push(adjId);
+          }
+        });
+      }
+      if (chainCount >= 8) {
+        checkAndGrantAchievement(room, currentPlayer.id, 'iron_curtain');
+        break;
+      }
+    }
+  }
+
+  // Achievement Check: Unbroken Fortress (Control continent for 10 consecutive turn rounds)
+  if (room.mapData && room.mapData.continents) {
+    room.mapData.continents.forEach(cont => {
+      const allOwned = cont.territoryIds.every(tid => gameState.territories[tid]?.ownerId === currentPlayer.id);
+      currentPlayer.continentStreaks = currentPlayer.continentStreaks || {};
+      if (allOwned) {
+        currentPlayer.continentStreaks[cont.id] = (currentPlayer.continentStreaks[cont.id] || 0) + 1;
+        if (currentPlayer.continentStreaks[cont.id] >= 10) {
+          checkAndGrantAchievement(room, currentPlayer.id, 'unbroken_fortress');
+        }
+      } else {
+        currentPlayer.continentStreaks[cont.id] = 0;
+      }
+    });
+  }
   const totalWorldTerrs = Object.keys(gameState.territories).length || 1;
   const myTerrCount = Object.values(gameState.territories).filter(t => t.ownerId === currentPlayer.id).length;
   const totalWorldArmies = Object.values(gameState.territories).reduce((sum, t) => sum + (t.armies || 0), 0) || 1;
@@ -1675,6 +2195,8 @@ function endTurn(room) {
   currentPlayer.eliminatedInTurn = 0;
   currentPlayer.nukesFiredThisTurn = 0;
   currentPlayer.brokeAllianceWithThisTurn = null;
+  currentPlayer.seaConquestsThisTurn = 0;
+  currentPlayer.turnTradeInCount = 0;
 
   // Reset turn flags
   gameState.conqueredThisTurn = false;
@@ -1722,10 +2244,35 @@ function endTurn(room) {
     attempts < numPlayers
   );
 
+  // --- ZOMBIE CADENCE ---
+  // Zombies attack once every 2 full rounds of the player order (per design:
+  // a b c zombie a b c a b c zombie). Keep counting each player's endTurn;
+  // after 2 * activePlayers turns have passed, unleash the horde.
+  if (gameState.zombieMode && gameState.turnStage !== 'GAME_OVER') {
+    gameState.zombieTurnCounter = (gameState.zombieTurnCounter || 0) + 1;
+    const totalActivePlayers = gameState.players.filter(p => !p.eliminated).length;
+    if (gameState.zombieTurnCounter >= Math.max(1, totalActivePlayers) * 2) {
+      gameState.zombieTurnCounter = 0;
+      runZombieTurn(room, room.io);
+    }
+  }
+
   // If game is over, transition
   if (gameState.turnStage !== 'GAME_OVER') {
     gameState.turnStage = 'DRAFT';
     const nextPlayer = gameState.players[gameState.turnIndex];
+
+    // Supply Depot Production: Add +1 free army to every territory with a Supply Depot owned by the active player
+    if (gameState.buildingsMode && gameState.buildings) {
+      Object.keys(gameState.buildings).forEach(tid => {
+        const b = gameState.buildings[tid];
+        if (b && b.type === 'supply_depot' && gameState.territories[tid]?.ownerId === nextPlayer.id) {
+          gameState.territories[tid].armies += 1;
+          addLog(gameState, `📦 SUPPLY DEPOT: +1 free army supplied to ${getTerritoryName(room.mapData, tid)}!`);
+        }
+      });
+    }
+
     gameState.draftPool = calculateReinforcements(gameState, room.mapData, nextPlayer.id);
     addLog(gameState, `It is now ${nextPlayer.name}'s turn. Draft stage: ${gameState.draftPool} armies available.`);
   }
@@ -1777,9 +2324,16 @@ function tradeCards(room, playerId, cardIndices, targetTerritoryId = null, skipS
   const wildCount = selectedCards.filter(c => c.type === 'Wild').length;
   if (wildCount >= 2) checkAndGrantAchievement(room, playerId, 'jokers_wild');
 
-  // Achievement: Matching Soil (all 3 cards match owned territories)
-  const allMatched = selectedCards.every(c => c.territoryId && gameState.territories[c.territoryId]?.ownerId === playerId);
-  if (allMatched) checkAndGrantAchievement(room, playerId, 'matching_soil');
+  // Achievement: Matching Soil & Double Bonus
+  const matchedCount = selectedCards.filter(c => c.territoryId && gameState.territories[c.territoryId]?.ownerId === playerId).length;
+  if (matchedCount === 3) checkAndGrantAchievement(room, playerId, 'matching_soil');
+  if (matchedCount >= 2) checkAndGrantAchievement(room, playerId, 'double_bonus');
+
+  // Achievement: Infinite Supply Lines (4 trade-ins in 1 turn)
+  player.turnTradeInCount = (player.turnTradeInCount || 0) + 1;
+  if (player.turnTradeInCount >= 4) {
+    checkAndGrantAchievement(room, playerId, 'infinite_supply_lines');
+  }
 
   // Achievement: Forced Liquidation (had >= 5 cards, traded down to <= 2)
   if (player.cards.length >= 5) {
@@ -1927,6 +2481,75 @@ function selectCapital(room, playerId, territoryId) {
   return { success: true };
 }
 
+// Declare a faction (team or solo) as the winner. In team mode the winning
+// team's members all share the victory; gameState.winner points to a living
+// representative for UI/log purposes.
+function declareFactionVictory(room, factionKey, mode) {
+  const gameState = room.gameState;
+  const isTeam = isTeamMode(gameState);
+  const factionPlayers = getFactionMembers(gameState, factionKey).filter(p => !p.eliminated);
+  const winnerPlayer = factionPlayers.find(p => !p.isAI) || factionPlayers[0];
+  if (!winnerPlayer) return;
+
+  gameState.turnStage = 'GAME_OVER';
+  gameState.winner = winnerPlayer.id;
+
+  if (isTeam && winnerPlayer.teamId) {
+    gameState.winningTeamId = winnerPlayer.teamId;
+    const team = getTeamById(gameState, winnerPlayer.teamId);
+    const teamName = team ? team.name : winnerPlayer.teamId;
+    const membersText = factionPlayers.map(p => p.name).join(', ');
+    const actionText = mode === 'capital_rush' ? 'captured all capital cities' : 'conquered the world';
+    addLog(gameState, `🏆 GAME OVER! Team ${teamName} (${membersText}) has ${actionText}!`);
+  } else {
+    const actionText = mode === 'capital_rush' ? 'captured all capital cities' : 'conquered the world';
+    addLog(gameState, `🏆 GAME OVER! ${winnerPlayer.name} has ${actionText}!`);
+  }
+}
+
+// Determine the runner-up ("2nd place") faction among non-winning factions,
+// grouping ALL players (including eliminated ones):
+//  - Capital Rush: the non-winning faction holding the most territories.
+//  - Conquest: the non-winning faction that survived longest — still alive
+//    counts as surviving longest; otherwise latest real-time elimination
+//    timestamp (eliminatedAt). If two eliminations share the exact same
+//    millisecond, the faction whose members held more territories at the
+//    start of that turn wins the tie-break.
+function determineRunnerUpFaction(gameState, winningFactionKey) {
+  const factionMap = new Map();
+  (gameState.players || []).forEach(p => {
+    const fk = getFactionKey(p);
+    if (!factionMap.has(fk)) factionMap.set(fk, { factionKey: fk, playerIds: [] });
+    factionMap.get(fk).playerIds.push(p.id);
+  });
+  const nonWinningFactions = [...factionMap.values()].filter(f => f.factionKey !== winningFactionKey);
+  if (nonWinningFactions.length === 0) return null;
+
+  const getMembers = (f) => f.playerIds.map(pid => gameState.players.find(pl => pl.id === pid)).filter(Boolean);
+  const factionTerrCount = (f) => f.playerIds.reduce((sum, pid) => sum + Object.values(gameState.territories).filter(t => t.ownerId === pid).length, 0);
+
+  if (gameState.gameMode === 'capital_rush') {
+    nonWinningFactions.sort((a, b) => factionTerrCount(b) - factionTerrCount(a));
+  } else {
+    // Infinity = faction still has a living member (survived longest)
+    const factionElimTime = (f) => {
+      const times = getMembers(f).map(pl => (pl.eliminated ? (pl.eliminatedAt || 0) : Infinity));
+      return times.length ? Math.max(...times) : 0;
+    };
+    const factionTurnStartTerr = (f) => getMembers(f).reduce((sum, pl) => sum + (pl.territoriesAtTurnStart || 0), 0);
+    nonWinningFactions.sort((a, b) => {
+      const tA = factionElimTime(a), tB = factionElimTime(b);
+      if (tB !== tA) return tB - tA;
+      if (tA !== Infinity) {
+        const sA = factionTurnStartTerr(a), sB = factionTurnStartTerr(b);
+        if (sB !== sA) return sB - sA;
+      }
+      return factionTerrCount(b) - factionTerrCount(a);
+    });
+  }
+  return nonWinningFactions[0].factionKey;
+}
+
 // Check if any player owns all territories (Conquest) or all active capitals (Capital Rush)
 function checkWinCondition(room) {
   const gameState = room.gameState;
@@ -1936,40 +2559,79 @@ function checkWinCondition(room) {
     const allCapitalTerritoryIds = [...new Set(Object.values(gameState.capitals))].filter(Boolean);
 
     if (allCapitalTerritoryIds.length > 0) {
-      // Find the current owner of each capital territory
-      const capitalOwners = allCapitalTerritoryIds.map(tid => {
+      // Find the current FACTION owner of each capital territory
+      const capitalFactions = new Set();
+      let unownedCapital = false;
+      allCapitalTerritoryIds.forEach(tid => {
         const terr = gameState.territories[tid];
-        return (terr && terr.ownerId && terr.ownerId !== 'dummy') ? terr.ownerId : null;
+        const ownerId = (terr && terr.ownerId && terr.ownerId !== 'dummy') ? terr.ownerId : null;
+        if (!ownerId) { unownedCapital = true; return; }
+        const owner = gameState.players.find(p => p.id === ownerId);
+        capitalFactions.add(owner ? getFactionKey(owner) : ownerId);
       });
 
-      const uniqueOwners = new Set(capitalOwners);
-      // Win condition: Exactly ONE non-dummy player owns ALL capital cities
-      if (uniqueOwners.size === 1 && !uniqueOwners.has(null)) {
-        const winnerId = [...uniqueOwners][0];
-        const winner = gameState.players.find(p => p.id === winnerId);
-        if (winner) {
-          gameState.turnStage = 'GAME_OVER';
-          gameState.winner = winnerId;
-          addLog(gameState, `🏆 GAME OVER! ${winner.name} has captured all capital cities!`);
-          return;
-        }
+      // Win condition: Exactly ONE faction (team or solo) holds ALL capital cities
+      if (!unownedCapital && capitalFactions.size === 1) {
+        declareFactionVictory(room, [...capitalFactions][0], 'capital_rush');
       }
     }
   }
 
-  const activeOwners = new Set();
-  Object.keys(gameState.territories).forEach(tid => {
-    const owner = gameState.territories[tid].ownerId;
-    if (owner && owner !== 'dummy') activeOwners.add(owner);
-  });
+  // Conquest: one faction (team or solo) owns every territory on the map
+  if (gameState.turnStage !== 'GAME_OVER') {
+    const factionOwners = new Set();
+    Object.keys(gameState.territories).forEach(tid => {
+      const owner = gameState.territories[tid].ownerId;
+      // 'zombie' stays IN the owner set: zombie-held territories are REQUIRED
+      // for victory (a faction must conquer the undead too). The all-zombie
+      // extinction case is handled by runZombieTurn's GAME_OVER guard.
+      if (owner && owner !== 'dummy') {
+        const ownerPlayer = gameState.players.find(p => p.id === owner);
+        factionOwners.add(ownerPlayer ? getFactionKey(ownerPlayer) : owner);
+      }
+    });
 
-  if (activeOwners.size === 1) {
-    const winnerId = [...activeOwners][0];
-    const winner = gameState.players.find(p => p.id === winnerId);
-    if (winner) {
-      gameState.turnStage = 'GAME_OVER';
-      gameState.winner = winnerId;
-      addLog(gameState, `🏆 GAME OVER! ${winner.name} has conquered the world!`);
+    if (factionOwners.size === 1) {
+      declareFactionVictory(room, [...factionOwners][0], 'conquest');
+    }
+
+    // Zombie Mode: Damn Greenland eligibility check + minTerritoriesHeld
+    // tracking. Runs on every win-condition check (cheap O(territories) pass).
+    // The min-territory record runs in ALL modes so the Comeback Kid
+    // achievement check is meaningful; the Damn Greenland marker is
+    // zombie-mode only.
+    const ownedCount = {};
+    let zombieTotal = 0;
+    Object.keys(gameState.territories).forEach(tid => {
+      const owner = gameState.territories[tid].ownerId;
+      if (!owner) return;
+      if (owner === 'zombie') { zombieTotal++; return; }
+      if (owner === 'dummy') return; // neutral wasteland doesn't count as human resistance
+      ownedCount[owner] = (ownedCount[owner] || 0) + 1;
+    });
+
+    // Live min-territory tracking (Comeback Kid support — was previously
+    // never recorded anywhere, making that check dead code)
+    gameState.players.forEach(p => {
+      const count = ownedCount[p.id] || 0;
+      if (p.minTerritoriesHeld === undefined || count < p.minTerritoriesHeld) {
+        p.minTerritoriesHeld = count;
+      }
+    });
+
+    // Last-human-standing marker (Zombie Mode only): exactly ONE player holds
+    // exactly ONE territory, and the horde holds the rest of the map.
+    if (gameState.zombieMode && !gameState.zombieExtinction) {
+      const survivingOwnerIds = Object.keys(ownedCount).filter(id => ownedCount[id] > 0);
+      if (zombieTotal > 0 && survivingOwnerIds.length === 1 && ownedCount[survivingOwnerIds[0]] === 1) {
+        const lastStandPlayer = gameState.players.find(p => p.id === survivingOwnerIds[0]);
+        if (lastStandPlayer && !lastStandPlayer.damnGreenlandEligible) {
+          // Silent internal marker for the secret "Damn Greenland" achievement.
+          // Deliberately NOT logged — the achievement is secret, so the game
+          // must not reveal to players that the last-stand condition was met.
+          lastStandPlayer.damnGreenlandEligible = true;
+        }
+      }
     }
   }
 
@@ -1978,10 +2640,14 @@ function checkWinCondition(room) {
     saveHistorySnapshot(room);
     try {
       const UserDB = require('./user-db');
-      const isEligible = !!gameState.matchStartedWithMinTwoHumans;
+      const isTeam = isTeamMode(gameState);
+      // Team rewards (XP/ELO/achievements) only when >=2 distinct factions each
+      // contain at least one human commander (per product rule). Non-team modes
+      // keep original behavior.
+      const isEligible = isTeam ? countHumanFactions(gameState) >= 2 : true;
 
       const humanPlayers = (gameState.players || []).filter(p => !p.isAI && !p.disconnected);
-      const isMultiplayer = humanPlayers.length >= 2;
+      const isMultiplayer = isTeam ? countHumanFactions(gameState) >= 2 : humanPlayers.length >= 2;
 
       let totalMatchKills = 0;
       let totalMatchConquests = 0;
@@ -2000,49 +2666,113 @@ function checkWinCondition(room) {
         deployed: totalMatchDeployed
       };
 
-      let runnerUpId = null;
-      const nonWinners = gameState.players.filter(p => p.id !== gameState.winner);
-      if (nonWinners.length > 0) {
-        nonWinners.sort((a, b) => {
-          const terrA = Object.values(gameState.territories).filter(t => t.ownerId === a.id).length;
-          const terrB = Object.values(gameState.territories).filter(t => t.ownerId === b.id).length;
-          return terrB - terrA;
-        });
-        runnerUpId = nonWinners[0].id;
+      // Winning faction key (team if team mode, otherwise the solo winner's id).
+      // Guarded: extinction games (winner = null) must not crash here.
+      const winningFactionKey = isTeam
+        ? (gameState.winningTeamId || (gameState.winner ? getFactionKey(gameState.players.find(p => p.id === gameState.winner)) : null))
+        : (gameState.winner ? getFactionKey(gameState.players.find(p => p.id === gameState.winner)) : null);
+
+      let runnerUpFactionKey = determineRunnerUpFaction(gameState, winningFactionKey);
+
+      // Zombie Mode: "28 Turns Later" — every human commander on the winning
+      // side earns this achievement when Zombie Mode is enabled.
+      if (gameState.zombieMode && winningFactionKey) {
+        (gameState.players || [])
+          .filter(p => !p.isAI && p.accountId && !p.eliminated && getFactionKey(p) === winningFactionKey)
+          .forEach(p => UserDB.grantAchievement(p.accountId, 'twenty_eight_turns_later', true));
+      }
+
+      // Calculate Multiplayer Elo Ranking (team-aware: teammates share a faction
+      // rank and never trade rating against each other). Only LOGGED-IN human
+      // players participate — guests (no accountId) never enter the calculation.
+      if (isMultiplayer) {
+        const rankings = gameState.players
+          .filter(p => !p.isAI && p.accountId)
+          .map(p => {
+            const fk = getFactionKey(p);
+            return {
+              accountId: p.accountId,
+              factionId: fk,
+              rank: fk === winningFactionKey ? 1 : (fk === runnerUpFactionKey ? 2 : 3)
+            };
+          });
+        UserDB.calculateAndApplyMultiplayerElo(rankings);
       }
 
       gameState.players.forEach(p => {
         if (p.accountId) {
-          const isWinner = p.id === gameState.winner;
-          const isRunnerUp = p.id === runnerUpId;
+          const fk = getFactionKey(p);
+          const isWinner = isTeam ? (fk === winningFactionKey) : (p.id === gameState.winner);
+          const isRunnerUp = fk === runnerUpFactionKey;
 
-          // Record stats & XP
-          UserDB.recordMatchFinished(
-            p.accountId,
-            p.stats || {},
-            isWinner,
-            isRunnerUp,
-            gameState.gameMode,
-            isMultiplayer,
-            matchTotals
-          );
+          // Record stats & XP (withheld entirely in team mode when not eligible)
+          if (isEligible) {
+            UserDB.recordMatchFinished(
+              p.accountId,
+              p.stats || {},
+              isWinner,
+              isRunnerUp,
+              gameState.gameMode,
+              isMultiplayer,
+              matchTotals
+            );
+          }
 
           // Game-Over Achievements Checks
-          if (isEligible && isWinner) {
+          if (isWinner && isEligible) {
+            const io = room.io || (gameState && gameState.io);
             if (gameState.gameMode === 'capital_rush') {
-              UserDB.grantAchievement(p.accountId, 'capital_crusher', true, room.io, p.id);
-              // Near-Death Sovereign: win Capital Rush after your own capital was breached & reclaimed
+              UserDB.grantAchievement(p.accountId, 'capital_crusher', true, io, p.id);
               if (p.capitalBreached && gameState.capitals && gameState.capitals[p.id] !== undefined) {
-                UserDB.grantAchievement(p.accountId, 'near_death_sovereign', true, room.io, p.id);
+                UserDB.grantAchievement(p.accountId, 'near_death_sovereign', true, io, p.id);
               }
             }
-            if (gameState.isScenario) UserDB.grantAchievement(p.accountId, 'multiverse', true, room.io, p.id);
-            if (gameState.blizzards && gameState.blizzards.length > 0) UserDB.grantAchievement(p.accountId, 'mother_russia', true, room.io, p.id);
-            if (Object.keys(gameState.territories).length >= 40) UserDB.grantAchievement(p.accountId, 'world_dominator', true, room.io, p.id);
-            if ((p.stats?.betrayals || 0) === 0) UserDB.grantAchievement(p.accountId, 'switzerland', true, room.io, p.id);
-            if (p.minTerritoriesHeld <= 1) UserDB.grantAchievement(p.accountId, 'the_comeback_kid', true, room.io, p.id);
+            if (gameState.isScenario) UserDB.grantAchievement(p.accountId, 'multiverse', true, io, p.id);
+            if (gameState.blizzards && gameState.blizzards.length > 0) UserDB.grantAchievement(p.accountId, 'mother_russia', true, io, p.id);
+            if (Object.keys(gameState.territories).length >= 40) UserDB.grantAchievement(p.accountId, 'world_dominator', true, io, p.id);
+            if ((p.stats?.betrayals || 0) === 0 && (p.stats?.treatiesFormed || p.stats?.alliancesFormed || 0) >= 1) {
+              UserDB.grantAchievement(p.accountId, 'switzerland', true, io, p.id);
+            }
+            if (p.minTerritoriesHeld <= 1) UserDB.grantAchievement(p.accountId, 'the_comeback_kid', true, io, p.id);
+            // Damn Greenland (secret/legendary): was down to the last free
+            // territory against the horde, then won the game anyway. Also
+            // inherently satisfies Comeback Kid (reduced to 1 territory).
+            if (p.damnGreenlandEligible) {
+              UserDB.grantAchievement(p.accountId, 'damn_greenland', true, io, p.id);
+              UserDB.grantAchievement(p.accountId, 'the_comeback_kid', true, io, p.id);
+            }
             if ((p.nukes || 0) + (p.thermonukes || 0) >= 3 && (p.stats?.nukesFired || 0) === 0) {
-              UserDB.grantAchievement(p.accountId, 'nuclear_deterrent', true, room.io, p.id);
+              UserDB.grantAchievement(p.accountId, 'nuclear_deterrent', true, io, p.id);
+            }
+
+            // Speedrunner: Win in <= 5 turns on map with >= 20 territories
+            const totalTerrs = Object.keys(gameState.territories).length;
+            const turnNum = Math.floor((gameState.history || []).length / Math.max(1, gameState.players.length)) + 1;
+            if (turnNum <= 5 && totalTerrs >= 20) {
+              UserDB.grantAchievement(p.accountId, 'speedrunner', true, io, p.id);
+            }
+
+            // Theme Victory Achievements
+            const theme = (p.selectedTheme || '').toLowerCase();
+            if (theme === 'scifi') UserDB.grantAchievement(p.accountId, 'cyber_general', true, io, p.id);
+            if (theme === 'napoleonic') {
+              UserDB.grantAchievement(p.accountId, 'grand_emperor', true, io, p.id);
+              if (!p.usedBlitzAttack) UserDB.grantAchievement(p.accountId, 'napoleonic_mastermind', true, io, p.id);
+            }
+            if (theme === 'modern') UserDB.grantAchievement(p.accountId, 'modern_strategist', true, io, p.id);
+            if (theme === 'anime') {
+              UserDB.grantAchievement(p.accountId, 'kawaii_commander', true, io, p.id);
+              if ((p.animeJumpscares || 0) >= 2 && (p.animeDances || 0) >= 2) {
+                UserDB.grantAchievement(p.accountId, 'main_character_syndrome', true, io, p.id);
+              }
+            }
+
+            // Machiavelli's Disciple: formed alliance with all other players, broke every one, and won
+            const otherPlayerIds = gameState.players.filter(pl => pl.id !== p.id).map(pl => pl.id);
+            const alliedWithAll = otherPlayerIds.length > 0 && otherPlayerIds.every(oId => p.alliedWithHistory && p.alliedWithHistory[oId]);
+            const brokeWithAll = otherPlayerIds.length > 0 && otherPlayerIds.every(oId => p.brokeWithHistory && p.brokeWithHistory[oId]);
+            if (alliedWithAll && brokeWithAll) {
+              UserDB.grantAchievement(p.accountId, 'machiavelli_disciple', true, io, p.id);
             }
           }
         }
@@ -2127,14 +2857,18 @@ function craftNuke(room, playerId, cardIndices, isThermo) {
     }
     player.thermonukes = (player.thermonukes || 0) + 1;
     addLog(gameState, `☢️ CRITICAL ASSEMBLY: ${player.name} crafted a Thermonuclear Weapon!`);
-    // Achievement: I Am Become Death (forge a Thermonuclear Weapon)
     checkAndGrantAchievement(room, playerId, 'i_am_become_death');
   } else {
     player.nukes = (player.nukes || 0) + 1;
     addLog(gameState, `☢️ ASSEMBLY: ${player.name} crafted a Tactical Nuke!`);
-    // Achievement: Manhattan Project (craft first Tactical Nuke from 3 Risk Cards)
     checkAndGrantAchievement(room, playerId, 'manhattan_project');
   }
+
+  // Nuclear Gandhi Craft Check (holds territory named India)
+  const holdsIndia = Object.keys(gameState.territories).some(tid => 
+    gameState.territories[tid]?.ownerId === playerId && (getTerritoryName(room.mapData, tid) || '').toLowerCase().includes('india')
+  );
+  if (holdsIndia) player.craftedNukeWhileHoldingIndia = true;
 
   // Remove cards from hand
   const sortedIndices = [...cardIndices].sort((a, b) => b - a);
@@ -2154,23 +2888,6 @@ function fireNuke(room, playerId, sourceId, targetId, isThermo) {
   if (!player) return { error: 'Player not found' };
   if (gameState.players[gameState.turnIndex].id !== playerId) return { error: 'Not your turn' };
   if (gameState.turnStage !== 'ATTACK') return { error: 'Can only fire weapons during your Attack stage!' };
-const UserDB = require('./user-db');
-  const isEligible = !!gameState.matchStartedWithMinTwoHumans;
-
-  if (player.accountId && isEligible) {
-    if (!isThermo) UserDB.grantAchievement(player.accountId, 'trinity_test', true, room.io, player.id);
-    if (target.armies >= 100 && !isThermo) UserDB.grantAchievement(player.accountId, 'mass_demilitarization', true, room.io, player.id);
-    if (target.armies === 1 && isThermo) UserDB.grantAchievement(player.accountId, 'secret_nuclear_bbq', true, room.io, player.id);
-
-    if (gameState.gameMode === 'capital_rush' && gameState.capitals) {
-      const isCap = Object.values(gameState.capitals).includes(targetId);
-      if (isCap && isThermo) UserDB.grantAchievement(player.accountId, 'ground_zero_capital', true, room.io, player.id);
-    }
-
-    if (defenderId && gameState.pacts && gameState.pacts.some(p => p.type === 'alliance' && ((p.playerA === playerId && p.playerB === defenderId) || (p.playerB === playerId && p.playerA === defenderId)))) {
-      UserDB.grantAchievement(player.accountId, 'nuclear_judas', true, room.io, player.id);
-    }
-  }
   if (isThermo) {
     if (!player.thermonukes || player.thermonukes <= 0) return { error: 'You hold zero Thermonuclear weapons.' };
     player.thermonukes--;
@@ -2190,6 +2907,11 @@ const UserDB = require('./user-db');
 
   const defenderId = target.ownerId;
   const defenderPlayer = gameState.players.find(p => p.id === defenderId);
+
+  // Teams are permanent — never nuke a teammate
+  if (isSameTeam(gameState, playerId, defenderId)) {
+    return { error: 'You cannot nuke your own teammate — teams are permanent!' };
+  }
 
   // Check Diplomacy breach and break active treaties
   if (defenderId && defenderId !== 'dummy' && defenderId !== playerId) {
@@ -2215,6 +2937,26 @@ const UserDB = require('./user-db');
   player.nukesFiredThisTurn = (player.nukesFiredThisTurn || 0) + 1;
   player.stats = player.stats || { drafted: 0, killed: 0, lost: 0, territoriesConquered: 0 };
   player.stats.nukesFired = (player.stats.nukesFired || 0) + 1;
+
+  // Instructions Unclear: Detonate a nuke on yourself
+  if (source.ownerId === target.ownerId) {
+    checkAndGrantAchievement(room, playerId, 'instructions_unclear');
+  }
+
+  // Nuclear Gandhi: Holding India when crafting + firing
+  const holdsIndiaFire = Object.keys(gameState.territories).some(tid => 
+    gameState.territories[tid]?.ownerId === playerId && (getTerritoryName(room.mapData, tid) || '').toLowerCase().includes('india')
+  );
+  if (holdsIndiaFire && player.craftedNukeWhileHoldingIndia) {
+    checkAndGrantAchievement(room, playerId, 'nuclear_gandhi');
+  }
+
+  // Pro vs Game Creator (Nuking Creator)
+  const creatorNames = ['daniel', 'dan', 'danny', 'drqpalzm', 'danilla'];
+  const defNameCheck = (defenderPlayer ? (defenderPlayer.name + ' ' + (defenderPlayer.accountId || '')) : '').toLowerCase();
+  if (creatorNames.some(cn => defNameCheck.includes(cn))) {
+    checkAndGrantAchievement(room, playerId, 'pro_vs_creator');
+  }
 
   if (player.nukesFiredThisTurn >= 3) {
     checkAndGrantAchievement(room, playerId, 'mutually_assured_destruction');
@@ -2242,31 +2984,52 @@ const UserDB = require('./user-db');
 
   let totalNukeCasualties = target.armies;
 
-  // Execute Detonation
-  target.armies = 0;
-  target.ownerId = null; // Unclaimed
-  target.nuked = true; // Persistent Ash Ruins marker: skull shows until this land is reclaimed
+  // Execute Detonation & Bunker Protection Check
+  const targetBuilding = gameState.buildings ? gameState.buildings[targetId] : null;
+  const isBunkerEpicenter = targetBuilding && targetBuilding.type === 'bunker';
+
+  if (isBunkerEpicenter) {
+    // Bunker absorbs 50% damage and prevents radioactive ash state
+    target.armies = Math.max(1, Math.floor(target.armies / 2));
+    totalNukeCasualties = target.armies;
+    addLog(gameState, `🛡️ BUNKER DEFENSE: The underground Bunker at ${getTerritoryName(room.mapData, targetId)} absorbed the nuclear blast, saving half the garrison and shielding the soil from radiation!`);
+  } else {
+    target.armies = 0;
+    target.ownerId = null; // Unclaimed
+    target.nuked = true; // Persistent Ash Ruins marker: skull shows until this land is reclaimed
+  }
+
+  if (defenderPlayer && defenderId !== 'dummy') {
+    defenderPlayer.lostTerritorySinceLastTurn = true;
+    defenderPlayer.noLossStreak = 0;
+  }
 
   if (isThermo) {
-    gameState.radiation[targetId] = 2; // Radioactive for 2 FULL turns (rounds)
+    if (!isBunkerEpicenter) {
+      gameState.radiation[targetId] = 2; // Radioactive for 2 FULL turns (rounds)
+    }
 
-    // Splash damage to adjacent territories
+    // Splash damage to adjacent territories (Bunker cuts splash casualties in half)
     const splashTargets = getAdjacentTerritories(room.mapData.connections, targetId);
     splashTargets.forEach(sid => {
       const splashTerr = gameState.territories[sid];
       if (splashTerr && !gameState.blizzards.includes(sid)) {
+        const splashBunker = gameState.buildings && gameState.buildings[sid]?.type === 'bunker';
+        const reductionDivisor = splashBunker ? 4 : 2; // Bunker halves splash casualties again!
         if (splashTerr.armies > 1) {
-          const removed = Math.floor(splashTerr.armies / 2);
+          const removed = Math.floor(splashTerr.armies / reductionDivisor);
           splashTerr.armies -= removed;
           totalNukeCasualties += removed;
         }
       }
     });
 
-    addLog(gameState, `🚀 THERMONUCLEAR DETONATION! ${player.name} fired a thermonuclear missile from ${getTerritoryName(room.mapData, sourceId)} onto ${getTerritoryName(room.mapData, targetId)}! Splash damage applied to adjacent borders. Radioactive for 2 full turns.`);
+    addLog(gameState, `🚀 THERMONUCLEAR DETONATION! ${player.name} fired a thermonuclear missile from ${getTerritoryName(room.mapData, sourceId)} onto ${getTerritoryName(room.mapData, targetId)}! Splash damage applied to adjacent borders.`);
   } else {
-    gameState.radiation[targetId] = 1; // Radioactive for 1 FULL turn (round)
-    addLog(gameState, `☢️ DETONATION: ${player.name} fired a tactical nuke from ${getTerritoryName(room.mapData, sourceId)} onto ${getTerritoryName(room.mapData, targetId)}! Radioactive for 1 full turn.`);
+    if (!isBunkerEpicenter) {
+      gameState.radiation[targetId] = 1; // Radioactive for 1 FULL turn (round)
+    }
+    addLog(gameState, `☢️ DETONATION: ${player.name} fired a tactical nuke from ${getTerritoryName(room.mapData, sourceId)} onto ${getTerritoryName(room.mapData, targetId)}!`);
   }
   if (totalNukeCasualties >= 40) {
     checkAndGrantAchievement(room, playerId, 'total_scorched_earth');
@@ -2278,7 +3041,7 @@ const UserDB = require('./user-db');
       tid => gameState.territories[tid].ownerId === defenderId
     );
     if (defenderTerritories.length === 0) {
-      defenderPlayer.eliminated = true;
+      recordElimination(gameState, defenderPlayer);
       checkAndGrantAchievement(room, playerId, 'extinction_protocol');
       checkAndGrantAchievement(room, defenderPlayer.id, 'no_way_home');
       addLog(gameState, `💀 ${defenderPlayer.name} has been eliminated by a nuclear strike from ${player.name}!`);
@@ -2355,6 +3118,123 @@ function colorDistanceHSV(hexA, hexB) {
 function colorsAreSimilar(hexA, hexB) {
   return colorDistanceHSV(hexA, hexB) < 0.35;
 }
+// Zombie Turn Simulator
+function runZombieTurn(room, io) {
+  const gameState = room.gameState;
+  if (!gameState || !gameState.zombieMode || gameState.turnStage === 'GAME_OVER') return;
+
+  const mapData = room.mapData || gameState.mapData;
+  const zombieTerritories = Object.keys(gameState.territories).filter(tid => gameState.territories[tid].ownerId === 'zombie');
+  if (zombieTerritories.length === 0) return;
+
+  // Number of attacks = number of continents with zombie foothold
+  const continentsWithZombies = new Set();
+  if (mapData.continents) {
+    mapData.continents.forEach(c => {
+      if (c.territoryIds.some(tid => gameState.territories[tid]?.ownerId === 'zombie')) {
+        continentsWithZombies.add(c.id);
+      }
+    });
+  }
+  const attackCount = Math.max(1, continentsWithZombies.size);
+
+  addLog(gameState, `🧟 ZOMBIE OUTBREAK: The undead are attacking ${attackCount} frontline(s)!`);
+
+  let executed = 0;
+  for (const zTid of zombieTerritories) {
+    if (executed >= attackCount) break;
+    const zTerr = gameState.territories[zTid];
+    if (!zTerr || zTerr.armies < 2) continue;
+
+    const adjs = getAdjacentTerritories(mapData.connections, zTid);
+    const nonZombieTargets = adjs.filter(aid => {
+      const t = gameState.territories[aid];
+      return t && t.ownerId !== 'zombie' && !gameState.blizzards.includes(aid);
+    });
+
+    if (nonZombieTargets.length > 0) {
+      const targetId = nonZombieTargets[Math.floor(Math.random() * nonZombieTargets.length)];
+      const defenderBefore = gameState.territories[targetId].ownerId;
+      executeZombieAttack(room, zTid, targetId);
+      executed++;
+
+      // Track Incompetent Government Achievement if a player lost 4+ territories in one turn
+      if (defenderBefore && defenderBefore !== 'dummy' && gameState.territories[targetId].ownerId === 'zombie') {
+        const defPlayer = gameState.players.find(p => p.id === defenderBefore);
+        if (defPlayer) {
+          defPlayer.lostToZombiesThisRound = (defPlayer.lostToZombiesThisRound || 0) + 1;
+          if (defPlayer.lostToZombiesThisRound >= 4) {
+            checkAndGrantAchievement(room, defPlayer.id, 'incompetent_government');
+          }
+        }
+      }
+    }
+  }
+
+  // Check if zombies consumed everyone
+  const nonZombieTerritories = Object.values(gameState.territories).filter(t => t.ownerId !== 'zombie' && t.ownerId !== 'dummy').length;
+  if (nonZombieTerritories === 0) {
+    gameState.turnStage = 'GAME_OVER';
+    gameState.winner = null; // No winner!
+    addLog(gameState, `💀 EXTINCTION: The Zombie Horde has consumed all human civilization. The world is dead.`);
+  }
+
+  checkWinCondition(room);
+}
+
+// Zombie attack: a self-contained combat resolution that doesn't depend on a
+// "current player" object (zombies are not in gameState.players). BLITZ
+// semantics: the horde repeatedly rolls against the same target until the
+// territory is captured or too weakened to continue (source.armies < 2).
+// Each captured round still credits +1 zombie per defender killed (inside
+// resolveCombatRolls).
+function executeZombieAttack(room, zTid, targetId) {
+  const gameState = room.gameState;
+  const source = gameState.territories[zTid];
+  let target = gameState.territories[targetId];
+  if (!source || !target || source.ownerId !== 'zombie') return;
+  if (source.armies < 2) return;
+
+  // FROZEN ATTACK POOL: the horde may only fight with the troops the nest had
+  // when the blitz began. Troops gained mid-battle (+1 per kill, credited on
+  // capture) stay in the nest and can only be used on a FUTURE blitz — they
+  // never extend this one.
+  const usablePool = source.armies;
+  let usable = usablePool;
+
+  let roundsFought = 0;
+  // Hard cap purely as an infinite-loop safety net (standard Risk dice always
+  // cost at least one army per round, so this is never reached in practice)
+  const MAX_BLITZ_ROUNDS = 100;
+
+  while (
+    roundsFought < MAX_BLITZ_ROUNDS &&
+    source.ownerId === 'zombie' &&
+    usable >= 2 &&
+    gameState.territories[targetId].ownerId !== 'zombie' &&
+    gameState.territories[targetId].armies > 0
+  ) {
+    target = gameState.territories[targetId];
+    const attackerDice = usable >= 4 ? 3 : (usable === 3 ? 2 : 1);
+    const maxDefDice = target.armies >= 2 ? 2 : 1;
+
+    const diceResult = resolveCombatRolls(room, zTid, targetId, attackerDice, maxDefDice);
+    if (!diceResult) break;
+    roundsFought++;
+
+    // Blitz over once the territory falls (kill-credit for this round stays
+    // in the nest — it does NOT replenish the frozen pool for this blitz)
+    if (gameState.territories[targetId].ownerId === 'zombie') break;
+
+    // No credit occurs on non-capture rounds, so the nest only shrank.
+    // Clamp the frozen pool to the nest's actual strength as a safeguard:
+    // even if a future change credits troops mid-blitz, the pool stays frozen.
+    usable = Math.min(usable, source.armies);
+  }
+
+  const captured = gameState.territories[targetId].ownerId === 'zombie';
+  addLog(gameState, `🧟 Zombie Blitz: the horde fought ${roundsFought} round(s) over ${getTerritoryName(room.mapData, targetId)} and ${captured ? 'OVERRAN it!' : 'was repelled.'}`);
+}
 
 module.exports = {
   addLog,
@@ -2386,5 +3266,16 @@ module.exports = {
   rgbToHsv,
   hexToHsv,
   colorDistanceHSV,
-  colorsAreSimilar
+  colorsAreSimilar,
+  isTeamMode,
+  getTeamById,
+  getFactionKey,
+  getFactionMembers,
+  isOnTeam,
+  isSameTeam,
+  getActiveFactions,
+  countHumanFactions,
+  determineRunnerUpFaction,
+  constructBuilding,
+  runZombieTurn,
 };

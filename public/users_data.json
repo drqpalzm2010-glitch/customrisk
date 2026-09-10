@@ -2,9 +2,9 @@
   "test": {
     "username": "test",
     "password": "test",
-    "token": "tok_jb44r11dndn_1788235439861",
+    "token": "tok_r63ico14rrr_1788631864141",
     "createdAt": "2026-09-01T01:54:51.969Z",
-    "lastLogin": "2026-09-01T04:17:09.561Z",
+    "lastLogin": "2026-09-09T12:14:28.387Z",
     "lifetimeStats": {
       "matchesPlayed": 1,
       "matchesWon": 1,
@@ -25,29 +25,51 @@
     },
     "unlockedAchievements": [
       "secret_anime_scroll",
-      "first_blood"
+      "first_blood",
+      "party_host",
+      "world_dominator"
     ],
-    "totalXP": 150,
-    "currentXP": 50,
-    "level": 2,
+    "totalXP": 719,
+    "currentXP": 19,
+    "level": 5,
     "battleCard": {
-      "theme": "default",
-      "option": 1,
+      "theme": "anime",
+      "option": 2,
       "showcasedBadges": [
         "first_blood",
         "secret_anime_scroll"
-      ]
-    }
+      ],
+      "equippedTitle": "Aint No Party Like Mine"
+    },
+    "soloStats": {
+      "matchesPlayed": 5,
+      "matchesWon": 4,
+      "conquestWins": 4,
+      "capitalRushWins": 0,
+      "territoriesConquered": 94,
+      "territoriesLost": 215,
+      "armiesDrafted": 283,
+      "armiesKilled": 285,
+      "armiesLost": 215,
+      "nukesCrafted": 0,
+      "tacticalNukesFired": 0,
+      "thermonukesFired": 0,
+      "alliancesFormed": 0,
+      "betrayalsCommitted": 0,
+      "diceRollsCount": 762,
+      "diceRollWins": 285
+    },
+    "bio": "test account"
   },
   "admin": {
     "username": "admin",
     "password": "admin",
-    "token": "tok_mwaldwykswo_1788234720549",
+    "token": "tok_umpxaxf9mo_1788889948787",
     "createdAt": "2026-09-01T00:00:00.000Z",
-    "lastLogin": "2026-09-01T04:02:11.575Z",
-    "level": 999,
-    "currentXP": 2950,
-    "totalXP": 2997000,
+    "lastLogin": "2026-09-08T17:52:28.787Z",
+    "level": 1001,
+    "currentXP": 2550,
+    "totalXP": 3002600,
     "battleCard": {
       "theme": "scifi",
       "option": 2,
@@ -153,7 +175,663 @@
       "single_stack_wipeout",
       "secret_anime_scroll",
       "secret_nuclear_bbq",
-      "secret_choose_already"
+      "secret_choose_already",
+      "hold_the_line",
+      "one_man_army",
+      "david_vs_goliath",
+      "last_stand_thermopylae",
+      "nuclear_gandhi",
+      "machiavelli_disciple",
+      "lucky_skirmish",
+      "double_bonus",
+      "plunder_king",
+      "infinite_supply_lines",
+      "iron_curtain",
+      "unbroken_fortress",
+      "d_day",
+      "speedrunner",
+      "cyber_general",
+      "grand_emperor",
+      "modern_strategist",
+      "kawaii_commander",
+      "cartographer",
+      "worldbuilder",
+      "geopolitical_mastermind",
+      "party_host",
+      "literally_hitler",
+      "samurai",
+      "instructions_unclear",
+      "drama_queen",
+      "dj_commander",
+      "napoleonic_mastermind",
+      "pro_vs_creator",
+      "suicide_charge",
+      "main_character_syndrome",
+      "twenty_eight_turns_later",
+      "quarantine",
+      "train_to_busan",
+      "incompetent_government",
+      "damn_greenland"
     ]
+  },
+  "drqpalzm": {
+    "username": "drqpalzm",
+    "password": "4dnjf9dlf",
+    "token": "tok_1gxh1ozquje_1788911920831",
+    "createdAt": "2026-09-01T16:27:56.344Z",
+    "lastLogin": "2026-09-10T03:43:35.793Z",
+    "level": 13,
+    "currentXP": 366,
+    "totalXP": 4866,
+    "battleCard": {
+      "theme": "anime",
+      "option": 1,
+      "showcasedBadges": [
+        "first_blood",
+        "party_host",
+        "impenetrable_border"
+      ],
+      "equippedTitle": "The Pervert"
+    },
+    "soloStats": {
+      "matchesPlayed": 19,
+      "matchesWon": 11,
+      "conquestWins": 11,
+      "capitalRushWins": 0,
+      "territoriesConquered": 889,
+      "territoriesLost": 2347,
+      "armiesDrafted": 3111,
+      "armiesKilled": 2575,
+      "armiesLost": 2347,
+      "nukesCrafted": 0,
+      "tacticalNukesFired": 0,
+      "thermonukesFired": 0,
+      "alliancesFormed": 0,
+      "betrayalsCommitted": 4,
+      "diceRollsCount": 7569,
+      "diceRollWins": 2575
+    },
+    "multiplayerStats": {
+      "matchesPlayed": 1,
+      "matchesWon": 0,
+      "conquestWins": 0,
+      "capitalRushWins": 0,
+      "territoriesConquered": 15,
+      "territoriesLost": 93,
+      "armiesDrafted": 59,
+      "armiesKilled": 78,
+      "armiesLost": 93,
+      "nukesCrafted": 0,
+      "tacticalNukesFired": 0,
+      "thermonukesFired": 0,
+      "alliancesFormed": 0,
+      "betrayalsCommitted": 1,
+      "diceRollsCount": 228,
+      "diceRollWins": 78,
+      "elo": 1200
+    },
+    "unlockedAchievements": [
+      "party_host",
+      "world_dominator",
+      "first_blood",
+      "iron_citadel",
+      "hold_the_line",
+      "handshake_protocol",
+      "border_guard",
+      "impenetrable_border",
+      "blood_brothers",
+      "continent_master",
+      "et_tu_brute",
+      "continent_breaker",
+      "secret_choose_already",
+      "the_silk_road",
+      "wall_of_steel",
+      "the_coalition",
+      "lightning_advance",
+      "double_bonus",
+      "forced_liquidation",
+      "relentless_vanguard",
+      "no_way_home",
+      "secret_anime_scroll",
+      "cartographer",
+      "geopolitical_mastermind",
+      "twenty_eight_turns_later"
+    ],
+    "bio": "Ruka-chan ~~~",
+    "friends": [
+      "mrqpalzm",
+      "dihia",
+      "kingjoey",
+      "luka_chan"
+    ],
+    "friendRequests": {
+      "sent": [],
+      "received": []
+    },
+    "directMessages": {
+      "mrqpalzm": [
+        {
+          "id": "dm_1788631274310_23eufu",
+          "from": "drqpalzm",
+          "to": "mrqpalzm",
+          "text": "hi",
+          "timestamp": "02:01 PM",
+          "createdAt": 1788631274338
+        },
+        {
+          "id": "dm_1788631413773_weq7j5",
+          "from": "drqpalzm",
+          "to": "mrqpalzm",
+          "text": "ggg",
+          "timestamp": "02:03 PM",
+          "createdAt": 1788631413788
+        },
+        {
+          "id": "dm_1788631421204_t0ed2m",
+          "from": "mrqpalzm",
+          "to": "drqpalzm",
+          "text": "ok",
+          "timestamp": "02:03 PM",
+          "createdAt": 1788631421204
+        },
+        {
+          "id": "dm_1788631426154_r9zikw",
+          "from": "drqpalzm",
+          "to": "mrqpalzm",
+          "text": "yh",
+          "timestamp": "02:03 PM",
+          "createdAt": 1788631426154
+        }
+      ],
+      "dihia": [
+        {
+          "id": "dm_1788631886316_ajdzur",
+          "from": "DIHIA",
+          "to": "drqpalzm",
+          "text": "dih",
+          "timestamp": "02:11 PM",
+          "createdAt": 1788631886332
+        },
+        {
+          "id": "dm_1788631900339_wnv0v9",
+          "from": "DIHIA",
+          "to": "drqpalzm",
+          "text": "why is this actually well built?",
+          "timestamp": "02:11 PM",
+          "createdAt": 1788631900339
+        },
+        {
+          "id": "dm_1788631916957_kj99ty",
+          "from": "drqpalzm",
+          "to": "DIHIA",
+          "text": "fr",
+          "timestamp": "02:11 PM",
+          "createdAt": 1788631916957
+        },
+        {
+          "id": "dm_1788631935631_v494fq",
+          "from": "DIHIA",
+          "to": "drqpalzm",
+          "text": "invite me to the game boy",
+          "timestamp": "02:12 PM",
+          "createdAt": 1788631935631
+        },
+        {
+          "id": "dm_1788633362547_ooawds",
+          "from": "DIHIA",
+          "to": "drqpalzm",
+          "text": "buddy is offline",
+          "timestamp": "02:36 PM",
+          "createdAt": 1788633362560
+        },
+        {
+          "id": "dm_1788634268958_g4bwru",
+          "from": "drqpalzm",
+          "to": "DIHIA",
+          "text": "w game",
+          "timestamp": "02:51 PM",
+          "createdAt": 1788634268984
+        },
+        {
+          "id": "dm_1788634286128_9onjce",
+          "from": "DIHIA",
+          "to": "drqpalzm",
+          "text": "what",
+          "timestamp": "02:51 PM",
+          "createdAt": 1788634286128
+        }
+      ]
+    },
+    "lastReadDmTime": {
+      "mrqpalzm": 1788631426159,
+      "dihia": 1788634991298
+    },
+    "elo": 1200
+  },
+  "mrqpalzm": {
+    "username": "mrqpalzm",
+    "password": "0000ab9",
+    "token": "tok_uvaww8vf08_1788911458597",
+    "createdAt": "2026-09-05T18:00:59.595Z",
+    "lastLogin": "2026-09-08T23:58:32.969Z",
+    "level": 5,
+    "currentXP": 100,
+    "totalXP": 800,
+    "elo": 1200,
+    "bio": "Ready for battle.",
+    "battleCard": {
+      "theme": "scifi",
+      "option": 2,
+      "showcasedBadges": [
+        "iron_citadel",
+        "border_guard",
+        "impenetrable_border"
+      ],
+      "equippedTitle": "The Immovable Object"
+    },
+    "soloStats": {
+      "matchesPlayed": 0,
+      "matchesWon": 0,
+      "conquestWins": 0,
+      "capitalRushWins": 0,
+      "territoriesConquered": 0,
+      "territoriesLost": 0,
+      "armiesDrafted": 0,
+      "armiesKilled": 0,
+      "armiesLost": 0,
+      "nukesCrafted": 0,
+      "tacticalNukesFired": 0,
+      "thermonukesFired": 0,
+      "alliancesFormed": 0,
+      "betrayalsCommitted": 0,
+      "diceRollsCount": 0,
+      "diceRollWins": 0,
+      "elo": 1200
+    },
+    "multiplayerStats": {
+      "matchesPlayed": 0,
+      "matchesWon": 0,
+      "conquestWins": 0,
+      "capitalRushWins": 0,
+      "territoriesConquered": 0,
+      "territoriesLost": 0,
+      "armiesDrafted": 0,
+      "armiesKilled": 0,
+      "armiesLost": 0,
+      "nukesCrafted": 0,
+      "tacticalNukesFired": 0,
+      "thermonukesFired": 0,
+      "alliancesFormed": 0,
+      "betrayalsCommitted": 0,
+      "diceRollsCount": 0,
+      "diceRollWins": 0,
+      "elo": 1200
+    },
+    "unlockedAchievements": [
+      "handshake_protocol",
+      "first_blood",
+      "continent_breaker",
+      "lightning_advance",
+      "one_man_army",
+      "iron_citadel",
+      "border_guard",
+      "wall_of_steel",
+      "impenetrable_border",
+      "relentless_vanguard",
+      "hold_the_line"
+    ],
+    "friends": [
+      "drqpalzm"
+    ],
+    "friendRequests": {
+      "sent": [],
+      "received": []
+    },
+    "directMessages": {
+      "drqpalzm": [
+        {
+          "id": "dm_1788631274310_23eufu",
+          "from": "drqpalzm",
+          "to": "mrqpalzm",
+          "text": "hi",
+          "timestamp": "02:01 PM",
+          "createdAt": 1788631274338
+        },
+        {
+          "id": "dm_1788631413773_weq7j5",
+          "from": "drqpalzm",
+          "to": "mrqpalzm",
+          "text": "ggg",
+          "timestamp": "02:03 PM",
+          "createdAt": 1788631413788
+        },
+        {
+          "id": "dm_1788631421204_t0ed2m",
+          "from": "mrqpalzm",
+          "to": "drqpalzm",
+          "text": "ok",
+          "timestamp": "02:03 PM",
+          "createdAt": 1788631421204
+        },
+        {
+          "id": "dm_1788631426154_r9zikw",
+          "from": "drqpalzm",
+          "to": "mrqpalzm",
+          "text": "yh",
+          "timestamp": "02:03 PM",
+          "createdAt": 1788631426154
+        }
+      ]
+    },
+    "lastReadDmTime": {
+      "drqpalzm": 1788631426162
+    }
+  },
+  "dihia": {
+    "username": "DIHIA",
+    "password": "dihia67",
+    "token": "tok_zv7ew5egy5_1788631780435",
+    "createdAt": "2026-09-05T18:09:40.435Z",
+    "lastLogin": "2026-09-05T18:51:19.541Z",
+    "level": 5,
+    "currentXP": 250,
+    "totalXP": 950,
+    "elo": 1200,
+    "bio": "Ready for battle.",
+    "battleCard": {
+      "theme": "default",
+      "option": 1,
+      "showcasedBadges": []
+    },
+    "soloStats": {
+      "matchesPlayed": 0,
+      "matchesWon": 0,
+      "conquestWins": 0,
+      "capitalRushWins": 0,
+      "territoriesConquered": 0,
+      "territoriesLost": 0,
+      "armiesDrafted": 0,
+      "armiesKilled": 0,
+      "armiesLost": 0,
+      "nukesCrafted": 0,
+      "tacticalNukesFired": 0,
+      "thermonukesFired": 0,
+      "alliancesFormed": 0,
+      "betrayalsCommitted": 0,
+      "diceRollsCount": 0,
+      "diceRollWins": 0,
+      "elo": 1200
+    },
+    "multiplayerStats": {
+      "matchesPlayed": 0,
+      "matchesWon": 0,
+      "conquestWins": 0,
+      "capitalRushWins": 0,
+      "territoriesConquered": 0,
+      "territoriesLost": 0,
+      "armiesDrafted": 0,
+      "armiesKilled": 0,
+      "armiesLost": 0,
+      "nukesCrafted": 0,
+      "tacticalNukesFired": 0,
+      "thermonukesFired": 0,
+      "alliancesFormed": 0,
+      "betrayalsCommitted": 0,
+      "diceRollsCount": 0,
+      "diceRollWins": 0,
+      "elo": 1200
+    },
+    "unlockedAchievements": [
+      "first_blood",
+      "snake_eyes_tragedy",
+      "continent_master",
+      "iron_citadel",
+      "lightning_advance",
+      "border_guard",
+      "impenetrable_border",
+      "wall_of_steel",
+      "blood_brothers",
+      "relentless_vanguard",
+      "lucky_skirmish",
+      "one_man_army",
+      "hold_the_line"
+    ],
+    "friends": [
+      "drqpalzm"
+    ],
+    "friendRequests": {
+      "sent": [],
+      "received": []
+    },
+    "directMessages": {
+      "drqpalzm": [
+        {
+          "id": "dm_1788631886316_ajdzur",
+          "from": "DIHIA",
+          "to": "drqpalzm",
+          "text": "dih",
+          "timestamp": "02:11 PM",
+          "createdAt": 1788631886332
+        },
+        {
+          "id": "dm_1788631900339_wnv0v9",
+          "from": "DIHIA",
+          "to": "drqpalzm",
+          "text": "why is this actually well built?",
+          "timestamp": "02:11 PM",
+          "createdAt": 1788631900339
+        },
+        {
+          "id": "dm_1788631916957_kj99ty",
+          "from": "drqpalzm",
+          "to": "DIHIA",
+          "text": "fr",
+          "timestamp": "02:11 PM",
+          "createdAt": 1788631916957
+        },
+        {
+          "id": "dm_1788631935631_v494fq",
+          "from": "DIHIA",
+          "to": "drqpalzm",
+          "text": "invite me to the game boy",
+          "timestamp": "02:12 PM",
+          "createdAt": 1788631935631
+        },
+        {
+          "id": "dm_1788633362547_ooawds",
+          "from": "DIHIA",
+          "to": "drqpalzm",
+          "text": "buddy is offline",
+          "timestamp": "02:36 PM",
+          "createdAt": 1788633362560
+        },
+        {
+          "id": "dm_1788634268958_g4bwru",
+          "from": "drqpalzm",
+          "to": "DIHIA",
+          "text": "w game",
+          "timestamp": "02:51 PM",
+          "createdAt": 1788634268984
+        },
+        {
+          "id": "dm_1788634286128_9onjce",
+          "from": "DIHIA",
+          "to": "drqpalzm",
+          "text": "what",
+          "timestamp": "02:51 PM",
+          "createdAt": 1788634286128
+        }
+      ]
+    },
+    "lastReadDmTime": {
+      "drqpalzm": 1788634286148
+    }
+  },
+  "kingjoey": {
+    "username": "KingJoey",
+    "password": "1234",
+    "token": "tok_czs0ghpdwoo_1788886536171",
+    "createdAt": "2026-09-08T16:55:36.171Z",
+    "lastLogin": "2026-09-08T17:50:46.971Z",
+    "level": 6,
+    "currentXP": 247,
+    "totalXP": 1247,
+    "elo": 1200,
+    "bio": "Ready for battle.",
+    "battleCard": {
+      "theme": "default",
+      "option": 1,
+      "showcasedBadges": [],
+      "equippedTitle": ""
+    },
+    "soloStats": {
+      "matchesPlayed": 0,
+      "matchesWon": 0,
+      "conquestWins": 0,
+      "capitalRushWins": 0,
+      "territoriesConquered": 0,
+      "territoriesLost": 0,
+      "armiesDrafted": 0,
+      "armiesKilled": 0,
+      "armiesLost": 0,
+      "nukesCrafted": 0,
+      "tacticalNukesFired": 0,
+      "thermonukesFired": 0,
+      "alliancesFormed": 0,
+      "betrayalsCommitted": 0,
+      "diceRollsCount": 0,
+      "diceRollWins": 0,
+      "elo": 1200
+    },
+    "multiplayerStats": {
+      "matchesPlayed": 1,
+      "matchesWon": 0,
+      "conquestWins": 0,
+      "capitalRushWins": 0,
+      "territoriesConquered": 18,
+      "territoriesLost": 88,
+      "armiesDrafted": 54,
+      "armiesKilled": 75,
+      "armiesLost": 88,
+      "nukesCrafted": 0,
+      "tacticalNukesFired": 0,
+      "thermonukesFired": 0,
+      "alliancesFormed": 0,
+      "betrayalsCommitted": 0,
+      "diceRollsCount": 222,
+      "diceRollWins": 75,
+      "elo": 1200
+    },
+    "unlockedAchievements": [
+      "iron_citadel",
+      "hold_the_line",
+      "first_blood",
+      "continent_breaker",
+      "lightning_advance",
+      "continent_master",
+      "blood_brothers",
+      "the_coalition",
+      "relentless_vanguard",
+      "the_silk_road",
+      "secret_anime_scroll",
+      "double_bonus",
+      "forced_liquidation",
+      "wall_of_steel",
+      "last_stand_thermopylae",
+      "fool_me_twice",
+      "no_way_home"
+    ],
+    "friends": [
+      "drqpalzm",
+      "luka_chan"
+    ],
+    "friendRequests": {
+      "sent": [],
+      "received": []
+    },
+    "directMessages": {},
+    "lastReadDmTime": {}
+  },
+  "luka_chan": {
+    "username": "Luka_chan",
+    "password": "1234",
+    "token": "tok_wvjmwbf19va_1788886537617",
+    "createdAt": "2026-09-08T16:55:37.617Z",
+    "lastLogin": "2026-09-08T17:51:45.556Z",
+    "level": 5,
+    "currentXP": 213,
+    "totalXP": 913,
+    "elo": 1200,
+    "bio": "Ready for battle.",
+    "battleCard": {
+      "theme": "anime",
+      "option": 1,
+      "showcasedBadges": [],
+      "equippedTitle": ""
+    },
+    "soloStats": {
+      "matchesPlayed": 0,
+      "matchesWon": 0,
+      "conquestWins": 0,
+      "capitalRushWins": 0,
+      "territoriesConquered": 0,
+      "territoriesLost": 0,
+      "armiesDrafted": 0,
+      "armiesKilled": 0,
+      "armiesLost": 0,
+      "nukesCrafted": 0,
+      "tacticalNukesFired": 0,
+      "thermonukesFired": 0,
+      "alliancesFormed": 0,
+      "betrayalsCommitted": 0,
+      "diceRollsCount": 0,
+      "diceRollWins": 0,
+      "elo": 1200
+    },
+    "multiplayerStats": {
+      "matchesPlayed": 1,
+      "matchesWon": 0,
+      "conquestWins": 0,
+      "capitalRushWins": 0,
+      "territoriesConquered": 25,
+      "territoriesLost": 95,
+      "armiesDrafted": 63,
+      "armiesKilled": 98,
+      "armiesLost": 95,
+      "nukesCrafted": 0,
+      "tacticalNukesFired": 0,
+      "thermonukesFired": 0,
+      "alliancesFormed": 0,
+      "betrayalsCommitted": 1,
+      "diceRollsCount": 270,
+      "diceRollWins": 98,
+      "elo": 1200
+    },
+    "unlockedAchievements": [
+      "handshake_protocol",
+      "first_blood",
+      "continent_master",
+      "iron_citadel",
+      "lightning_advance",
+      "blood_brothers",
+      "continent_breaker",
+      "hold_the_line",
+      "forced_liquidation",
+      "relentless_vanguard",
+      "last_stand_thermopylae",
+      "one_man_army",
+      "clean_sweep",
+      "no_way_home"
+    ],
+    "friends": [
+      "drqpalzm",
+      "kingjoey"
+    ],
+    "friendRequests": {
+      "sent": [],
+      "received": []
+    },
+    "directMessages": {},
+    "lastReadDmTime": {}
   }
 }

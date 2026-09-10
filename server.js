@@ -69,6 +69,57 @@ function broadcastState(roomCode) {
 // gameState + chat archive kept in memory for finished matches).
 RoomManager.startRoomCleanup();
 
+// Online Presence Tracking: username(lowercase) -> Set of socketIds (supports multiple tabs)
+const onlineUsers = new Map();
+
+function registerUserSocket(username, socketId) {
+  if (!username) return;
+  const key = username.trim().toLowerCase();
+  if (!onlineUsers.has(key)) {
+    onlineUsers.set(key, new Set());
+  }
+  onlineUsers.get(key).add(socketId);
+}
+
+function unregisterUserSocket(socketId) {
+  let foundUsername = null;
+  for (const [userKey, socketSet] of onlineUsers.entries()) {
+    if (socketSet.has(socketId)) {
+      socketSet.delete(socketId);
+      if (socketSet.size === 0) {
+        onlineUsers.delete(userKey);
+        foundUsername = userKey;
+      }
+      break;
+    }
+  }
+  return foundUsername;
+}
+
+function getSocketIdsForUser(username) {
+  if (!username) return [];
+  const key = username.trim().toLowerCase();
+  const set = onlineUsers.get(key);
+  return set ? Array.from(set) : [];
+}
+
+function notifyFriendsPresence(username, isOnline) {
+  const users = UserDB.loadUsers();
+  const key = (username || '').trim().toLowerCase();
+  const user = users[key];
+  if (!user || !user.friends) return;
+
+  user.friends.forEach(fKey => {
+    const friendSockets = getSocketIdsForUser(fKey);
+    friendSockets.forEach(sId => {
+      io.to(sId).emit('friendPresenceUpdate', {
+        username: user.username,
+        isOnline: isOnline
+      });
+    });
+  });
+}
+
 // Bootstrap AI watchdog behavior on first connection.
 io.on('connection', (socket) => {
   console.log(`User connected: ${socket.id}`);
@@ -87,8 +138,11 @@ io.on('connection', (socket) => {
         const acc = UserDB.getSafeUser(UserDB.loadUsers()[accountId.toLowerCase()]);
         if (acc) {
           room.players[0].level = acc.level || 1;
+          room.players[0].elo = acc.elo || 1200;
           room.players[0].battleCard = acc.battleCard || { theme: 'default', option: 1, showcasedBadges: [] };
         }
+        // Grant Party Host achievement for hosting a game
+        UserDB.grantAchievement(accountId, 'party_host', true, io, socket.id);
       }
       socket.join(room.code);
       console.log(`Room created: ${room.code} by ${playerName} (Account: ${accountId || 'Guest'})`);
@@ -98,7 +152,7 @@ io.on('connection', (socket) => {
       callback({ error: 'Failed to create room' });
     }
   });
-  socket.on('watchAIBattle', ({ mapData, aiCount, gameMode, asNormalMap, disableNations, honorPremadeAlliances, disabledNationIds, cardTradeRule, generativeAIMode, llmProviderConfig, reqBlizzardCount, reqStartingNukes, reqStartingThermonukes, reqAllowCrafting }, callback) => {
+  socket.on('watchAIBattle', ({ mapData, aiCount, gameMode, asNormalMap, disableNations, honorPremadeAlliances, disabledNationIds, cardTradeRule, generativeAIMode, llmProviderConfig, reqBlizzardCount, reqStartingNukes, reqStartingThermonukes, reqAllowCrafting, reqZombieMode, reqSupplyMode, reqBuildingsMode }, callback) => {
     try {
       if (!mapData) return callback({ error: 'Invalid map data' });
 
@@ -148,6 +202,16 @@ io.on('connection', (socket) => {
       room.startingNukes = parseInt(reqStartingNukes) || 0;
       room.startingThermonukes = parseInt(reqStartingThermonukes) || 0;
       room.allowCrafting = reqAllowCrafting === true;
+      room.zombieMode = reqZombieMode === true;
+      room.supplyMode = reqSupplyMode === true;
+      room.buildingsMode = reqBuildingsMode === true;
+
+      // Authoritative guarantee (Watch AI path): Supply Lines can only apply in
+      // Capital Rush. Force the mode so supply rules are live rather than silently
+      // doing nothing (the engine gates supplyMode to capital_rush).
+      if (room.supplyMode && gameMode !== 'capital_rush') {
+        gameMode = 'capital_rush';
+      }
       if (llmProviderConfig) {
         room.llmProviderConfig = {
           provider: llmProviderConfig.provider || 'clipboard',
@@ -313,9 +377,16 @@ io.on('connection', (socket) => {
           delete room.activeMapData;
         }
       }
+      // Teams require scenario nations — "as normal map" disables them entirely
+      if (room.asNormalMap) {
+        room.teamMode = false;
+        room.teams = [];
+      }
       io.to(room.code).emit('roomStateUpdate', {
         asNormalMap: room.asNormalMap,
-        mapData: room.activeMapData || room.mapData
+        mapData: room.activeMapData || room.mapData,
+        teamMode: room.teamMode || false,
+        teams: room.teams || []
       });
       if (callback) callback({ success: true, asNormalMap: room.asNormalMap });
     } catch (err) {
@@ -332,8 +403,15 @@ io.on('connection', (socket) => {
       if (room.hostId !== socket.id) return callback && callback({ error: 'Only host can toggle nations' });
 
       room.disableNations = !!disableNations;
+      // Teams are nation-based — disabling nations disables teams
+      if (room.disableNations) {
+        room.teamMode = false;
+        room.teams = [];
+      }
       io.to(room.code).emit('roomStateUpdate', {
-        disableNations: room.disableNations
+        disableNations: room.disableNations,
+        teamMode: room.teamMode || false,
+        teams: room.teams || []
       });
       if (callback) callback({ success: true, disableNations: room.disableNations });
     } catch (err) {
@@ -350,13 +428,91 @@ io.on('connection', (socket) => {
       if (room.hostId !== socket.id) return callback && callback({ error: 'Only host can toggle premade alliances' });
 
       room.honorPremadeAlliances = honorPremadeAlliances !== false;
+      // Teams only exist when honoring premade alliances — unselecting clears them
+      if (!room.honorPremadeAlliances) {
+        room.teamMode = false;
+        room.teams = [];
+      }
       io.to(room.code).emit('roomStateUpdate', {
-        honorPremadeAlliances: room.honorPremadeAlliances
+        honorPremadeAlliances: room.honorPremadeAlliances,
+        teamMode: room.teamMode || false,
+        teams: room.teams || []
       });
       if (callback) callback({ success: true, honorPremadeAlliances: room.honorPremadeAlliances });
     } catch (err) {
       console.error(err);
       if (callback) callback({ error: 'Failed to toggle premade alliances' });
+    }
+  });
+
+  // Toggle Team Mode for Scenario Lobbies
+  socket.on('updateTeamMode', ({ roomCode, enabled }, callback) => {
+    try {
+      const room = RoomManager.getRoom(roomCode);
+      if (!room) return callback && callback({ error: 'Room not found' });
+      if (room.hostId !== socket.id) return callback && callback({ error: 'Only host can toggle team mode' });
+      if (room.status !== 'LOBBY') return callback && callback({ error: 'Game already in progress' });
+
+      // Teams require scenario mode + honoring premade alliances
+      const isScenario = room.mapData && room.mapData.isScenario && room.mapData.nations && room.mapData.nations.length > 0;
+      const honorAlliances = room.honorPremadeAlliances !== false;
+      if (enabled && (!isScenario || room.asNormalMap || room.disableNations || !honorAlliances)) {
+        return callback && callback({ error: 'Team Mode requires scenario nations with Honor Premade Alliances enabled.' });
+      }
+
+      room.teamMode = !!enabled;
+      if (!room.teamMode) room.teams = [];
+
+      io.to(room.code).emit('roomStateUpdate', {
+        teamMode: room.teamMode,
+        teams: room.teams || []
+      });
+      if (callback) callback({ success: true, teamMode: room.teamMode, teams: room.teams || [] });
+    } catch (err) {
+      console.error(err);
+      if (callback) callback({ error: 'Failed to toggle team mode' });
+    }
+  });
+
+  // Update Team Definitions (host only, lobby only)
+  socket.on('updateTeams', ({ roomCode, teams }, callback) => {
+    try {
+      const room = RoomManager.getRoom(roomCode);
+      if (!room) return callback && callback({ error: 'Room not found' });
+      if (room.hostId !== socket.id) return callback && callback({ error: 'Only host can configure teams' });
+      if (room.status !== 'LOBBY') return callback && callback({ error: 'Game already in progress' });
+      if (!room.teamMode) return callback && callback({ error: 'Team Mode is not enabled' });
+
+      if (!Array.isArray(teams)) return callback && callback({ error: 'Invalid team data' });
+
+      // Validate: each team needs a non-empty name and colored id; each nation
+      // assigned to at most one team
+      const seenNations = new Set();
+      const cleanTeams = [];
+      for (const t of teams) {
+        if (!t || !t.name || !String(t.name).trim()) continue;
+        const nationList = Array.isArray(t.nationIds) ? [...new Set(t.nationIds)] : [];
+        for (const nid of nationList) {
+          if (seenNations.has(nid)) return callback && callback({ error: 'A nation cannot belong to two teams' });
+          seenNations.add(nid);
+        }
+        cleanTeams.push({
+          id: t.id || `team_${Math.random().toString(36).substr(2, 9)}`,
+          name: String(t.name).trim(),
+          color: /^#[0-9a-fA-F]{6}$/.test(t.color || '') ? t.color.toLowerCase() : '#6366f1',
+          nationIds: nationList
+        });
+      }
+
+      room.teams = cleanTeams;
+      io.to(room.code).emit('roomStateUpdate', {
+        teamMode: true,
+        teams: room.teams
+      });
+      if (callback) callback({ success: true, teams: room.teams });
+    } catch (err) {
+      console.error(err);
+      if (callback) callback({ error: 'Failed to update teams' });
     }
   });
 
@@ -382,6 +538,23 @@ io.on('connection', (socket) => {
     } catch (err) {
       console.error(err);
       if (callback) callback({ error: 'Failed to update nuclear settings' });
+    }
+  });
+
+  // Construct Building
+  socket.on('constructBuilding', ({ roomCode, territoryId, buildingType }, callback) => {
+    try {
+      const room = RoomManager.getRoom(roomCode);
+      if (!room || !room.gameState) return callback && callback({ error: 'Game not active' });
+
+      const res = GameEngine.constructBuilding(room, socket.id, territoryId, buildingType);
+      if (res.error) return callback && callback({ error: res.error });
+
+      io.to(roomCode).emit('gameStateUpdate', RoomManager.getSanitizedGameState(room.gameState));
+      callback({ success: true });
+    } catch (err) {
+      console.error(err);
+      callback({ error: 'Failed to construct building' });
     }
   });
 
@@ -648,39 +821,54 @@ const actType = (actionStr || typeStr || '').toUpperCase();
         const pType = (action.type || action.pactType || 'non_aggression').toLowerCase();
         const typeStr = pType.includes('all') ? 'alliance' : 'non_aggression';
         
-        gameState.diplomacyProposals = gameState.diplomacyProposals || [];
-        const existing = gameState.diplomacyProposals.find(p => 
-          (p.proposerId === activePlayer.id || p.sender === activePlayer.id) && 
-          (p.targetId === targetId || p.receiver === targetId)
-        );
-        if (!existing && targetId && targetId !== activePlayer.id) {
-          gameState.diplomacyProposals.push({
-            id: Math.random().toString(36).substr(2, 9),
-            proposerId: activePlayer.id,
-            targetId,
-            sender: activePlayer.id,   // Unified key fallback
-            receiver: targetId,         // Unified key fallback
-            type: typeStr
-          });
-          const tgtPlayer = gameState.players.find(p => p.id === targetId);
-          GameEngine.addLog(gameState, `📜 ${activePlayer.name} proposed a ${typeStr === 'non_aggression' ? 'Non-Aggression Pact' : 'Full Alliance'} to ${tgtPlayer ? tgtPlayer.name : targetId}.`);
+        // TEAM MODE: permanent teams ban ALL pacts involving team members. Block
+        // invalid proposals silently (no proposal is queued).
+        const teamInvalid = !targetId || targetId === activePlayer.id ||
+          GameEngine.isSameTeam(gameState, activePlayer.id, targetId) ||
+          (GameEngine.isTeamMode(gameState) && (GameEngine.isOnTeam(gameState, activePlayer.id) || GameEngine.isOnTeam(gameState, targetId)));
+        if (!teamInvalid) {
+          gameState.diplomacyProposals = gameState.diplomacyProposals || [];
+          const existing = gameState.diplomacyProposals.find(p =>
+            (p.proposerId === activePlayer.id || p.sender === activePlayer.id) &&
+            (p.targetId === targetId || p.receiver === targetId)
+          );
+          if (!existing) {
+            gameState.diplomacyProposals.push({
+              id: Math.random().toString(36).substr(2, 9),
+              proposerId: activePlayer.id,
+              targetId,
+              sender: activePlayer.id,   // Unified key fallback
+              receiver: targetId,         // Unified key fallback
+              type: typeStr
+            });
+            const tgtPlayer = gameState.players.find(p => p.id === targetId);
+            GameEngine.addLog(gameState, `📜 ${activePlayer.name} proposed a ${typeStr === 'non_aggression' ? 'Non-Aggression Pact' : 'Full Alliance'} to ${tgtPlayer ? tgtPlayer.name : targetId}.`);
+          }
         }
       } else if (actType === 'ACCEPT_PACT') {
         const proposerId = action.proposerId || action.targetPlayerId || action.targetId;
         gameState.diplomacyProposals = gameState.diplomacyProposals || [];
-        const propIndex = gameState.diplomacyProposals.findIndex(p => 
-          (p.targetId === activePlayer.id || p.receiver === activePlayer.id) && 
+        const propIndex = gameState.diplomacyProposals.findIndex(p =>
+          (p.targetId === activePlayer.id || p.receiver === activePlayer.id) &&
           (p.proposerId === proposerId || p.sender === proposerId)
         );
         if (propIndex !== -1) {
-          const prop = gameState.diplomacyProposals.splice(propIndex, 1)[0];
-          gameState.pacts = gameState.pacts || [];
-          gameState.pacts.push({ playerA: prop.proposerId || prop.sender, playerB: activePlayer.id, type: prop.type });
-          const propPlayer = gameState.players.find(p => p.id === proposerId);
-          // Achievements for forming a pact
-          GameEngine.grantPactFormationAchievements(room, prop.type, prop.proposerId || prop.sender, activePlayer.id);
-          GameEngine.grantSilverTongue(room, prop.proposerId || prop.sender, activePlayer.id);
-          GameEngine.addLog(gameState, `🤝 ${activePlayer.name} accepted the ${prop.type === 'non_aggression' ? 'Non-Aggression Pact' : 'Full Alliance'} proposal from ${propPlayer ? propPlayer.name : proposerId}!`);
+          const prop = gameState.diplomacyProposals[propIndex];
+          // TEAM MODE: never accept a pact that violates team restrictions
+          const teamInvalid = GameEngine.isSameTeam(gameState, activePlayer.id, prop.proposerId || prop.sender) ||
+            (GameEngine.isTeamMode(gameState) && (GameEngine.isOnTeam(gameState, activePlayer.id) || GameEngine.isOnTeam(gameState, prop.proposerId || prop.sender)));
+          if (!teamInvalid) {
+            gameState.diplomacyProposals.splice(propIndex, 1)[0];
+            gameState.pacts = gameState.pacts || [];
+            gameState.pacts.push({ playerA: prop.proposerId || prop.sender, playerB: activePlayer.id, type: prop.type });
+            const propPlayer = gameState.players.find(p => p.id === proposerId);
+            // Achievements for forming a pact
+            GameEngine.grantPactFormationAchievements(room, prop.type, prop.proposerId || prop.sender, activePlayer.id);
+            GameEngine.grantSilverTongue(room, prop.proposerId || prop.sender, activePlayer.id);
+            GameEngine.addLog(gameState, `🤝 ${activePlayer.name} accepted the ${prop.type === 'non_aggression' ? 'Non-Aggression Pact' : 'Full Alliance'} proposal from ${propPlayer ? propPlayer.name : proposerId}!`);
+          } else {
+            gameState.diplomacyProposals.splice(propIndex, 1);
+          }
         }
       } else if (actType === 'REJECT_PACT' || actType === 'DECLINE_PACT') {
         const proposerId = action.proposerId || action.targetPlayerId || action.targetId;
@@ -833,7 +1021,7 @@ const actType = (actionStr || typeStr || '').toUpperCase();
   });
 
   // Load & Resume Saved Campaign State
-  socket.on('loadSavedCampaign', ({ saveData }, callback) => {
+  socket.on('loadSavedCampaign', ({ saveData, accountId }, callback) => {
     try {
       if (!saveData || !saveData.mapData || !saveData.gameState) {
         return callback({ error: 'Invalid or corrupted save file.' });
@@ -843,8 +1031,10 @@ const actType = (actionStr || typeStr || '').toUpperCase();
       saveData.gameState.mapData = saveData.mapData;
 
       const room = RoomManager.createRoom(socket.id, 'Host Player', '#00e5ff', saveData.mapData);
+      room.io = io;
       room.mapData = saveData.mapData;
       room.gameState = saveData.gameState;
+      room.gameState.io = io;
       room.players = saveData.gameState.players ? saveData.gameState.players.map(p => ({ ...p })) : room.players;
 
       if (room.players && room.players.length > 0) {
@@ -852,13 +1042,30 @@ const actType = (actionStr || typeStr || '').toUpperCase();
         if (humanPlayer && !humanPlayer.isAI) {
           const oldId = humanPlayer.id;
           humanPlayer.id = socket.id;
+          if (accountId) {
+            humanPlayer.accountId = accountId;
+          }
+
           if (room.gameState && room.gameState.players) {
             const pInState = room.gameState.players.find(p => p.id === oldId);
-            if (pInState) pInState.id = socket.id;
+            if (pInState) {
+              pInState.id = socket.id;
+              if (accountId) pInState.accountId = accountId;
+            }
           }
           if (room.gameState && room.gameState.territories) {
             Object.values(room.gameState.territories).forEach(t => {
               if (t.ownerId === oldId) t.ownerId = socket.id;
+            });
+          }
+          if (room.gameState && room.gameState.capitals && room.gameState.capitals[oldId] !== undefined) {
+            room.gameState.capitals[socket.id] = room.gameState.capitals[oldId];
+            delete room.gameState.capitals[oldId];
+          }
+          if (room.gameState && room.gameState.pacts) {
+            room.gameState.pacts.forEach(p => {
+              if (p.playerA === oldId) p.playerA = socket.id;
+              if (p.playerB === oldId) p.playerB = socket.id;
             });
           }
         }
@@ -1035,7 +1242,7 @@ const actType = (actionStr || typeStr || '').toUpperCase();
   // 2. Join Room
   socket.on('joinRoom', ({ roomCode, playerName, playerColor, accountId }, callback) => {
     try {
-      const res = RoomManager.joinRoom(socket.id, roomCode, playerName, playerColor);
+      const res = RoomManager.joinRoom(socket.id, roomCode, playerName, playerColor, accountId);
       if (res.error) {
         return callback({ error: res.error });
       }
@@ -1046,6 +1253,7 @@ const actType = (actionStr || typeStr || '').toUpperCase();
         const acc = UserDB.getSafeUser(UserDB.loadUsers()[accountId.toLowerCase()]);
         if (acc) {
           playerObj.level = acc.level || 1;
+          playerObj.elo = acc.elo || 1200;
           playerObj.battleCard = acc.battleCard || { theme: 'default', option: 1, showcasedBadges: [] };
         }
       }
@@ -1148,9 +1356,17 @@ const actType = (actionStr || typeStr || '').toUpperCase();
         return callback({ error: 'Only the host can change AI colors' });
       }
 
-      // Ensure color is unique in room
-      const cleanColor = (newColor || '').trim().toLowerCase();
-      if (!cleanColor) return callback({ error: 'Invalid color' });
+      // Normalize to lowercase #rrggbb. NOTE: similarity checks are intentionally
+      // NOT applied here — only exact duplicates are blocked. Players may set a
+      // color similar to another commander's (HSV overlap is only enforced at
+      // bot creation time).
+      const rawColor = (newColor || '').trim();
+      let cleanColor = rawColor.toLowerCase();
+      const hexMatch = cleanColor.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/);
+      if (!hexMatch) return callback({ error: 'Invalid color format' });
+      if (hexMatch[1].length === 3) {
+        cleanColor = '#' + hexMatch[1].split('').map(c => c + c).join('');
+      }
 
       const colorTaken = room.players.some(p => p.id !== targetPlayerId && p.color.toLowerCase() === cleanColor);
       if (colorTaken) {
@@ -1159,6 +1375,14 @@ const actType = (actionStr || typeStr || '').toUpperCase();
 
       player.color = cleanColor;
       io.to(roomCode).emit('playersUpdate', room.players);
+
+      // Keep a running game's state in sync with the new color
+      if (room.gameState) {
+        const statePlayer = room.gameState.players.find(p => p.id === targetPlayerId);
+        if (statePlayer) statePlayer.color = cleanColor;
+        io.to(roomCode).emit('gameStateUpdate', RoomManager.getSanitizedGameState(room.gameState));
+      }
+
       callback({ success: true, players: room.players });
     } catch (err) {
       console.error(err);
@@ -1268,11 +1492,35 @@ const actType = (actionStr || typeStr || '').toUpperCase();
   });
 
   // 4. Start Game
-  socket.on('startGame', ({ roomCode }, callback) => {
+  socket.on('startGame', ({ roomCode, nuclearSettings }, callback) => {
     try {
       const room = RoomManager.getRoom(roomCode);
       if (!room) return callback({ error: 'Room not found' });
       if (room.hostId !== socket.id) return callback({ error: 'Only the host can start the game' });
+
+      // Apply lobby nuclear settings at start time. The host's startGame now
+      // carries the current lobby values so the game always begins with exactly
+      // what the lobby UI shows — this is the authoritative sync path, immune to
+      // a lost/raced updateNuclearSettings emit.
+      if (nuclearSettings && typeof nuclearSettings === 'object') {
+        if (nuclearSettings.blizzardCount !== undefined) room.blizzardCount = parseInt(nuclearSettings.blizzardCount) || 0;
+        if (nuclearSettings.startingNukes !== undefined) room.startingNukes = parseInt(nuclearSettings.startingNukes) || 0;
+        if (nuclearSettings.startingThermonukes !== undefined) room.startingThermonukes = parseInt(nuclearSettings.startingThermonukes) || 0;
+        if (nuclearSettings.allowCrafting !== undefined) room.allowCrafting = !!nuclearSettings.allowCrafting;
+        // Advanced game modes carried from the lobby checkboxes (same
+        // authoritative at-start sync path as the nuclear settings).
+        if (nuclearSettings.zombieMode !== undefined) room.zombieMode = !!nuclearSettings.zombieMode;
+        if (nuclearSettings.supplyMode !== undefined) room.supplyMode = !!nuclearSettings.supplyMode;
+        if (nuclearSettings.buildingsMode !== undefined) room.buildingsMode = !!nuclearSettings.buildingsMode;
+
+        // Authoritative guarantee: Supply Lines can ONLY apply in Capital Rush
+        // (engine gates supplyMode to effectiveGameMode === 'capital_rush'). If
+        // the host started a game with supply on but mode not capital_rush —
+        // e.g. a lobby race or stale select — force the mode so supply is live.
+        if (room.supplyMode && room.gameMode !== 'capital_rush') {
+          room.gameMode = 'capital_rush';
+        }
+      }
 
       const res = RoomManager.startGame(roomCode);
       if (res.error) return callback({ error: res.error });
@@ -1560,6 +1808,17 @@ const actType = (actionStr || typeStr || '').toUpperCase();
       if (!sender || !receiver) return callback({ error: 'Player not found' });
       if (sender.eliminated || receiver.eliminated) return callback({ error: 'Eliminated players cannot participate in diplomacy' });
       
+      // TEAM MODE: permanent teams ban ALL pacts involving team members.
+      // - Teammates can never pact with each other (meaningless — they are already bonded).
+      // - In team mode, ANY pact (alliance OR non-aggression) between a team member
+      //   and an outside faction is banned. Solo players may still pact each other.
+      if (GameEngine.isSameTeam(gameState, socket.id, targetPlayerId)) {
+        return callback({ error: 'You cannot form a pact with your own teammate — teams are permanent!' });
+      }
+      if (GameEngine.isTeamMode(gameState) && (GameEngine.isOnTeam(gameState, socket.id) || GameEngine.isOnTeam(gameState, targetPlayerId))) {
+        return callback({ error: 'Team members cannot form pacts (alliances or non-aggression) with other factions. Teams are permanent!' });
+      }
+      
       // Check if pact already exists
       const pactExists = gameState.pacts.some(
         p => (p.playerA === socket.id && p.playerB === targetPlayerId) ||
@@ -1675,6 +1934,22 @@ const actType = (actionStr || typeStr || '').toUpperCase();
 
       const sender = gameState.players.find(p => p.id === prop.sender);
       const receiver = gameState.players.find(p => p.id === socket.id);
+
+      // TEAM MODE guard: if this proposal violates team restrictions it must not
+      // be accepted (the proposal is simply removed).
+      const teamBlocked = (sender && receiver) && (
+        GameEngine.isSameTeam(gameState, sender.id, receiver.id) ||
+        (GameEngine.isTeamMode(gameState) && (GameEngine.isOnTeam(gameState, sender.id) || GameEngine.isOnTeam(gameState, receiver.id)))
+      );
+      if (teamBlocked) {
+        gameState.diplomacyProposals.splice(propIdx, 1);
+        gameState.logs.push({
+          timestamp: new Date().toLocaleTimeString(),
+          message: `🚫 Pact Blocked: ${sender ? sender.name : 'A player'} and ${receiver ? receiver.name : 'another player'} cannot form a pact (team restrictions).`
+        });
+        io.to(roomCode).emit('gameStateUpdate', RoomManager.getSanitizedGameState(gameState));
+        return callback({ success: true, blockedByTeams: true });
+      }
 
       if (accept && sender && receiver) {
         gameState.pacts.push({
@@ -2252,29 +2527,160 @@ Reply in 1 short, punchy paragraph (1 to 3 sentences max). Maintain your charact
     const res = UserDB.updateBattleCard(username, battleCard);
     if (callback) callback(res);
   });
+
+  socket.on('updateBio', ({ username, bio }, callback) => {
+    const res = UserDB.updateBio(username, bio);
+    if (callback) callback(res);
+  });
   socket.on('triggerSecretAchievement', ({ username, achId, roomCode, proof }, callback) => {
-    const room = RoomManager.getRoom(roomCode);
-    const isEligible = room && room.gameState && room.gameState.matchStartedWithMinTwoHumans;
-    // Allow-list: only these client-initiated secret actions may be granted, and
-    // each requires a server-side proof value sent by the client so a raw socket
-    // call can't self-grant arbitrary achievements.
+    const room = roomCode ? RoomManager.getRoom(roomCode) : null;
     const SECRET_ACHIEVEMENT_ACTIONS = {
       secret_anime_scroll: (g, p) => !!p,
-      secret_choose_already: (g, p) => Number(p) >= 6
+      secret_choose_already: (g, p) => Number(p) >= 6,
+      drama_queen: (g, p) => Number(p) >= 15,
+      dj_commander: (g, p) => Number(p) >= 15,
+      cartographer: (g, p) => !!p,
+      worldbuilder: (g, p) => !!p,
+      geopolitical_mastermind: (g, p) => !!p,
+      party_host: (g, p) => !!p
     };
     const validator = SECRET_ACHIEVEMENT_ACTIONS[achId];
-    if (!validator || !isEligible || !validator(room.gameState, proof)) {
+    if (!validator || !validator(room ? room.gameState : null, proof)) {
       if (callback) callback({ error: 'Not eligible' });
       return;
     }
-    const res = UserDB.grantAchievement(username, achId, isEligible);
+    const res = UserDB.grantAchievement(username, achId, true, io, socket.id);
     if (callback) callback(res || { success: false });
   });
 
   
+  // Friend System Socket Events
+  socket.on('userRegisterOnline', ({ username }, callback) => {
+    if (!username) return callback && callback({ error: 'Username required' });
+    registerUserSocket(username, socket.id);
+    notifyFriendsPresence(username, true);
+    if (callback) callback({ success: true });
+  });
+
+  socket.on('userLogout', ({ username }) => {
+    const unregUser = unregisterUserSocket(socket.id) || username;
+    if (unregUser) {
+      notifyFriendsPresence(unregUser, false);
+    }
+  });
+
+  socket.on('getFriends', ({ username }, callback) => {
+    if (!username) return callback && callback({ error: 'Not logged in' });
+    const res = UserDB.getFriendsData(username);
+    if (res.error) return callback && callback(res);
+
+    // Annotate friends with real-time online status
+    res.friends = res.friends.map(f => {
+      const isOnline = onlineUsers.has(f.username.toLowerCase()) && onlineUsers.get(f.username.toLowerCase()).size > 0;
+      return {
+        ...f,
+        isOnline
+      };
+    });
+
+    if (callback) callback(res);
+  });
+
+  socket.on('friendSendRequest', ({ username, toUsername }, callback) => {
+    const res = UserDB.sendFriendRequest(username, toUsername);
+    if (res.error) return callback && callback(res);
+
+    // If accepted immediately or pending, notify recipient's active socket(s)
+    const targetSockets = getSocketIdsForUser(toUsername);
+    targetSockets.forEach(sId => {
+      io.to(sId).emit('friendRequestReceived', {
+        fromUsername: username
+      });
+    });
+
+    if (callback) callback(res);
+  });
+
+  socket.on('friendRespond', ({ username, fromUsername, accept }, callback) => {
+    const res = UserDB.respondFriendRequest(username, fromUsername, accept);
+    if (res.error) return callback && callback(res);
+
+    // Notify the other user that their request was accepted or declined
+    const otherSockets = getSocketIdsForUser(fromUsername);
+    otherSockets.forEach(sId => {
+      io.to(sId).emit('friendRequestResolved', {
+        byUsername: username,
+        accepted: !!accept
+      });
+    });
+
+    if (accept) {
+      notifyFriendsPresence(username, true);
+      notifyFriendsPresence(fromUsername, true);
+    }
+
+    if (callback) callback(res);
+  });
+
+  socket.on('friendRemove', ({ username, friendUsername }, callback) => {
+    const res = UserDB.removeFriend(username, friendUsername);
+    if (res.error) return callback && callback(res);
+
+    const friendSockets = getSocketIdsForUser(friendUsername);
+    friendSockets.forEach(sId => {
+      io.to(sId).emit('friendRemoved', {
+        byUsername: username
+      });
+    });
+
+    if (callback) callback(res);
+  });
+
+  socket.on('sendDirectMessage', ({ username, toUsername, text }, callback) => {
+    const res = UserDB.saveDirectMessage(username, toUsername, text);
+    if (res.error) return callback && callback(res);
+
+    // Push live to target user
+    const targetSockets = getSocketIdsForUser(toUsername);
+    targetSockets.forEach(sId => {
+      io.to(sId).emit('directMessageReceived', res.message);
+    });
+
+    if (callback) callback(res);
+  });
+
+  socket.on('getDirectMessages', ({ username, toUsername }, callback) => {
+    const res = UserDB.getDirectMessages(username, toUsername);
+    if (callback) callback(res);
+  });
+
+  socket.on('inviteFriendToLobby', ({ username, toUsername, roomCode }, callback) => {
+    if (!username || !toUsername || !roomCode) return callback && callback({ error: 'Missing parameters' });
+    const targetSockets = getSocketIdsForUser(toUsername);
+    if (!targetSockets || targetSockets.length === 0) {
+      return callback && callback({ error: `${toUsername} is currently offline.` });
+    }
+
+    targetSockets.forEach(sId => {
+      io.to(sId).emit('lobbyInviteReceived', {
+        sender: username,
+        roomCode: roomCode
+      });
+    });
+
+    if (callback) callback({ success: true, message: `Lobby invite sent to ${toUsername}!` });
+  });
+
   // 14. Disconnect
   socket.on('disconnect', () => {
     console.log(`User disconnected: ${socket.id}`);
+
+    // Online presence cleanup on disconnect
+    const disconnectedUsername = unregisterUserSocket(socket.id);
+    if (disconnectedUsername) {
+      notifyFriendsPresence(disconnectedUsername, false);
+    }
+
     const res = RoomManager.removePlayer(socket.id);
     if (res && res.success) {
       const room = RoomManager.getRoom(res.code);

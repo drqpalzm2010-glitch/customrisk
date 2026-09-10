@@ -96,8 +96,16 @@ const KEY_MAP = {
   'color': 'c',
   'nationId': 'nid',
   'nationName': 'nn',
+  'teamId': 'tid',
+  'teamMode': 'tm',
+  'teams': 'tms',
+  'winningTeamId': 'wtid',
   'eliminated': 'e',
-  'cards': 'ca_hand'
+  'cards': 'ca_hand',
+  'zombieMode': 'zm',
+  'supplyMode': 'sm',
+  'buildingsMode': 'bm',
+  'buildings': 'bg',
 };
 
 function compressState(state) {
@@ -413,6 +421,22 @@ function getUniqueColor(room) {
   return '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
 }
 
+// Checks whether a color overlaps (exact duplicate OR perceptually similar in
+// HSV space) any OTHER commander's color in the room. Used when creating bots
+// so their colors never look alike on the battlefield. Human players are free
+// to pick similar colors later via the manual color change path.
+function isColorOverlapping(room, color, excludeId) {
+  const cand = (color || '').trim().toLowerCase();
+  if (!cand) return false;
+  return room.players.some(p => {
+    if (p.id === excludeId) return false;
+    const pColor = (p.color || '').trim().toLowerCase();
+    if (!pColor) return false;
+    if (pColor === cand) return true; // exact duplicate
+    return GameEngine.colorsAreSimilar(cand, pColor); // perceptually similar
+  });
+}
+
 function createRoom(hostSocketId, playerName, playerColor, mapData) {
   const code = generateRoomCode();
   const isScenarioCapRush = !!(mapData && mapData.isScenario && mapData.scenarioSettings && mapData.scenarioSettings.capitalRush);
@@ -441,18 +465,37 @@ function createRoom(hostSocketId, playerName, playerColor, mapData) {
   return rooms[code];
 }
 
-function joinRoom(socketId, code, playerName, playerColor) {
+function joinRoom(socketId, code, playerName, playerColor, accountId = null) {
   const room = getRoom(code);
   if (!room) return { error: 'Room not found' };
 
   if (room.status !== 'LOBBY') {
-    // Check if player is rejoining by name
-    const normalizedName = (playerName || '').trim().toLowerCase();
-    const existingPlayer = room.players.find(p => 
-      p.disconnected && 
-      p.originalName && 
-      p.originalName.trim().toLowerCase() === normalizedName
-    );
+    // Rejoin matching for in-progress games:
+    //  1. A slot that was played by a LOGGED-IN player (has an accountId) can
+    //     ONLY be reclaimed by that same account — the display name chosen in
+    //     the join dialog is never used for matching those slots.
+    //  2. Only slots that started WITHOUT an account (guests) can be rejoined
+    //     by matching the chosen name.
+    const normalizedAccountId = (accountId || '').trim().toLowerCase();
+    let existingPlayer = null;
+
+    if (normalizedAccountId) {
+      existingPlayer = room.players.find(p =>
+        p.disconnected &&
+        p.accountId &&
+        p.accountId.trim().toLowerCase() === normalizedAccountId
+      );
+    }
+
+    if (!existingPlayer) {
+      const normalizedName = (playerName || '').trim().toLowerCase();
+      existingPlayer = room.players.find(p =>
+        p.disconnected &&
+        !p.accountId && // guest slot: no account protection
+        p.originalName &&
+        p.originalName.trim().toLowerCase() === normalizedName
+      );
+    }
 
     if (existingPlayer) {
       const oldSocketId = existingPlayer.id;
@@ -460,6 +503,7 @@ function joinRoom(socketId, code, playerName, playerColor) {
       existingPlayer.isAI = false;
       existingPlayer.name = existingPlayer.originalName;
       existingPlayer.disconnected = false;
+      if (accountId) existingPlayer.accountId = accountId;
 
       // Update in gameState
       if (room.gameState) {
@@ -469,6 +513,7 @@ function joinRoom(socketId, code, playerName, playerColor) {
           statePlayer.isAI = false;
           statePlayer.name = statePlayer.originalName;
           statePlayer.disconnected = false;
+          if (accountId) statePlayer.accountId = accountId;
         }
 
         // Update territory owners
@@ -593,9 +638,11 @@ function addAIPlayer(roomCode, name, color) {
   if (room.players.length >= 8) return { error: 'Room is full' };
 
   const id = `ai_${Math.random().toString(36).substr(2, 9)}`;
-  const colors = room.players.map(p => p.color.trim().toLowerCase());
+  // Bots must never look alike on the battlefield: reject exact duplicates AND
+  // perceptually similar (HSV) colors against every current commander, then
+  // remap with getUniqueColor which is itself HSV-aware.
   let finalColor = (color || '#a855f7').trim().toLowerCase();
-  if (colors.includes(finalColor)) {
+  if (isColorOverlapping(room, finalColor)) {
     finalColor = getUniqueColor(room);
   }
 
@@ -701,6 +748,15 @@ function startGame(roomCode) {
   const mapData = activeMapData;
   const isScenario = !room.asNormalMap && !!(activeMapData && activeMapData.isScenario && activeMapData.nations && activeMapData.nations.length > 0);
 
+  // Teams only exist in scenario mode when premade alliances are honored.
+  // "Play as Normal Map" or unchecking "Honor Premade Alliances" disables them.
+  const honorAlliances = room.honorPremadeAlliances !== false;
+  if (!isScenario || !honorAlliances) {
+    room.teamMode = false;
+    room.teams = [];
+  }
+  const isTeamActive = isScenario && honorAlliances && !!room.teamMode;
+
   if (isScenario) {
     const disabledSet = new Set(room.disabledNationIds || []);
     const activeNations = (activeMapData.nations || [])
@@ -711,6 +767,10 @@ function startGame(roomCode) {
     const personalities = ['normal', 'strategic', 'kind', 'goofball', 'cynical', 'aggressive'];
 
     activeNations.forEach((n, idx) => {
+      // Find the team this nation belongs to (if any)
+      const nationTeam = (room.teams || []).find(t => Array.isArray(t.nationIds) && t.nationIds.includes(n.id));
+      const teamId = isTeamActive && nationTeam ? nationTeam.id : null;
+
       // Find player matching this nation
       const existingPlayer = room.players.find(p => p.selectedNationId === n.id || p.nationId === n.id || p.name === n.name);
 
@@ -718,6 +778,7 @@ function startGame(roomCode) {
         existingPlayer.originalName = existingPlayer.originalName || existingPlayer.name;
         existingPlayer.nationName = n.name;
         existingPlayer.nationId = n.id;
+        existingPlayer.teamId = teamId;
         existingPlayer.name = `${n.name} (${existingPlayer.originalName})`;
         existingPlayer.color = n.color; // Override color with nation color
         existingPlayer.startingNukes = n.startingNukes || 0;
@@ -726,6 +787,7 @@ function startGame(roomCode) {
       } else if (existingPlayer && existingPlayer.isAI) {
         existingPlayer.nationName = n.name;
         existingPlayer.nationId = n.id;
+        existingPlayer.teamId = teamId;
         existingPlayer.name = n.name;
         existingPlayer.color = n.color;
         existingPlayer.personality = existingPlayer.personality || personalities[idx % personalities.length];
@@ -740,6 +802,7 @@ function startGame(roomCode) {
           name: n.name,
           nationName: n.name,
           nationId: n.id,
+          teamId,
           color: n.color,
           isHost: false,
           isAI: true,
@@ -775,9 +838,22 @@ function startGame(roomCode) {
   GameEngine.initializeGame(room, activeMapData, room.gameMode || 'conquest');
   if (room.gameState) {
     room.gameState.fogOfWar = !!room.fogOfWar;
-    // Achievements only unlock in games that started with >= 2 human players!
-    const humanCount = room.players.filter(p => !p.isAI).length;
-    room.gameState.matchStartedWithMinTwoHumans = humanCount >= 2;
+    // Team metadata (spread into players happens inside initializeGame)
+    room.gameState.teamMode = isTeamActive;
+    room.gameState.teams = isTeamActive ? (room.teams || []).map(t => ({ ...t })) : [];
+
+    // Rewards eligibility (XP/ELO/achievements):
+    //  - Non-team modes: original rule (>=2 human players).
+    //  - Team mode: >=2 distinct factions each containing at least one human.
+    //    Two humans on the same team do NOT count — they must be on different sides.
+    if (isTeamActive) {
+      const humanFactions = new Set();
+      room.players.filter(p => !p.isAI).forEach(p => humanFactions.add(p.teamId || `solo_${p.id}`));
+      room.gameState.matchStartedWithMinTwoHumans = humanFactions.size >= 2;
+    } else {
+      const humanCount = room.players.filter(p => !p.isAI).length;
+      room.gameState.matchStartedWithMinTwoHumans = humanCount >= 2;
+    }
   }
 
   return { success: true, room };
@@ -1466,17 +1542,23 @@ const actType = (actionStr || typeStr || '').toUpperCase();
     const pType = (prop.type || prop.pactType || 'non_aggression').toLowerCase();
     const typeStr = pType.includes('all') ? 'alliance' : 'non_aggression';
     
-    gameState.diplomacyProposals = gameState.diplomacyProposals || [];
-    const existing = gameState.diplomacyProposals.find(p => p.proposerId === activePlayer.id && p.targetId === targetId);
-    if (!existing && targetId && targetId !== activePlayer.id) {
-      gameState.diplomacyProposals.push({
-        id: Math.random().toString(36).substr(2, 9),
-        proposerId: activePlayer.id,
-        targetId,
-        type: typeStr
-      });
-      const tgtPlayer = gameState.players.find(p => p.id === targetId);
-      GameEngine.addLog(gameState, `📜 ${activePlayer.name} proposed a ${typeStr === 'non_aggression' ? 'Non-Aggression Pact' : 'Full Alliance'} to ${tgtPlayer ? tgtPlayer.name : targetId}.`);
+    // TEAM MODE: block proposals involving any team member (all pact types banned)
+    const teamInvalid = !targetId || targetId === activePlayer.id ||
+      GameEngine.isSameTeam(gameState, activePlayer.id, targetId) ||
+      (GameEngine.isTeamMode(gameState) && (GameEngine.isOnTeam(gameState, activePlayer.id) || GameEngine.isOnTeam(gameState, targetId)));
+    if (!teamInvalid) {
+      gameState.diplomacyProposals = gameState.diplomacyProposals || [];
+      const existing = gameState.diplomacyProposals.find(p => p.proposerId === activePlayer.id && p.targetId === targetId);
+      if (!existing) {
+        gameState.diplomacyProposals.push({
+          id: Math.random().toString(36).substr(2, 9),
+          proposerId: activePlayer.id,
+          targetId,
+          type: typeStr
+        });
+        const tgtPlayer = gameState.players.find(p => p.id === targetId);
+        GameEngine.addLog(gameState, `📜 ${activePlayer.name} proposed a ${typeStr === 'non_aggression' ? 'Non-Aggression Pact' : 'Full Alliance'} to ${tgtPlayer ? tgtPlayer.name : targetId}.`);
+      }
     }
   }
 
@@ -1491,17 +1573,25 @@ const actType = (actionStr || typeStr || '').toUpperCase();
       (p.proposerId === proposerId || p.sender === proposerId)
     );
     if (propIndex !== -1) {
-      const prop = gameState.diplomacyProposals.splice(propIndex, 1)[0];
-      gameState.pacts = gameState.pacts || [];
-      
+      const prop = gameState.diplomacyProposals[propIndex];
       const pId = prop.proposerId || prop.sender;
-      const pactExists = gameState.pacts.some(p => (p.playerA === pId && p.playerB === activePlayer.id) || (p.playerB === pId && p.playerA === activePlayer.id));
-      if (!pactExists) {
-        gameState.pacts.push({ playerA: pId, playerB: activePlayer.id, type: prop.type });
-        const propPlayer = gameState.players.find(p => p.id === proposerId);
-        GameEngine.grantPactFormationAchievements(room, prop.type, pId, activePlayer.id);
-        GameEngine.grantSilverTongue(room, pId, activePlayer.id);
-        GameEngine.addLog(gameState, `🤝 ${activePlayer.name} accepted the ${prop.type === 'non_aggression' ? 'Non-Aggression Pact' : 'Full Alliance'} proposal from ${propPlayer ? propPlayer.name : proposerId}!`);
+      // TEAM MODE: never accept a pact that violates team restrictions
+      const teamInvalid = GameEngine.isSameTeam(gameState, activePlayer.id, pId) ||
+        (GameEngine.isTeamMode(gameState) && (GameEngine.isOnTeam(gameState, activePlayer.id) || GameEngine.isOnTeam(gameState, pId)));
+      if (!teamInvalid) {
+        gameState.diplomacyProposals.splice(propIndex, 1);
+        gameState.pacts = gameState.pacts || [];
+        
+        const pactExists = gameState.pacts.some(p => (p.playerA === pId && p.playerB === activePlayer.id) || (p.playerB === pId && p.playerA === activePlayer.id));
+        if (!pactExists) {
+          gameState.pacts.push({ playerA: pId, playerB: activePlayer.id, type: prop.type });
+          const propPlayer = gameState.players.find(p => p.id === proposerId);
+          GameEngine.grantPactFormationAchievements(room, prop.type, pId, activePlayer.id);
+          GameEngine.grantSilverTongue(room, pId, activePlayer.id);
+          GameEngine.addLog(gameState, `🤝 ${activePlayer.name} accepted the ${prop.type === 'non_aggression' ? 'Non-Aggression Pact' : 'Full Alliance'} proposal from ${propPlayer ? propPlayer.name : proposerId}!`);
+        }
+      } else {
+        gameState.diplomacyProposals.splice(propIndex, 1);
       }
     }
   }
@@ -1814,6 +1904,7 @@ module.exports = {
   handleCombatDialogue,
   changeAIPersonality,
   getUniqueColor,
+  isColorOverlapping,
   getSanitizedGameState,
   sendAIChatMessage,
   sweepFinishedRooms,

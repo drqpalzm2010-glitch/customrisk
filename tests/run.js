@@ -1,4 +1,4 @@
-const assert = require('assert').strict;
+  const assert = require('assert').strict;
 // Route the user database to a temp file so tests don't mutate the real DB
 process.env.USER_DB_PATH = require('path').join(__dirname, 'test_users_data.json');
 const fs = require('fs');
@@ -1421,7 +1421,7 @@ function testAchievementIntegrity() {
   const fs = require('fs');
   const q = String.fromCharCode(39);
   const defined = Object.keys(UserDB.ACHIEVEMENTS);
-  const files = ['server/game-engine.js', 'server/room-manager.js', 'server/ai-engine.js', 'server.js', 'public/js/main-controller.js', 'public/js/game-client.js'];
+  const files = ['server/game-engine.js', 'server/room-manager.js', 'server/ai-engine.js', 'server.js', 'public/js/main-controller.js', 'public/js/game-client.js', 'public/js/editor.js'];
   let all = '';
   files.forEach(f => { if (fs.existsSync(f)) all += fs.readFileSync(f, 'utf8'); });
   const used = new Set();
@@ -1579,6 +1579,304 @@ function testGetUniqueColorSimilarity() {
   console.log('✅ Get Unique Color Similarity Tests Passed.');
 }
 
+function testBotColorOverlapProtection() {
+  console.log('🔄 Testing Bot Color Overlap Protection (HSV, bot creation only)...');
+
+  // Host owns a red-ish color; a bot requested with a *similar* red must be remapped
+  const room = RoomManager.createRoom('p1', 'Host', '#e11d48', mockMap);
+  assert.equal(GameEngine.colorsAreSimilar('#ff3366', '#e11d48'), true,
+    'Sanity check: #ff3366 should be considered similar to #e11d48');
+
+  const res1 = RoomManager.addAIPlayer(room.code, 'BotA', '#ff3366');
+  assert.ok(res1.success, 'Adding bot with similar color should succeed');
+  const botA = res1.room.players.find(p => p.name === 'BotA');
+  assert.ok(botA, 'BotA should exist');
+  assert.equal(GameEngine.colorsAreSimilar(botA.color, '#e11d48'), false,
+    `BotA color ${botA.color} should NOT be similar to host #e11d48`);
+
+  // Exact duplicate request must also be remapped to a distinct color
+  const res2 = RoomManager.addAIPlayer(room.code, 'BotB', botA.color);
+  assert.ok(res2.success, 'Adding bot with duplicate color should succeed');
+  const botB = res2.room.players.find(p => p.name === 'BotB');
+  assert.ok(botB, 'BotB should exist');
+  assert.equal(GameEngine.colorsAreSimilar(botB.color, botA.color), false,
+    `BotB color ${botB.color} should NOT overlap BotA ${botA.color}`);
+
+  // A clearly distinct color is preserved for bots
+  const res3 = RoomManager.addAIPlayer(room.code, 'BotC', '#3366ff');
+  const botC = res3.room.players.find(p => p.name === 'BotC');
+  assert.equal(botC.color, '#3366ff', 'Distinct bot color should be kept as requested');
+
+  // Humans joining are NOT subject to HSV overlap — only exact duplicates remap,
+  // so a player can later end up with a color similar to another commander
+  const joinRes = RoomManager.joinRoom('p2', room.code, 'Human', '#ff3366');
+  assert.ok(joinRes.success, 'Human joining should succeed');
+  const human = joinRes.room.players.find(p => p.id === 'p2');
+  assert.equal(human.color, '#ff3366',
+    'Human should be allowed to keep a color similar to another commander (HSV not enforced)');
+
+  console.log('✅ Bot Color Overlap Protection Tests Passed.');
+}
+
+function testTeamMode() {
+  console.log('🔄 Testing Team Mode (teams, wins, blocks, eligibility)...');
+
+  // Build a team scenario room: 4 players, two teams of two (1 human + 1 AI each)
+  const teamMap = {
+    mapName: 'Team Map',
+    width: 800,
+    height: 600,
+    territories: [
+      { id: 'a1', name: 'Alpha One' },
+      { id: 'a2', name: 'Alpha Two' },
+      { id: 'b1', name: 'Beta One' },
+      { id: 'b2', name: 'Beta Two' }
+    ],
+    connections: [['a1', 'a2'], ['b1', 'b2'], ['a2', 'b1']],
+    continents: []
+  };
+  const teamRoom = {
+    code: 'TEAM',
+    players: [
+      { id: 'ta', name: 'Alpha One', color: '#ff0000', isAI: false, teamId: 'team_red' },
+      { id: 'tb', name: 'Alpha Two', color: '#ff3333', isAI: true, teamId: 'team_red' },
+      { id: 'tc', name: 'Beta One', color: '#0000ff', isAI: false, teamId: 'team_blue' },
+      { id: 'td', name: 'Beta Two', color: '#3366ff', isAI: true, teamId: 'team_blue' }
+    ],
+    mapData: teamMap,
+    gameState: null
+  };
+  GameEngine.initializeGame(teamRoom, teamMap);
+  const gs = teamRoom.gameState;
+  gs.teamMode = true;
+  gs.teams = [
+    { id: 'team_red', name: 'Red Pact', color: '#ff0000', nationIds: [] },
+    { id: 'team_blue', name: 'Blue Pact', color: '#0000ff', nationIds: [] }
+  ];
+
+  // 1. Team helpers
+  assert.equal(GameEngine.isTeamMode(gs), true, 'Team mode should be active');
+  assert.equal(GameEngine.isSameTeam(gs, 'ta', 'tb'), true, 'ta & tb are teammates');
+  assert.equal(GameEngine.isSameTeam(gs, 'ta', 'tc'), false, 'ta & tc are enemies');
+  assert.equal(GameEngine.isSameTeam(gs, 'ta', 'ta'), false, 'Same player is not "same team" for guards');
+  assert.equal(GameEngine.isOnTeam(gs, 'ta'), true, 'ta is on a team');
+  assert.equal(GameEngine.getFactionKey(gs.players.find(p => p.id === 'ta')), 'team_red', 'Faction key should be team id');
+
+  // 2. Rewards eligibility: >=2 factions each containing a human
+  assert.equal(GameEngine.countHumanFactions(gs), 2, 'Two factions with humans should be eligible');
+  // If both humans end up on the same team -> only 1 faction -> no rewards
+  const savedTcTeam = gs.players[2].teamId;
+  gs.players[2].teamId = 'team_red';
+  assert.equal(GameEngine.countHumanFactions(gs), 1, 'Two humans on one team = only 1 eligible faction');
+  gs.players[2].teamId = savedTcTeam;
+
+  // 3. Teammate attack block
+  gs.territories['a1'] = { ownerId: 'ta', armies: 10 };
+  gs.territories['a2'] = { ownerId: 'tb', armies: 5 };
+  gs.turnIndex = 0; // ta's turn
+  gs.turnStage = 'ATTACK';
+  const atkRes = GameEngine.executeAttack(teamRoom, 'ta', 'a1', 'a2', 1);
+  assert.ok(atkRes.error, 'Attacking a teammate must be blocked');
+  assert.match(atkRes.error, /teammate/i, 'Attack error should mention teammate');
+
+  // 4. Conquest team win: Red faction owns all territories
+  gs.territories['a1'] = { ownerId: 'ta', armies: 10 };
+  gs.territories['a2'] = { ownerId: 'tb', armies: 10 };
+  gs.territories['b1'] = { ownerId: 'ta', armies: 10 };
+  gs.territories['b2'] = { ownerId: 'tc', armies: 10 };
+  GameEngine.checkWinCondition(teamRoom);
+  assert.notEqual(gs.turnStage, 'GAME_OVER', 'Blue still holds b2 — no win yet');
+
+  gs.territories['b2'] = { ownerId: 'tb', armies: 10 }; // full red control
+  GameEngine.checkWinCondition(teamRoom);
+  assert.equal(gs.turnStage, 'GAME_OVER', 'Red faction owning all territories should win');
+  assert.equal(gs.winningTeamId, 'team_red', 'Winning team should be team_red');
+  assert.ok(['ta', 'tb'].includes(gs.winner), 'Winner should be a Red Pact representative');
+  assert.ok((gs.logs || []).some(l => /Team Red Pact/.test(l.message || l.text || String(l))),
+    'Victory log should announce the team win');
+
+  // 5. Capital rush team win
+  const capRoom = {
+    code: 'CAPT',
+    players: [
+      { id: 'ca', name: 'Cap Alpha', color: '#ff0000', isAI: false, teamId: 'team_red' },
+      { id: 'cb', name: 'Cap Beta', color: '#0000ff', isAI: false, teamId: 'team_blue' }
+    ],
+    mapData: teamMap,
+    gameState: null
+  };
+  GameEngine.initializeGame(capRoom, teamMap, 'capital_rush');
+  const cgs = capRoom.gameState;
+  cgs.teamMode = true;
+  cgs.teams = [
+    { id: 'team_red', name: 'Red Pact', color: '#ff0000', nationIds: [] },
+    { id: 'team_blue', name: 'Blue Pact', color: '#0000ff', nationIds: [] }
+  ];
+  cgs.capitals = { ca: 'a1', cb: 'b1' };
+  cgs.territories['a1'] = { ownerId: 'ca', armies: 5 };
+  cgs.territories['a2'] = { ownerId: 'cb', armies: 5 };
+  cgs.territories['b1'] = { ownerId: 'cb', armies: 5 };
+  cgs.territories['b2'] = { ownerId: 'cb', armies: 5 };
+  GameEngine.checkWinCondition(capRoom);
+  assert.notEqual(cgs.turnStage, 'GAME_OVER', 'Capitals split between factions — no win');
+
+  // Red captures Blue's capital b1 (cb still alive but holds no capitals)
+  cgs.territories['b1'] = { ownerId: 'ca', armies: 8 };
+  GameEngine.checkWinCondition(capRoom);
+  assert.equal(cgs.turnStage, 'GAME_OVER', 'Red holding ALL capitals in team mode should win');
+  assert.equal(cgs.winningTeamId, 'team_red', 'Capital rush team winner should be team_red');
+
+  // 6. Diplomacy: team members can never pact (alliances AND non-aggression banned)
+  const aiEvalTeam = AIEngine.evaluateDiplomacyProposal(teamRoom, 'tb', { sender: 'tc', type: 'alliance' });
+  assert.equal(aiEvalTeam, false, 'Team AI must reject alliance from enemy team');
+  const aiEvalTeamNA = AIEngine.evaluateDiplomacyProposal(teamRoom, 'tb', { sender: 'tc', type: 'non_aggression' });
+  assert.equal(aiEvalTeamNA, false, 'Team AI must reject even non-aggression pacts (banned in team mode)');
+  const aiEvalTeammate = AIEngine.evaluateDiplomacyProposal(teamRoom, 'tb', { sender: 'ta', type: 'alliance' });
+  assert.equal(aiEvalTeammate, false, 'Team AI must reject pact with own teammate');
+
+  // Solo-solo alliances still allowed (no teams in play)
+  const soloRoom = {
+    code: 'SOLO',
+    players: [
+      { id: 's1', name: 'Solo One', color: '#ff0000', isAI: true, trustScores: { s2: 100 } },
+      { id: 's2', name: 'Solo Two', color: '#0000ff', isAI: true }
+    ],
+    mapData: teamMap,
+    gameState: null
+  };
+  GameEngine.initializeGame(soloRoom, teamMap);
+  const soloEval = AIEngine.evaluateDiplomacyProposal(soloRoom, 's1', { sender: 's2', type: 'alliance' });
+  assert.notEqual(soloEval, false, 'Solo AI vs solo AI alliance must still be evaluable (not team-blocked)');
+
+  console.log('✅ Team Mode Tests Passed.');
+}
+// Test account-locked rejoin: logged-in slots can only be reclaimed by the
+// same account; guests can still rejoin by name (covered in testRejoin).
+function testAccountRejoin() {
+  console.log('🔄 Testing Account-Locked Rejoin...');
+
+  const room = RoomManager.createRoom('acctHost', 'HostPlayer', '#ff0000', mockMap);
+  const joinRes = RoomManager.joinRoom('acctClient', room.code, 'AccPlayer', '#00ff00', 'rejoinacc');
+  assert.ok(joinRes.success, 'Logged-in player should join');
+  // Simulate server.js attaching the account to the slot after joinRoom
+  room.players.find(p => p.id === 'acctClient').accountId = 'rejoinacc';
+
+  const startRes = RoomManager.startGame(room.code);
+  assert.ok(startRes.success, 'Game should start');
+
+  // Disconnect
+  RoomManager.removePlayer('acctClient');
+  const disconnected = room.players.find(p => p.originalName === 'AccPlayer');
+  assert.ok(disconnected && disconnected.disconnected, 'Player should be disconnected');
+  assert.equal(disconnected.accountId, 'rejoinacc', 'Disconnected slot keeps its accountId');
+
+  // A DIFFERENT account using the same display name must be rejected
+  const hijackRes = RoomManager.joinRoom('hijacker', room.code, 'AccPlayer', '#00ff00', 'otheracc');
+  assert.ok(hijackRes.error, 'A different account must not reclaim a logged-in slot by name');
+
+  // A GUEST using the same display name must also be rejected
+  const guestRes = RoomManager.joinRoom('guestTry', room.code, 'AccPlayer', '#00ff00');
+  assert.ok(guestRes.error, 'A guest must not reclaim a logged-in slot by name');
+
+  // The SAME account rejoins with a totally different display name -> success
+  const rejoinRes = RoomManager.joinRoom('acctClient2', room.code, 'SomeOtherName', '#00ff00', 'RejoinAcc');
+  assert.ok(rejoinRes.success && rejoinRes.rejoined, 'Same account must rejoin regardless of chosen name');
+  const rejoined = room.players.find(p => p.id === 'acctClient2');
+  assert.equal(rejoined.name, 'AccPlayer', 'Slot keeps its original name');
+  assert.equal(rejoined.disconnected, false, 'disconnected flag should be reset');
+  assert.equal(rejoined.isAI, false, 'isAI should be reset to false');
+
+  const statePlayer = room.gameState.players.find(p => p.originalName === 'AccPlayer');
+  assert.ok(statePlayer, 'gameState player should exist');
+  assert.equal(statePlayer.id, 'acctClient2', 'gameState player id should be updated');
+  assert.equal(statePlayer.disconnected, false, 'gameState disconnected flag should be reset');
+  assert.equal((statePlayer.accountId || '').toLowerCase(), 'rejoinacc', 'gameState accountId should be synced');
+
+  console.log('✅ Account-Locked Rejoin Tests Passed.');
+}
+
+// Test runner-up ("2nd place") selection and account-only Elo participation
+function testRunnerUpAndElo() {
+  console.log('🔄 Testing Runner-Up Selection & Account-Only Elo...');
+  const dbPath = process.env.USER_DB_PATH;
+  try { if (fs.existsSync(dbPath)) fs.unlinkSync(dbPath); } catch (e) {}
+  UserDB.register('EloWinner', 'secret123');
+  UserDB.register('EloRunnerUp', 'secret123');
+  UserDB.register('EloThird', 'secret123');
+
+  // 1. Conquest: survived longest wins runner-up (real-time timestamps)
+  const gs = {
+    gameMode: 'conquest',
+    players: [
+      { id: 'w', eliminated: false },
+      { id: 'a', eliminated: true, eliminatedAt: 1000, territoriesAtTurnStart: 5 },
+      { id: 'b', eliminated: true, eliminatedAt: 2000, territoriesAtTurnStart: 9 },
+      { id: 'g', eliminated: true, eliminatedAt: 500 }
+    ],
+    territories: {}
+  };
+  assert.equal(GameEngine.determineRunnerUpFaction(gs, 'w'), 'b', 'Latest elimination timestamp is the runner-up');
+
+  // Same-millisecond tie-break: more territories at start of that turn wins
+  gs.players[1].eliminatedAt = 2000;
+  assert.equal(GameEngine.determineRunnerUpFaction(gs, 'w'), 'b', 'Exact-same-ms tie broken by turn-start territory count');
+  gs.players[1].territoriesAtTurnStart = 3;
+  gs.players[2].territoriesAtTurnStart = 1;
+  assert.equal(GameEngine.determineRunnerUpFaction(gs, 'w'), 'a', 'Tie-break flips when turn-start counts differ');
+
+  // 2. A still-alive non-winner outranks any eliminated player
+  gs.players[1].eliminated = false;
+  assert.equal(GameEngine.determineRunnerUpFaction(gs, 'w'), 'a', 'Living non-winner survives longest by definition');
+
+  // 3. Capital Rush: most territories wins regardless of elimination time
+  const capGs = {
+    gameMode: 'capital_rush',
+    players: [
+      { id: 'w', eliminated: false },
+      { id: 'x', eliminated: true, eliminatedAt: 99999, territoriesAtTurnStart: 1 },
+      { id: 'y', eliminated: true, eliminatedAt: 1, territoriesAtTurnStart: 50 }
+    ],
+    territories: {
+      t1: { ownerId: 'x', armies: 1 }, t2: { ownerId: 'x', armies: 1 },
+      t3: { ownerId: 'y', armies: 1 }, t4: { ownerId: 'y', armies: 1 }, t5: { ownerId: 'y', armies: 1 }
+    }
+  };
+  assert.equal(GameEngine.determineRunnerUpFaction(capGs, 'w'), 'y', 'Capital Rush runner-up = most territories, not survival time');
+
+  // 4. Elo: only logged-in accounts participate; guests are excluded entirely
+  const usersBefore = UserDB.loadUsers();
+  const before = {};
+  ['elowinner', 'elorunnerup', 'elothird'].forEach(k => {
+    before[k] = usersBefore[k].elo !== undefined ? usersBefore[k].elo : 1200;
+  });
+
+  // Winner account + guests only -> fewer than 2 valid accounts -> nobody changes
+  UserDB.calculateAndApplyMultiplayerElo([
+    { accountId: 'elowinner', rank: 1 },
+    { rank: 2 },
+    { rank: 3 }
+  ]);
+  const afterGuests = UserDB.loadUsers()['elowinner'].elo;
+  assert.equal(afterGuests !== undefined ? afterGuests : 1200, before['elowinner'],
+    'Guests must not trigger Elo changes (needs 2 accounts)');
+
+  // Two accounts + a guest: only the accounts trade rating
+  UserDB.calculateAndApplyMultiplayerElo([
+    { accountId: 'elowinner', rank: 1 },
+    { accountId: 'elothird', rank: 3 },
+    { rank: 2 }
+  ]);
+  const usersAfter = UserDB.loadUsers();
+  const pickElo = (u) => (u && u.elo !== undefined) ? u.elo : 1200;
+  assert.ok(pickElo(usersAfter['elowinner']) > before['elowinner'], 'Rank-1 account gains Elo');
+  assert.ok(pickElo(usersAfter['elothird']) < before['elothird'], 'Rank-3 account loses Elo');
+  assert.equal(pickElo(usersAfter['elorunnerup']), before['elorunnerup'], 'Account not in the match keeps its Elo');
+
+  try { if (fs.existsSync(dbPath)) fs.unlinkSync(dbPath); } catch (e) {}
+  console.log('✅ Runner-Up Selection & Elo Tests Passed.');
+}
+
+
 try {
   testInitialization();
   testSetupPhase();
@@ -1589,6 +1887,7 @@ try {
   testPostAttackMoveAndForcedTrade();
   testDefendDiceDecision();
   testRejoin();
+  testAccountRejoin();
   testCoalitionDiplomacy();
   testEndTurnWithFiveCards();
   testCardDrawOnConquest();
@@ -1612,10 +1911,13 @@ try {
   testFortifySetupNoInfiniteLoop();
   testColorUtilities();
   testGetUniqueColorSimilarity();
+  testBotColorOverlapProtection();
+  testTeamMode();
   testAchievementIntegrity();
   testUserDBAccounts();
   testAchievementGrantingAndStats();
   testNewAchievementTriggers();
+  testRunnerUpAndElo();
   console.log('\n🎉 ALL AUTOMATED VERIFICATION TESTS PASSED SUCCESSFULLY! 🎉');
   process.exit(0);
 } catch (err) {

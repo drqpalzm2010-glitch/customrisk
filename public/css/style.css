@@ -998,6 +998,41 @@ body.dark-mode {
   right: 0;
 }
 
+/* Battle Card Toggle Button */
+.btn-toggle-battlecard {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--border-glass);
+  border-radius: 6px;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  transition: var(--transition-smooth);
+}
+.btn-toggle-battlecard:hover {
+  background: rgba(0, 240, 255, 0.15);
+  border-color: var(--primary);
+  color: var(--primary);
+  box-shadow: var(--shadow-neon);
+}
+.btn-toggle-battlecard.collapsed i {
+  transform: rotate(180deg);
+}
+.btn-toggle-battlecard i {
+  transition: transform 0.3s ease;
+}
+
+/* Collapsed state: hide battle card and instructions */
+.viewport-header.battlecard-collapsed #game-active-turn-card-container,
+.viewport-header.battlecard-collapsed #game-instruction-banner {
+  display: none;
+}
+
 /* Tab selectors inside left sidebar */
 .sidebar-tabs {
   display: flex;
@@ -3207,63 +3242,7 @@ svg.editor-canvas {
   fill: #94a3b8 !important;
   font-size: 11px !important;
 }
-/* ==================== BATTLE CARDS & ARTWORK ROSTER ==================== */
-.battlecards-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
-  gap: 12px;
-  max-height: 230px;
-  overflow-y: auto;
-  padding: 4px 6px;
-}
-
-.player-battlecard {
-  border-radius: 12px;
-  padding: 12px 14px;
-  position: relative;
-  overflow: hidden;
-  cursor: pointer;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  transition: transform 0.22s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.22s ease, border-color 0.2s ease;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  min-height: 96px;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55);
-}
-
-.player-battlecard:hover {
-  transform: translateY(-3px) scale(1.025);
-  box-shadow: 0 8px 24px rgba(0, 229, 255, 0.35);
-  border-color: rgba(0, 229, 255, 0.7);
-}
-
-/* Battle Card Art Layer / Watermark Background */
-.bcard-art-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  pointer-events: none;
-  background-repeat: no-repeat;
-  background-position: right center;
-  background-size: contain;
-  opacity: 0.22;
-  z-index: 1;
-}
-
-.bcard-content-layer {
-  position: relative;
-  z-index: 2;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  height: 100%;
-  gap: 8px;
-}
-
-/* ==================== BATTLE CARDS & ARTWORK ROSTER ==================== */
+/* ==================== ENHANCED HIGH-DEFINITION BATTLE CARDS & ARTWORK ==================== */
 .battlecards-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -3279,19 +3258,19 @@ svg.editor-canvas {
   position: relative;
   overflow: hidden;
   cursor: pointer;
-  border: 1.5px solid rgba(255, 255, 255, 0.15);
+  border: 1.5px solid rgba(255, 255, 255, 0.2);
   transition: transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.25s ease, border-color 0.2s ease;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   min-height: 105px;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.6), inset 0 1px 1px rgba(255, 255, 255, 0.12);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.7), inset 0 1px 2px rgba(255, 255, 255, 0.15);
 }
 
 .player-battlecard:hover {
   transform: translateY(-4px) scale(1.025);
-  box-shadow: 0 10px 28px rgba(0, 229, 255, 0.35);
-  border-color: rgba(0, 229, 255, 0.8);
+  box-shadow: 0 10px 30px rgba(0, 229, 255, 0.4);
+  border-color: rgba(0, 229, 255, 0.85);
 }
 
 /* Holographic Sheen Animation on Hover */
@@ -3302,10 +3281,10 @@ svg.editor-canvas {
   left: -50%;
   width: 200%;
   height: 200%;
-  background: linear-gradient(60deg, transparent 40%, rgba(255, 255, 255, 0.08) 50%, transparent 60%);
+  background: linear-gradient(60deg, transparent 35%, rgba(255, 255, 255, 0.15) 50%, transparent 65%);
   transform: rotate(25deg) translateY(-100%);
   opacity: 0;
-  transition: transform 0.6s ease, opacity 0.3s ease;
+  transition: transform 0.65s ease, opacity 0.3s ease;
   pointer-events: none;
   z-index: 3;
 }
@@ -3323,15 +3302,15 @@ svg.editor-canvas {
   bottom: 0;
   pointer-events: none;
   background-repeat: no-repeat;
-  background-position: right 6px center;
-  background-size: 85px 85px;
-  opacity: 0.28;
+  background-position: right 8px center;
+  background-size: 90px 90px;
+  opacity: 0.35;
   z-index: 1;
   transition: opacity 0.2s ease, transform 0.3s ease;
 }
 .player-battlecard:hover .bcard-art-overlay {
-  opacity: 0.42;
-  transform: scale(1.06);
+  opacity: 0.55;
+  transform: scale(1.08);
 }
 
 .bcard-content-layer {
@@ -3344,85 +3323,88 @@ svg.editor-canvas {
   gap: 8px;
 }
 
-/* Mini Level Progress Bar on Battle Card */
+/* Mini XP bar removed */
 .bcard-xp-mini {
   display: none;
 }
 
 /* ==================== 1. DEFAULT THEME ==================== */
-/* Option 1: Clean Obsidian Slate (Basic) */
+/* Option 1: Clean Obsidian Slate */
 .bcard-theme-default-1 {
-  background: linear-gradient(135deg, #1e293b 0%, #0b1120 100%);
+  background: radial-gradient(circle at 100% 0%, rgba(56, 189, 248, 0.15), transparent 70%),
+              linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
   border-color: #475569;
 }
 
 /* Option 2: Crimson Warlord (Crossed Battleaxes Art) */
 .bcard-theme-default-2 {
-  background: radial-gradient(circle at 90% 20%, rgba(225, 29, 72, 0.38) 0%, transparent 60%),
+  background: radial-gradient(circle at 90% 20%, rgba(225, 29, 72, 0.45) 0%, transparent 60%),
               linear-gradient(135deg, #2b0c14 0%, #0f0307 100%);
   border-color: #be123c;
-  box-shadow: inset 0 0 14px rgba(225, 29, 72, 0.25);
+  box-shadow: inset 0 0 16px rgba(225, 29, 72, 0.3);
 }
 .bcard-theme-default-2 .bcard-art-overlay {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' fill='%23fb7185' opacity='0.75'%3E%3Cpath d='M85,15 L70,30 L60,20 L75,5 Z M15,85 L30,70 L20,60 L5,75 Z M45,45 L55,55 L25,85 L15,75 Z M55,45 L45,55 L75,85 L85,75 Z M65,35 L80,20 C85,25 90,40 75,55 L60,40 Z'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' fill='%23fb7185' opacity='0.8'%3E%3Cpath d='M85,15 L70,30 L60,20 L75,5 Z M15,85 L30,70 L20,60 L5,75 Z M45,45 L55,55 L25,85 L15,75 Z M55,45 L45,55 L75,85 L85,75 Z M65,35 L80,20 C85,25 90,40 75,55 L60,40 Z'/%3E%3C/svg%3E");
 }
 
 /* Option 3: Iron Aegis (Riveted Industrial Steel Plating) */
 .bcard-theme-default-3 {
-  background: repeating-linear-gradient(45deg, rgba(255,255,255,0.02) 0px, rgba(255,255,255,0.02) 2px, transparent 2px, transparent 6px),
+  background: repeating-linear-gradient(45deg, rgba(255,255,255,0.03) 0px, rgba(255,255,255,0.03) 2px, transparent 2px, transparent 6px),
               linear-gradient(135deg, #334155 0%, #0f172a 100%);
   border-color: #94a3b8;
   border-left: 6px solid #38bdf8;
 }
 .bcard-theme-default-3 .bcard-art-overlay {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' fill='%2394a3b8' opacity='0.5'%3E%3Cpath d='M50,10 L85,25 L85,60 C85,80 50,95 50,95 C50,95 15,80 15,60 L15,25 Z M50,22 L25,33 L25,58 C25,72 50,84 50,84 C50,84 75,72 75,58 L75,33 Z'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' fill='%2394a3b8' opacity='0.6'%3E%3Cpath d='M50,10 L85,25 L85,60 C85,80 50,95 50,95 C50,95 15,80 15,60 L15,25 Z M50,22 L25,33 L25,58 C25,72 50,84 50,84 C50,84 75,72 75,58 L75,33 Z'/%3E%3C/svg%3E");
 }
 
 /* ==================== 2. SCI-FI THEME ==================== */
-/* Option 1: Clean Cyber Terminal (Basic) */
+/* Option 1: Clean Cyber Terminal */
 .bcard-theme-scifi-1 {
-  background: linear-gradient(135deg, #05192d 0%, #010811 100%);
+  background: radial-gradient(circle at 100% 50%, rgba(0, 240, 255, 0.2), transparent 70%),
+              linear-gradient(135deg, #05192d 0%, #010811 100%);
   border-color: #00f0ff;
-  box-shadow: inset 0 0 12px rgba(0, 240, 255, 0.25);
+  box-shadow: inset 0 0 14px rgba(0, 240, 255, 0.3);
 }
 
 /* Option 2: Isometric Holo-Grid (Cyberpunk HUD Mesh) */
 .bcard-theme-scifi-2 {
-  background: linear-gradient(rgba(0, 240, 255, 0.08) 1px, transparent 1px),
-              linear-gradient(90deg, rgba(0, 240, 255, 0.08) 1px, transparent 1px),
+  background: linear-gradient(rgba(0, 240, 255, 0.09) 1px, transparent 1px),
+              linear-gradient(90deg, rgba(0, 240, 255, 0.09) 1px, transparent 1px),
               linear-gradient(135deg, #091d34 0%, #020712 100%);
   background-size: 16px 16px, 16px 16px, 100% 100%;
   border-color: #00f0ff;
-  box-shadow: 0 0 18px rgba(0, 240, 255, 0.3), inset 0 0 14px rgba(0, 240, 255, 0.2);
+  box-shadow: 0 0 18px rgba(0, 240, 255, 0.35), inset 0 0 14px rgba(0, 240, 255, 0.25);
 }
 .bcard-theme-scifi-2 .bcard-art-overlay {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' stroke='%2300f0ff' stroke-width='1.5' fill='none'%3E%3Ccircle cx='50' cy='50' r='38' stroke-dasharray='4 3'/%3E%3Ccircle cx='50' cy='50' r='24'/%3E%3Cpath d='M50,5 L50,95 M5,50 L95,50 M25,25 L75,75 M25,75 L75,25'/%3E%3Cpolygon points='50,20 60,35 40,35' fill='%2300f0ff'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' stroke='%2300f0ff' stroke-width='1.8' fill='none'%3E%3Ccircle cx='50' cy='50' r='38' stroke-dasharray='4 3'/%3E%3Ccircle cx='50' cy='50' r='24'/%3E%3Cpath d='M50,5 L50,95 M5,50 L95,50 M25,25 L75,75 M25,75 L75,25'/%3E%3Cpolygon points='50,20 60,35 40,35' fill='%2300f0ff'/%3E%3C/svg%3E");
 }
 
 /* Option 3: Quantum Singularity (Deep Space Nebula & Planetary Ring) */
 .bcard-theme-scifi-3 {
-  background: radial-gradient(circle at 85% 30%, rgba(192, 132, 252, 0.45) 0%, transparent 55%),
+  background: radial-gradient(circle at 85% 30%, rgba(192, 132, 252, 0.5) 0%, transparent 55%),
               linear-gradient(135deg, #24083b 0%, #07010d 100%);
   border-color: #c084fc;
-  box-shadow: 0 0 18px rgba(192, 132, 252, 0.3);
+  box-shadow: 0 0 18px rgba(192, 132, 252, 0.35);
 }
 .bcard-theme-scifi-3 .bcard-art-overlay {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' fill='none'%3E%3Cellipse cx='50' cy='50' rx='42' ry='16' stroke='%23c084fc' stroke-width='2' transform='rotate(-25 50 50)'/%3E%3Ccircle cx='50' cy='50' r='20' fill='%23581c87' stroke='%23e9d5ff' stroke-width='1.5'/%3E%3Ccircle cx='38' cy='42' r='4' fill='%23c084fc'/%3E%3C/svg%3E");
 }
 
 /* ==================== 3. ANIME THEME ==================== */
-/* Option 1: Pastel Sparkle (Basic) */
+/* Option 1: Pastel Sparkle */
 .bcard-theme-anime-1 {
-  background: linear-gradient(135deg, #4c1d35 0%, #200715 100%);
+  background: radial-gradient(circle at 100% 50%, rgba(255, 119, 169, 0.25), transparent 70%),
+              linear-gradient(135deg, #4c1d35 0%, #200715 100%);
   border-color: #ff77a9;
 }
 
 /* Option 2: Sakura Blossom (Falling Cherry Petals & Magic Stars) */
 .bcard-theme-anime-2 {
-  background: radial-gradient(circle at 85% 20%, rgba(255, 119, 169, 0.4) 0%, transparent 60%),
+  background: radial-gradient(circle at 85% 20%, rgba(255, 119, 169, 0.45) 0%, transparent 60%),
               linear-gradient(135deg, #581635 0%, #1e0512 100%);
   border-color: #ff77a9;
-  box-shadow: 0 0 16px rgba(255, 119, 169, 0.35);
+  box-shadow: 0 0 16px rgba(255, 119, 169, 0.4);
 }
 .bcard-theme-anime-2 .bcard-art-overlay {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' fill='%23ffb6c1'%3E%3Cpath d='M75,20 C70,12 85,5 90,15 C95,25 80,28 75,20 Z M60,45 C55,38 68,32 72,40 C76,48 64,52 60,45 Z M82,65 C78,58 92,54 95,62 C98,70 86,72 82,65 Z M45,15 L50,25 L60,28 L52,35 L55,45 L45,38 L35,45 L38,35 L30,28 L40,25 Z' fill='%23fde047'/%3E%3C/svg%3E");
@@ -3430,7 +3412,7 @@ svg.editor-canvas {
 
 /* Option 3: Mecha Unit-01 (Futuristic Anime Warning Chevron Art) */
 .bcard-theme-anime-3 {
-  background: repeating-linear-gradient(135deg, rgba(250, 204, 21, 0.12) 0px, rgba(250, 204, 21, 0.12) 8px, transparent 8px, transparent 16px),
+  background: repeating-linear-gradient(135deg, rgba(250, 204, 21, 0.15) 0px, rgba(250, 204, 21, 0.15) 8px, transparent 8px, transparent 16px),
               linear-gradient(135deg, #2e1065 0%, #0f0426 100%);
   border-color: #a855f7;
   border-right: 6px solid #facc15;
@@ -3440,18 +3422,19 @@ svg.editor-canvas {
 }
 
 /* ==================== 4. NAPOLEONIC THEME ==================== */
-/* Option 1: Vintage Cartographer (Basic) */
+/* Option 1: Vintage Cartographer */
 .bcard-theme-napoleonic-1 {
-  background: linear-gradient(135deg, #3d2f1f 0%, #171109 100%);
+  background: radial-gradient(circle at 100% 50%, rgba(194, 157, 109, 0.25), transparent 70%),
+              linear-gradient(135deg, #3d2f1f 0%, #171109 100%);
   border-color: #c29d6d;
 }
 
 /* Option 2: Imperial Eagle Crest (Gold Baroque Leaf & Eagle) */
 .bcard-theme-napoleonic-2 {
-  background: radial-gradient(circle at 90% 30%, rgba(194, 157, 109, 0.4) 0%, transparent 65%),
+  background: radial-gradient(circle at 90% 30%, rgba(194, 157, 109, 0.45) 0%, transparent 65%),
               linear-gradient(135deg, #382718 0%, #150d06 100%);
   border-color: #c29d6d;
-  box-shadow: inset 0 0 15px rgba(194, 157, 109, 0.3);
+  box-shadow: inset 0 0 16px rgba(194, 157, 109, 0.35);
 }
 .bcard-theme-napoleonic-2 .bcard-art-overlay {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' fill='%23c29d6d'%3E%3Cpath d='M50,15 L56,28 L70,30 L60,40 L62,54 L50,47 L38,54 L40,40 L30,30 L44,28 Z M20,35 C35,32 45,45 50,60 C55,45 65,32 80,35 C70,55 60,75 50,85 C40,75 30,55 20,35 Z M50,5 L54,12 L46,12 Z'/%3E%3C/svg%3E");
@@ -3468,30 +3451,31 @@ svg.editor-canvas {
 }
 
 /* ==================== 5. MODERN THEME ==================== */
-/* Option 1: Ballistic Carbon Plate (Basic) */
+/* Option 1: Ballistic Carbon Plate */
 .bcard-theme-modern-1 {
-  background: linear-gradient(135deg, #18181b 0%, #09090b 100%);
+  background: radial-gradient(circle at 100% 50%, rgba(56, 189, 248, 0.2), transparent 70%),
+              linear-gradient(135deg, #18181b 0%, #09090b 100%);
   border-color: #38bdf8;
 }
 
 /* Option 2: Digital Desert Storm (Hexagonal Tactical Camo & Reticle) */
 .bcard-theme-modern-2 {
-  background: radial-gradient(circle at 85% 30%, rgba(245, 158, 11, 0.3) 0%, transparent 60%),
+  background: radial-gradient(circle at 85% 30%, rgba(245, 158, 11, 0.35) 0%, transparent 60%),
               linear-gradient(135deg, #2d1e12 0%, #130b05 100%);
   border-color: #f59e0b;
 }
 .bcard-theme-modern-2 .bcard-art-overlay {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' stroke='%23f59e0b' stroke-width='1.5' fill='none'%3E%3Ccircle cx='55' cy='50' r='32'/%3E%3Ccircle cx='55' cy='50' r='18' stroke-dasharray='3 3'/%3E%3Cline x1='55' y1='10' x2='55' y2='90'/%3E%3Cline x1='15' y1='50' x2='95' y2='50'/%3E%3Crect x='49' y='44' width='12' height='12' fill='%23f59e0b' fill-opacity='0.25'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' stroke='%23f59e0b' stroke-width='1.8' fill='none'%3E%3Ccircle cx='55' cy='50' r='32'/%3E%3Ccircle cx='55' cy='50' r='18' stroke-dasharray='3 3'/%3E%3Cline x1='55' y1='10' x2='55' y2='90'/%3E%3Cline x1='15' y1='50' x2='95' y2='50'/%3E%3Crect x='49' y='44' width='12' height='12' fill='%23f59e0b' fill-opacity='0.25'/%3E%3C/svg%3E");
 }
 
 /* Option 3: Night-Ops Topo (Radar Elevation Contours) */
 .bcard-theme-modern-3 {
   background: linear-gradient(135deg, #06231d 0%, #020f0c 100%);
   border-color: #10b981;
-  box-shadow: 0 0 18px rgba(16, 185, 129, 0.25);
+  box-shadow: 0 0 18px rgba(16, 185, 129, 0.3);
 }
 .bcard-theme-modern-3 .bcard-art-overlay {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' stroke='%2310b981' stroke-width='1.2' fill='none' opacity='0.7'%3E%3Cellipse cx='50' cy='50' rx='44' ry='36'/%3E%3Cellipse cx='48' cy='48' rx='34' ry='26'/%3E%3Cellipse cx='45' cy='45' rx='24' ry='16'/%3E%3Ccircle cx='42' cy='42' r='6' fill='%2310b981' fill-opacity='0.3'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' stroke='%2310b981' stroke-width='1.4' fill='none' opacity='0.75'%3E%3Cellipse cx='50' cy='50' rx='44' ry='36'/%3E%3Cellipse cx='48' cy='48' rx='34' ry='26'/%3E%3Cellipse cx='45' cy='45' rx='24' ry='16'/%3E%3Ccircle cx='42' cy='42' r='6' fill='%2310b981' fill-opacity='0.35'/%3E%3C/svg%3E");
 }
 
 /* ==================== RANK INSIGNIAS ==================== */
@@ -3546,27 +3530,138 @@ svg.editor-canvas {
   background: rgba(0, 229, 255, 0.1) !important;
 }
 
-/* ==================== ENLARGED PROMINENT ACHIEVEMENT SLOTS ==================== */
+/* ==================== PROMINENT ACHIEVEMENT SLOTS WITH RARITY GLOWS ==================== */
 .bcard-achievement-slot {
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
-  background: rgba(0, 0, 0, 0.45);
-  border: 1px solid rgba(255, 255, 255, 0.25);
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1.5px solid rgba(255, 255, 255, 0.25);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: 12px;
   color: #facc15;
-  box-shadow: inset 0 0 4px rgba(0,0,0,0.6);
-  transition: transform 0.2s ease, border-color 0.2s ease;
+  box-shadow: inset 0 0 5px rgba(0,0,0,0.8), 0 2px 6px rgba(0,0,0,0.5);
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .bcard-achievement-slot:hover {
-  transform: scale(1.15);
-  border-color: #fde047;
-  box-shadow: 0 0 8px rgba(250, 204, 21, 0.4);
+  transform: scale(1.2);
 }
+
+/* Commander Title Badge on Battle Card */
+.bcard-equipped-title {
+  font-size: 10px;
+  font-weight: 800;
+  color: #facc15;
+  background: rgba(0, 0, 0, 0.65);
+  border: 1px solid rgba(250, 204, 21, 0.45);
+  padding: 2px 7px;
+  border-radius: 6px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  box-shadow: 0 0 8px rgba(250, 204, 21, 0.25);
+  display: inline-block;
+  vertical-align: middle;
+}
+
+/* ==================== HIGH-DEFINITION MULTI-LAYER BATTLE CARD ARTWORKS ==================== */
+/* Option 2: Default Theme - Dragonscale Vanguard */
+.bcard-theme-default-2 {
+  background: radial-gradient(circle at 85% 20%, rgba(225, 29, 72, 0.55) 0%, transparent 60%),
+              radial-gradient(circle at 10% 80%, rgba(56, 189, 248, 0.2) 0%, transparent 50%),
+              linear-gradient(135deg, #2b0c14 0%, #0f0307 100%) !important;
+  border-color: #be123c !important;
+  box-shadow: inset 0 0 20px rgba(225, 29, 72, 0.35), 0 8px 25px rgba(0,0,0,0.8) !important;
+}
+
+/* Option 3: Default Theme - Obsidian Fortress */
+.bcard-theme-default-3 {
+  background: repeating-linear-gradient(45deg, rgba(255,255,255,0.03) 0px, rgba(255,255,255,0.03) 3px, transparent 3px, transparent 8px),
+              linear-gradient(135deg, #334155 0%, #090e17 100%) !important;
+  border-color: #38bdf8 !important;
+  border-left: 6px solid #38bdf8 !important;
+  box-shadow: inset 0 0 15px rgba(56, 189, 248, 0.25), 0 8px 25px rgba(0,0,0,0.8) !important;
+}
+
+/* Option 2: Sci-Fi Theme - Cyber Hologrid Vector Matrix */
+.bcard-theme-scifi-2 {
+  background: linear-gradient(rgba(0, 240, 255, 0.12) 1px, transparent 1px),
+              linear-gradient(90deg, rgba(0, 240, 255, 0.12) 1px, transparent 1px),
+              radial-gradient(circle at 80% 30%, rgba(0, 240, 255, 0.35) 0%, transparent 60%),
+              linear-gradient(135deg, #091d34 0%, #020712 100%) !important;
+  background-size: 14px 14px, 14px 14px, 100% 100%, 100% 100% !important;
+  border-color: #00f0ff !important;
+  box-shadow: 0 0 22px rgba(0, 240, 255, 0.45), inset 0 0 16px rgba(0, 240, 255, 0.3) !important;
+}
+
+/* Option 3: Sci-Fi Theme - Quantum Singularity */
+.bcard-theme-scifi-3 {
+  background: radial-gradient(circle at 85% 30%, rgba(192, 132, 252, 0.6) 0%, transparent 55%),
+              radial-gradient(circle at 15% 70%, rgba(0, 240, 255, 0.25) 0%, transparent 50%),
+              linear-gradient(135deg, #24083b 0%, #07010d 100%) !important;
+  border-color: #c084fc !important;
+  box-shadow: 0 0 22px rgba(192, 132, 252, 0.45), inset 0 0 15px rgba(192, 132, 252, 0.25) !important;
+}
+
+/* Option 2: Anime Theme - Sakura Blossom Celestial Star */
+.bcard-theme-anime-2 {
+  background: radial-gradient(circle at 85% 20%, rgba(255, 119, 169, 0.6) 0%, transparent 60%),
+              radial-gradient(circle at 15% 80%, rgba(250, 204, 21, 0.3) 0%, transparent 50%),
+              linear-gradient(135deg, #581635 0%, #1e0512 100%) !important;
+  border-color: #ff77a9 !important;
+  box-shadow: 0 0 20px rgba(255, 119, 169, 0.45), inset 0 0 14px rgba(255, 119, 169, 0.3) !important;
+}
+
+/* Option 3: Anime Theme - Mecha Warning Eva Plating */
+.bcard-theme-anime-3 {
+  background: repeating-linear-gradient(135deg, rgba(250, 204, 21, 0.18) 0px, rgba(250, 204, 21, 0.18) 10px, transparent 10px, transparent 20px),
+              linear-gradient(135deg, #2e1065 0%, #0f0426 100%) !important;
+  border-color: #a855f7 !important;
+  border-right: 6px solid #facc15 !important;
+  box-shadow: 0 0 20px rgba(168, 85, 247, 0.4) !important;
+}
+
+/* Option 2: Napoleonic Theme - Imperial Baroque Gold */
+.bcard-theme-napoleonic-2 {
+  background: radial-gradient(circle at 90% 30%, rgba(194, 157, 109, 0.6) 0%, transparent 65%),
+              radial-gradient(circle at 10% 70%, rgba(160, 64, 48, 0.35) 0%, transparent 55%),
+              linear-gradient(135deg, #382718 0%, #150d06 100%) !important;
+  border-color: #c29d6d !important;
+  box-shadow: inset 0 0 20px rgba(194, 157, 109, 0.4), 0 8px 25px rgba(0,0,0,0.8) !important;
+}
+
+/* Option 3: Napoleonic Theme - Royal Velvet Tricolore */
+.bcard-theme-napoleonic-3 {
+  background: linear-gradient(135deg, #1e293b 0%, #1e1b4b 45%, #450a0a 100%) !important;
+  border-color: #eab308 !important;
+  border-left: 6px solid #3b82f6 !important;
+  box-shadow: inset 0 0 16px rgba(234, 179, 8, 0.3), 0 8px 25px rgba(0,0,0,0.8) !important;
+}
+
+/* Option 2: Modern Theme - Digital Desert Camo Radar */
+.bcard-theme-modern-2 {
+  background: radial-gradient(circle at 85% 30%, rgba(245, 158, 11, 0.45) 0%, transparent 60%),
+              repeating-linear-gradient(60deg, rgba(245, 158, 11, 0.04) 0px, rgba(245, 158, 11, 0.04) 4px, transparent 4px, transparent 10px),
+              linear-gradient(135deg, #2d1e12 0%, #130b05 100%) !important;
+  border-color: #f59e0b !important;
+  box-shadow: 0 0 18px rgba(245, 158, 11, 0.35) !important;
+}
+
+/* Option 3: Modern Theme - Night-Ops Topographic Sonar */
+.bcard-theme-modern-3 {
+  background: radial-gradient(circle at 80% 30%, rgba(16, 185, 129, 0.45) 0%, transparent 60%),
+              linear-gradient(135deg, #06231d 0%, #020f0c 100%) !important;
+  border-color: #10b981 !important;
+  box-shadow: 0 0 22px rgba(16, 185, 129, 0.4), inset 0 0 14px rgba(16, 185, 129, 0.25) !important;
+}
+
+/* Achievement slot rarity glows */
+.bcard-achievement-slot.ach-glow-common { border-color: #64748b; box-shadow: 0 0 6px rgba(100, 116, 139, 0.5); }
+.bcard-achievement-slot.ach-glow-rare   { border-color: #38bdf8; box-shadow: 0 0 8px rgba(56, 189, 248, 0.6); }
+.bcard-achievement-slot.ach-glow-epic   { border-color: #c084fc; box-shadow: 0 0 10px rgba(192, 132, 252, 0.7); }
+.bcard-achievement-slot.ach-glow-legendary { border-color: #facc15; box-shadow: 0 0 14px rgba(250, 204, 21, 0.9); }
 /* ==================== ACHIEVEMENT RARITY GLOWS & GALLERY ==================== */
 .achievements-gallery-grid {
   display: grid;

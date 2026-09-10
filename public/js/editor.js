@@ -155,6 +155,12 @@
       const btnDetectLinks = document.getElementById('btn-editor-detect-links');
       if (btnDetectLinks) {
         btnDetectLinks.addEventListener('click', () => this.detectAndConnectMissingLinks());
+
+      // Ghost Territory Cleanup
+      const btnGhost = document.getElementById('btn-editor-fix-ghosts');
+      if (btnGhost) {
+        btnGhost.addEventListener('click', () => this.detectAndRemoveGhostTerritories());
+      }
       }
       window.addEventListener('keydown', (e) => {
         if (e.ctrlKey && e.key.toLowerCase() === 'z') {
@@ -581,6 +587,11 @@
 
       if (type === 'add-territory') {
         this.mapData.territories = this.mapData.territories.filter(t => t.id !== data.id);
+        // Purge the removed territory from every continent's territoryIds so it can't become a
+        // ghost reference that permanently blocks that continent's reinforcement bonus.
+        (this.mapData.continents || []).forEach(c => {
+          c.territoryIds = (c.territoryIds || []).filter(tid => tid !== data.id);
+        });
       } else if (type === 'add-cosmetic') {
         this.mapData.cosmeticPolygons = (this.mapData.cosmeticPolygons || []).filter(p => p.id !== data.id);
       } else if (type === 'delete-territory') {
@@ -604,6 +615,14 @@
           const key1 = Array.isArray(c) ? `${c[0]}_${c[1]}` : `${c.from}_${c.to}`;
           const key2 = Array.isArray(c) ? `${c[1]}_${c[0]}` : `${c.to}_${c.from}`;
           return !addedSet.has(key1) && !addedSet.has(key2);
+        });
+      } else if (type === 'remove-ghost-ids') {
+        // Restore ghost references removed by the editor's ghost cleanup tool
+        (data.entries || []).forEach(entry => {
+          const cont = this.mapData.continents.find(c => c.id === entry.continentId);
+          if (cont && !(cont.territoryIds || []).includes(entry.territoryId)) {
+            cont.territoryIds.push(entry.territoryId);
+          }
         });
       }
 
@@ -1292,6 +1311,14 @@
       document.body.appendChild(downloadAnchor);
       downloadAnchor.click();
       downloadAnchor.remove();
+
+      if (window.SocketClient && window.SocketClient.triggerSecretAchievement) {
+        if (exportData.isScenario) {
+          window.SocketClient.triggerSecretAchievement('geopolitical_mastermind', true, () => {});
+        } else {
+          window.SocketClient.triggerSecretAchievement('worldbuilder', true, () => {});
+        }
+      }
     }
 
     // Shared serializer for normal export and autosave downloads
@@ -2075,6 +2102,76 @@
         }
       }
     }
+    detectAndRemoveGhostTerritories() {
+      if (!this.mapData || !this.mapData.continents || this.mapData.continents.length === 0) {
+        if (window.showToast) window.showToast('<i class="fa-solid fa-circle-check"></i> No ghost territories found. All continent lists are clean.', 'success');
+        else alert('No ghost territories found. All continent lists are clean.');
+        return;
+      }
+
+      const validIds = new Set((this.mapData.territories || []).map(t => t.id));
+      const ghostEntries = []; // { continentId, territoryId, continentName }
+
+      (this.mapData.continents || []).forEach(c => {
+        (c.territoryIds || []).forEach(tid => {
+          if (!validIds.has(tid)) {
+            ghostEntries.push({ continentId: c.id, territoryId: tid, continentName: c.name });
+          }
+        });
+      });
+
+      if (ghostEntries.length === 0) {
+        if (window.showToast) window.showToast('<i class="fa-solid fa-circle-check"></i> No ghost territories found. All continent lists are clean.', 'success');
+        else alert('No ghost territories found. All continent lists are clean.');
+        return;
+      }
+
+      const ghostContinentCount = new Set(ghostEntries.map(g => g.continentId)).size;
+      const previewList = ghostEntries.slice(0, 8).map(g => `• ${g.continentName} → ${g.territoryId}`).join('\n');
+      const moreText = ghostEntries.length > 8 ? `\n...and ${ghostEntries.length - 8} more` : '';
+
+      const confirmMsg = `Found ${ghostEntries.length} ghost territory reference(s) across ${ghostContinentCount} continent(s). A ghost is a territory ID still listed in a continent even though the territory no longer exists — this permanently blocks that continent's reinforcement bonus.\n\n${previewList}${moreText}\n\nRemove all ghost references?`;
+
+      const executeRemoval = () => {
+        // Record BEFORE mutating so the cleanup can itself be undone with Ctrl+Z
+        this.pushToUndo('remove-ghost-ids', {
+          entries: ghostEntries.map(g => ({ continentId: g.continentId, territoryId: g.territoryId }))
+        });
+
+        ghostEntries.forEach(g => {
+          const cont = this.mapData.continents.find(c => c.id === g.continentId);
+          if (cont) {
+            cont.territoryIds = (cont.territoryIds || []).filter(tid => tid !== g.territoryId);
+          }
+        });
+
+        this.redraw();
+        this.renderContinentsList();
+
+        if (window.showToast) {
+          window.showToast(`<i class="fa-solid fa-ghost"></i> Removed ${ghostEntries.length} ghost territory reference(s)! (Ctrl+Z to Undo)`, 'success');
+        } else {
+          alert(`Removed ${ghostEntries.length} ghost territory reference(s)!`);
+        }
+      };
+
+      if (typeof window.showConfirm === 'function') {
+        return window.showConfirm(confirmMsg, {
+          title: `Remove ${ghostEntries.length} Ghost Territories?`,
+          okLabel: `Remove All (${ghostEntries.length})`,
+          cancelLabel: 'Cancel',
+          danger: true
+        }).then(ok => {
+          if (ok) executeRemoval();
+        });
+      } else {
+        if (confirm(confirmMsg)) {
+          executeRemoval();
+        }
+        return true;
+      }
+    }
+
     deleteCosmetic(cosmeticId) {
       const cp = this.mapData.cosmeticPolygons.find(p => p.id === cosmeticId);
       if (!cp) return;
