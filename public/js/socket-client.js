@@ -412,9 +412,50 @@ changePlayerColor: (targetPlayerId, newColor, callback) => {
       socket.emit('breakPact', { roomCode: window.SocketClient.roomCode, opponentId }, callback);
     },
 
-    sendMessage: (text) => {
+    sendMessage: (text, chatType) => {
       if (!window.SocketClient.roomCode) return;
-      socket.emit('sendMessage', { roomCode: window.SocketClient.roomCode, text });
+      socket.emit('sendMessage', { roomCode: window.SocketClient.roomCode, text, chatType: chatType || 'global' });
+    },
+
+    // Group Chat Methods
+    createGroupChat: (groupName, callback) => {
+      socket.emit('createGroupChat', { groupName }, callback);
+    },
+
+    joinGroupChat: (groupId, callback) => {
+      socket.emit('joinGroupChat', { groupId, username: window.SocketClient.currentAccount?.username }, callback);
+    },
+
+    leaveGroupChat: (groupId, callback) => {
+      socket.emit('leaveGroupChat', { groupId, username: window.SocketClient.currentAccount?.username }, callback);
+    },
+
+    sendGroupMessage: (groupId, text, callback) => {
+      socket.emit('sendGroupMessage', { groupId, username: window.SocketClient.currentAccount?.username, text }, callback);
+    },
+
+    getGroupChats: (callback) => {
+      socket.emit('getGroupChats', { username: window.SocketClient.currentAccount?.username }, callback);
+    },
+
+    addMemberToGroup: (groupId, newMember, callback) => {
+      socket.emit('addMemberToGroup', { groupId, username: window.SocketClient.currentAccount?.username, newMember }, callback);
+    },
+
+    onGroupChatMessage: (callback) => {
+      socket.on('groupChatMessage', callback);
+    },
+
+    onGroupChatJoined: (callback) => {
+      socket.on('groupChatJoined', callback);
+    },
+
+    onGroupChatMemberLeft: (callback) => {
+      socket.on('groupChatMemberLeft', callback);
+    },
+
+    onGroupChatMemberJoined: (callback) => {
+      socket.on('groupChatMemberJoined', callback);
     },
 
     // Account System

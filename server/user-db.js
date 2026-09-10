@@ -1,15 +1,22 @@
 const fs = require('fs');
 const path = require('path');
+const DB = require('./db');
 
 // DB location can be overridden (used by the automated test suite to isolate
 // writes). Defaults to the legacy public location for backward compatibility.
 const DB_FILE = process.env.USER_DB_PATH || path.join(__dirname, '../public/users_data.json');
 
+// Initialize JSON file if it doesn't exist
 if (!fs.existsSync(DB_FILE)) {
   fs.writeFileSync(DB_FILE, JSON.stringify({}, null, 2), 'utf8');
 }
 
-function loadUsers() {
+// Load users from appropriate storage
+async function loadUsers() {
+  if (DB.isMongoEnabled()) {
+    return await DB.loadUsersFromMongo();
+  }
+  // JSON file fallback
   try {
     if (!fs.existsSync(DB_FILE)) return {};
     const raw = fs.readFileSync(DB_FILE, 'utf8');
@@ -20,12 +27,35 @@ function loadUsers() {
   }
 }
 
-function saveUsers(users) {
+// Save users to appropriate storage
+async function saveUsers(users) {
+  if (DB.isMongoEnabled()) {
+    // Save all users to MongoDB (batch)
+    const keys = Object.keys(users);
+    for (const key of keys) {
+      await DB.saveUserToMongo(key, users[key]);
+    }
+    return;
+  }
+  // JSON file fallback
   try {
     fs.writeFileSync(DB_FILE, JSON.stringify(users, null, 2), 'utf8');
   } catch (err) {
     console.error('[UserDB] Error saving users_data.json:', err);
   }
+}
+
+// Save a single user (optimized for MongoDB)
+async function saveSingleUser(username, userData) {
+  const key = (username || '').toLowerCase();
+  if (DB.isMongoEnabled()) {
+    await DB.saveUserToMongo(key, userData);
+    return;
+  }
+  // JSON file fallback - load, update, save
+  const users = await await loadUsers();
+  users[key] = userData;
+  await await saveUsers(users);
 }
 
 function createEmptyStats() {
@@ -189,12 +219,12 @@ function addXP(account, amount) {
   }
 }
 
-function grantAchievement(username, achId, isEligibleMultiplayer = true, io = null, socketId = null) {
+async function grantAchievement(username, achId, isEligibleMultiplayer = true, io = null, socketId = null) {
   if (!username || !isEligibleMultiplayer) return null;
   const def = ACHIEVEMENTS[achId];
   if (!def) return null;
 
-  const users = loadUsers();
+  const users = await loadUsers();
   const lowerKey = username.trim().toLowerCase();
   const account = users[lowerKey];
   if (!account) return null;
@@ -205,7 +235,7 @@ function grantAchievement(username, achId, isEligibleMultiplayer = true, io = nu
   account.unlockedAchievements.push(achId);
   const xpReward = RARITY_XP[def.rarity] || 50;
   addXP(account, xpReward);
-  saveUsers(users);
+  await saveUsers(users);
 
   // If socket is available, emit unlock notification event to the client immediately
   if (io && socketId) {
@@ -221,8 +251,8 @@ function grantAchievement(username, achId, isEligibleMultiplayer = true, io = nu
   return { achievement: def, xpReward, newLevel: account.level, currentXP: account.currentXP };
 }
 
-function register(username, password) {
-  const users = loadUsers();
+async function register(username, password) {
+  const users = await loadUsers();
   const cleanName = (username || '').trim();
   const lowerKey = cleanName.toLowerCase();
 
@@ -261,23 +291,23 @@ function register(username, password) {
   };
 
   users[lowerKey] = newAccount;
-  saveUsers(users);
+  await saveUsers(users);
   return { success: true, user: getSafeUser(newAccount) };
 }
 
-function updateBio(username, bioText) {
-  const users = loadUsers();
+async function updateBio(username, bioText) {
+  const users = await loadUsers();
   const lowerKey = (username || '').trim().toLowerCase();
   const account = users[lowerKey];
   if (!account) return { error: 'Account not found' };
 
   account.bio = String(bioText || '').trim().substring(0, 200);
-  saveUsers(users);
+  await saveUsers(users);
   return { success: true, bio: account.bio };
 }
 
-function login(username, password) {
-  const users = loadUsers();
+async function login(username, password) {
+  const users = await loadUsers();
   const lowerKey = (username || '').trim().toLowerCase();
   const account = users[lowerKey];
 
@@ -285,15 +315,17 @@ function login(username, password) {
     return { error: 'Invalid username or password.' };
   }
 
+  // Normalize username to lowercase
+  account.username = lowerKey;
   account.token = `tok_${Math.random().toString(36).substr(2, 12)}_${Date.now()}`;
   account.lastLogin = new Date().toISOString();
-  saveUsers(users);
+  await saveUsers(users);
 
   return { success: true, user: getSafeUser(account) };
 }
 
-function autoLogin(username, token) {
-  const users = loadUsers();
+async function autoLogin(username, token) {
+  const users = await loadUsers();
   const lowerKey = (username || '').trim().toLowerCase();
   const account = users[lowerKey];
 
@@ -301,13 +333,15 @@ function autoLogin(username, token) {
     return { error: 'Session expired. Please log in again.' };
   }
 
+  // Normalize username to lowercase
+  account.username = lowerKey;
   account.lastLogin = new Date().toISOString();
-  saveUsers(users);
+  await saveUsers(users);
   return { success: true, user: getSafeUser(account) };
 }
 
-function updateBattleCard(username, cardData = {}) {
-  const users = loadUsers();
+async function updateBattleCard(username, cardData = {}) {
+  const users = await loadUsers();
   const lowerKey = (username || '').trim().toLowerCase();
   const account = users[lowerKey];
   if (!account) return { error: 'Account not found' };
@@ -323,7 +357,7 @@ function updateBattleCard(username, cardData = {}) {
       .slice(0, 3);
   }
 
-  saveUsers(users);
+  await saveUsers(users);
   return { success: true, battleCard: account.battleCard };
 }
 
@@ -350,17 +384,17 @@ function getSafeUser(account) {
   return safe;
 }
 
-function getAccountStats(username) {
-  const users = loadUsers();
+async function getAccountStats(username) {
+  const users = await loadUsers();
   const lowerKey = (username || '').trim().toLowerCase();
   const account = users[lowerKey];
   if (!account) return { error: 'Account not found.' };
   return { success: true, user: getSafeUser(account), allAchievements: ACHIEVEMENTS };
 }
 
-function recordMatchFinished(username, stats = {}, isWinner = false, isRunnerUp = false, gameMode = 'conquest', isMultiplayer = false, matchTotals = {}) {
+async function recordMatchFinished(username, stats = {}, isWinner = false, isRunnerUp = false, gameMode = 'conquest', isMultiplayer = false, matchTotals = {}) {
   if (!username) return;
-  const users = loadUsers();
+  const users = await loadUsers();
   const lowerKey = username.trim().toLowerCase();
   const account = users[lowerKey];
   if (!account) return;
@@ -404,15 +438,15 @@ function recordMatchFinished(username, stats = {}, isWinner = false, isRunnerUp 
   const xpGained = killXP + conquestXP + deployXP + placementXP;
   addXP(account, xpGained);
 
-  saveUsers(users);
+  await saveUsers(users);
 }
 
 // Zero-Sum Multiplayer Elo Calculator
-function calculateAndApplyMultiplayerElo(humanParticipants = []) {
+async function calculateAndApplyMultiplayerElo(humanParticipants = []) {
   // humanParticipants: Array of { accountId, rank } where rank 1 = Winner, 2 = Runner-up, etc.
   if (!Array.isArray(humanParticipants) || humanParticipants.length < 2) return;
 
-  const users = loadUsers();
+  const users = await loadUsers();
   const K = 32;
   const N = humanParticipants.length;
   const validPlayers = [];
@@ -460,7 +494,7 @@ function calculateAndApplyMultiplayerElo(humanParticipants = []) {
     sumDelta += delta;
   });
 
-  saveUsers(users);
+  await saveUsers(users);
 }
 
 function ensureFriendFields(account) {
@@ -472,8 +506,8 @@ function ensureFriendFields(account) {
   if (!account.lastReadDmTime) account.lastReadDmTime = {};
 }
 
-function sendFriendRequest(fromUsername, toUsername) {
-  const users = loadUsers();
+async function sendFriendRequest(fromUsername, toUsername) {
+  const users = await loadUsers();
   const fromKey = (fromUsername || '').trim().toLowerCase();
   const toKey = (toUsername || '').trim().toLowerCase();
 
@@ -504,7 +538,7 @@ function sendFriendRequest(fromUsername, toUsername) {
   fromUser.friendRequests.sent.push(toKey);
   toUser.friendRequests.received.push(fromKey);
 
-  saveUsers(users);
+  await saveUsers(users);
   return {
     success: true,
     message: `Friend request sent to ${toUser.username}!`,
@@ -512,8 +546,8 @@ function sendFriendRequest(fromUsername, toUsername) {
   };
 }
 
-function respondFriendRequest(username, fromUsername, accept) {
-  const users = loadUsers();
+async function respondFriendRequest(username, fromUsername, accept) {
+  const users = await loadUsers();
   const userKey = (username || '').trim().toLowerCase();
   const fromKey = (fromUsername || '').trim().toLowerCase();
 
@@ -536,7 +570,7 @@ function respondFriendRequest(username, fromUsername, accept) {
     if (!otherUser.friends.includes(userKey)) otherUser.friends.push(userKey);
   }
 
-  saveUsers(users);
+  await saveUsers(users);
   return {
     success: true,
     accepted: !!accept,
@@ -545,8 +579,8 @@ function respondFriendRequest(username, fromUsername, accept) {
   };
 }
 
-function removeFriend(usernameA, usernameB) {
-  const users = loadUsers();
+async function removeFriend(usernameA, usernameB) {
+  const users = await loadUsers();
   const keyA = (usernameA || '').trim().toLowerCase();
   const keyB = (usernameB || '').trim().toLowerCase();
 
@@ -567,12 +601,12 @@ function removeFriend(usernameA, usernameB) {
     userB.friendRequests.received = userB.friendRequests.received.filter(k => k !== keyA);
   }
 
-  saveUsers(users);
+  await saveUsers(users);
   return { success: true };
 }
 
-function getFriendsData(username) {
-  const users = loadUsers();
+async function getFriendsData(username) {
+  const users = await loadUsers();
   const userKey = (username || '').trim().toLowerCase();
   const user = users[userKey];
   if (!user) return { error: 'Account not found.' };
@@ -633,8 +667,8 @@ function getFriendsData(username) {
   };
 }
 
-function saveDirectMessage(fromUsername, toUsername, text) {
-  const users = loadUsers();
+async function saveDirectMessage(fromUsername, toUsername, text) {
+  const users = await loadUsers();
   const fromKey = (fromUsername || '').trim().toLowerCase();
   const toKey = (toUsername || '').trim().toLowerCase();
   const cleanText = String(text || '').trim().slice(0, 500);
@@ -670,12 +704,12 @@ function saveDirectMessage(fromUsername, toUsername, text) {
     toUser.directMessages[fromKey] = toUser.directMessages[fromKey].slice(-50);
   }
 
-  saveUsers(users);
+  await saveUsers(users);
   return { success: true, message: msg };
 }
 
-function getDirectMessages(usernameA, usernameB) {
-  const users = loadUsers();
+async function getDirectMessages(usernameA, usernameB) {
+  const users = await loadUsers();
   const keyA = (usernameA || '').trim().toLowerCase();
   const keyB = (usernameB || '').trim().toLowerCase();
 
@@ -685,7 +719,7 @@ function getDirectMessages(usernameA, usernameB) {
 
   ensureFriendFields(userA);
   userA.lastReadDmTime[keyB] = Date.now();
-  saveUsers(users);
+  await saveUsers(users);
 
   const messages = userA.directMessages[keyB] || [];
   return { success: true, messages };
@@ -711,5 +745,6 @@ module.exports = {
   removeFriend,
   getFriendsData,
   saveDirectMessage,
-  getDirectMessages
+  getDirectMessages,
+  saveSingleUser
 };

@@ -102,6 +102,12 @@
       this.btnSendChat = document.getElementById('btn-send-chat');
       this.logMessages = document.getElementById('game-log');
 
+      // Team Chat Mode elements
+      this.chatMode = 'global';
+      this.teamChatToggle = document.getElementById('team-chat-toggle');
+      this.btnChatGlobal = document.getElementById('btn-chat-global');
+      this.btnChatTeam = document.getElementById('btn-chat-team');
+
       // Diplomacy Modal elements
       this.diplomacyModal = document.getElementById('diplomacy-modal');
       this.btnOpenDiplomacy = document.getElementById('btn-open-diplomacy-modal');
@@ -1090,6 +1096,7 @@ hasFullVisionOfPlayer(playerId) {
       // Socket Listeners configuration
       window.SocketClient.onGameStateUpdate((state) => {
         this.updateGameState(state);
+        this.updateTeamChatToggle();
       });
 
       window.SocketClient.onDiplomacyReceived((proposal) => {
@@ -3062,8 +3069,33 @@ hasFullVisionOfPlayer(playerId) {
         if (this.sentChatCount >= 15 && window.SocketClient && window.SocketClient.triggerSecretAchievement) {
           window.SocketClient.triggerSecretAchievement('drama_queen', this.sentChatCount, () => {});
         }
-        window.SocketClient.sendMessage(text);
+        window.SocketClient.sendMessage(text, this.chatMode);
         this.chatInput.value = '';
+      }
+    }
+
+    setChatMode(mode) {
+      this.chatMode = mode;
+      if (this.btnChatGlobal && this.btnChatTeam) {
+        if (mode === 'global') {
+          this.btnChatGlobal.style.background = 'var(--primary)';
+          this.btnChatGlobal.style.color = '#fff';
+          this.btnChatGlobal.style.borderColor = 'var(--primary)';
+          this.btnChatTeam.style.background = 'transparent';
+          this.btnChatTeam.style.color = '#facc15';
+          this.btnChatTeam.style.borderColor = '#facc15';
+        } else {
+          this.btnChatGlobal.style.background = 'transparent';
+          this.btnChatGlobal.style.color = 'var(--primary)';
+          this.btnChatGlobal.style.borderColor = 'var(--primary)';
+          this.btnChatTeam.style.background = '#facc15';
+          this.btnChatTeam.style.color = '#000';
+          this.btnChatTeam.style.borderColor = '#facc15';
+        }
+      }
+      // Update placeholder
+      if (this.chatInput) {
+        this.chatInput.placeholder = mode === 'team' ? 'Type team message (only teammates see this)...' : 'Type normal message or @Name...';
       }
     }
 
@@ -3115,6 +3147,21 @@ hasFullVisionOfPlayer(playerId) {
       div.innerHTML = `<span class="time">${log.timestamp}</span>${log.message}`;
       this.logMessages.appendChild(div);
       this.logMessages.scrollTop = this.logMessages.scrollHeight;
+    }
+
+    updateTeamChatToggle() {
+      // Show team chat toggle only when team mode is active and player is on a team
+      if (!this.teamChatToggle) return;
+      const isTeamMode = this.gameState && this.gameState.teamMode && this.gameState.players.some(p => p.teamId);
+      const myPlayer = this.gameState && this.gameState.players.find(p => p.id === window.SocketClient.socket.id);
+      const iAmOnTeam = !!(isTeamMode && myPlayer && myPlayer.teamId);
+      this.teamChatToggle.style.display = iAmOnTeam ? 'block' : 'none';
+    }
+
+    getMyTeamId() {
+      if (!this.gameState || !this.gameState.players) return null;
+      const myPlayer = this.gameState.players.find(p => p.id === window.SocketClient.socket.id);
+      return myPlayer ? myPlayer.teamId : null;
     }
 
     // Territory Intel modal: pick a player, list every territory they own

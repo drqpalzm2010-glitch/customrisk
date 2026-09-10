@@ -2,9 +2,9 @@
   "test": {
     "username": "test",
     "password": "test",
-    "token": "tok_r63ico14rrr_1788631864141",
+    "token": "tok_tt8n5pqu4u_1789082395167",
     "createdAt": "2026-09-01T01:54:51.969Z",
-    "lastLogin": "2026-09-09T12:14:28.387Z",
+    "lastLogin": "2026-09-10T23:19:55.167Z",
     "lifetimeStats": {
       "matchesPlayed": 1,
       "matchesWon": 1,
@@ -219,7 +219,7 @@
     "password": "4dnjf9dlf",
     "token": "tok_1gxh1ozquje_1788911920831",
     "createdAt": "2026-09-01T16:27:56.344Z",
-    "lastLogin": "2026-09-10T03:43:35.793Z",
+    "lastLogin": "2026-09-10T20:56:36.614Z",
     "level": 13,
     "currentXP": 366,
     "totalXP": 4866,

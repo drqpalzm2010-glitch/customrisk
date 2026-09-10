@@ -902,6 +902,19 @@
             </div>
           </div>
 
+          <!-- Team Chat Toggle (visible only when team mode is active) -->
+          <div id="team-chat-toggle" style="display: none; margin-top: 6px; padding: 4px 8px; background: rgba(0,0,0,0.25); border-radius: 6px; border: 1px solid rgba(250,204,21,0.3);">
+            <div style="display: flex; gap: 4px; align-items: center;">
+              <span style="font-size: 10px; color: #facc15; font-weight: 600; margin-right: 4px;"><i class="fa-solid fa-people-group"></i> Chat Mode:</span>
+              <button id="btn-chat-global" class="btn btn-sm active-btn" style="font-size: 10px; padding: 2px 10px; background: var(--primary); color: #fff;" onclick="if(window.GameClient) window.GameClient.setChatMode('global')">
+                <i class="fa-solid fa-globe"></i> Global
+              </button>
+              <button id="btn-chat-team" class="btn btn-sm outline-btn" style="font-size: 10px; padding: 2px 10px; border-color: #facc15; color: #facc15;" onclick="if(window.GameClient) window.GameClient.setChatMode('team')">
+                <i class="fa-solid fa-shield-halved"></i> Team
+              </button>
+            </div>
+          </div>
+
           <div class="chat-input-row" style="margin-top: 6px;">
             <input type="text" id="game-chat-input" placeholder="Type normal message or @Name...">
             <button id="btn-send-chat" class="btn primary-btn" style="padding: 6px 12px;"><i class="fa-solid fa-paper-plane"></i></button>
@@ -1729,6 +1742,9 @@
           <i class="fa-solid fa-envelope"></i> Requests
           <span id="lbl-requests-badge" style="display: none; background: #ef4444; color: #fff; border-radius: 8px; font-size: 9px; padding: 1px 5px; margin-left: 4px;"></span>
         </button>
+        <button id="tab-group-chats" class="btn outline-btn btn-sm w-full" style="font-size: 11px;">
+          <i class="fa-solid fa-comments"></i> Groups
+        </button>
       </div>
 
       <!-- Main Friends Content View -->
@@ -1757,6 +1773,19 @@
         </div>
       </div>
 
+      <!-- Group Chats Pane -->
+      <div id="pane-group-chats" style="display: none;">
+        <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+          <input type="text" id="input-create-group-name" placeholder="Group name..." style="flex: 1; padding: 7px 12px; font-size: 12px; background: rgba(0,0,0,0.35); border: 1px solid var(--border-glass); border-radius: 6px; color: #fff;">
+          <button id="btn-create-group" class="btn primary-btn btn-sm" style="white-space: nowrap; font-size: 11px;">
+            <i class="fa-solid fa-plus"></i> Create Group
+          </button>
+        </div>
+        <div id="group-chats-list" style="display: flex; flex-direction: column; gap: 8px; max-height: 300px; overflow-y: auto;">
+          <!-- Populated dynamically -->
+        </div>
+      </div>
+
       <!-- Direct Messaging View (Sub-panel) -->
       <div id="view-friends-dm" style="display: none; flex: 1; flex-direction: column; min-height: 320px; max-height: 420px;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border-glass);">
@@ -1779,6 +1808,43 @@
         <div style="display: flex; gap: 6px;">
           <input type="text" id="input-dm-text" placeholder="Type a transmission..." style="flex: 1; padding: 8px 12px; font-size: 12px; background: rgba(0,0,0,0.4); border: 1px solid var(--border-glass); border-radius: 6px; color: #fff;">
           <button id="btn-send-dm" class="btn primary-btn btn-sm" style="font-size: 11px; padding: 0 14px;">
+            <i class="fa-solid fa-paper-plane"></i> Send
+          </button>
+        </div>
+      </div>
+
+      <!-- Group Chat View (Sub-panel) -->
+      <div id="view-group-chat" style="display: none; flex: 1; flex-direction: column; min-height: 320px; max-height: 420px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border-glass);">
+          <button id="btn-back-to-group-chats" class="btn outline-btn btn-sm" style="font-size: 11px; padding: 2px 8px;">
+            <i class="fa-solid fa-arrow-left"></i> Groups
+          </button>
+          <div style="font-size: 12px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px;">
+            <span id="group-chat-name">Group Chat</span>
+            <button id="btn-leave-group" class="btn outline-btn btn-sm" style="font-size: 9.5px; padding: 2px 6px; border-color: rgba(239,68,68,0.4); color: #ef4444;" title="Leave this group">
+              <i class="fa-solid fa-right-from-bracket"></i> Leave
+            </button>
+          </div>
+          <div style="width: 60px;"></div>
+        </div>
+
+        <!-- Add Member -->
+        <div style="display: flex; gap: 6px; margin-bottom: 8px;">
+          <input type="text" id="input-add-member" placeholder="Add friend by username..." style="flex: 1; padding: 5px 10px; font-size: 11px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-glass); border-radius: 6px; color: #fff;">
+          <button id="btn-add-member" class="btn success-btn btn-sm" style="font-size: 10px; padding: 3px 10px;">
+            <i class="fa-solid fa-user-plus"></i> Add
+          </button>
+        </div>
+
+        <!-- Chat History -->
+        <div id="group-chat-messages" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding: 10px; background: rgba(0,0,0,0.3); border-radius: 8px; border: 1px solid var(--border-glass); margin-bottom: 8px;">
+          <!-- Populated dynamically -->
+        </div>
+
+        <!-- Message Input -->
+        <div style="display: flex; gap: 6px;">
+          <input type="text" id="input-group-chat-text" placeholder="Type a message..." style="flex: 1; padding: 8px 12px; font-size: 12px; background: rgba(0,0,0,0.4); border: 1px solid var(--border-glass); border-radius: 6px; color: #fff;">
+          <button id="btn-send-group-chat" class="btn primary-btn btn-sm" style="font-size: 11px; padding: 0 14px;">
             <i class="fa-solid fa-paper-plane"></i> Send
           </button>
         </div>

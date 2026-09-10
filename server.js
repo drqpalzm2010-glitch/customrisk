@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 let compression;
 try {
@@ -9,6 +10,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
 
+const DB = require('./server/db');
 const UserDB = require('./server/user-db');
 const RoomManager = require('./server/room-manager');
 const GameEngine = require('./server/game-engine');
@@ -72,6 +74,10 @@ RoomManager.startRoomCleanup();
 // Online Presence Tracking: username(lowercase) -> Set of socketIds (supports multiple tabs)
 const onlineUsers = new Map();
 
+// Group Chat System Storage (persists across socket connections)
+// groupId -> { id, name, createdBy, members: Set<username>, messages: [{senderName, text, timestamp}] }
+const groupChats = new Map();
+
 function registerUserSocket(username, socketId) {
   if (!username) return;
   const key = username.trim().toLowerCase();
@@ -104,20 +110,23 @@ function getSocketIdsForUser(username) {
 }
 
 function notifyFriendsPresence(username, isOnline) {
-  const users = UserDB.loadUsers();
-  const key = (username || '').trim().toLowerCase();
-  const user = users[key];
-  if (!user || !user.friends) return;
+  const loadAndNotify = async () => {
+    const users = await UserDB.loadUsers();
+    const key = (username || '').trim().toLowerCase();
+    const user = users[key];
+    if (!user || !user.friends) return;
 
-  user.friends.forEach(fKey => {
-    const friendSockets = getSocketIdsForUser(fKey);
-    friendSockets.forEach(sId => {
-      io.to(sId).emit('friendPresenceUpdate', {
-        username: user.username,
-        isOnline: isOnline
+    user.friends.forEach(fKey => {
+      const friendSockets = getSocketIdsForUser(fKey);
+      friendSockets.forEach(sId => {
+        io.to(sId).emit('friendPresenceUpdate', {
+          username: user.username,
+          isOnline: isOnline
+        });
       });
     });
-  });
+  };
+  loadAndNotify().catch(err => console.error('[Presence] Error:', err));
 }
 
 // Bootstrap AI watchdog behavior on first connection.
@@ -135,14 +144,8 @@ io.on('connection', (socket) => {
       room.io = io;
       if (accountId && room.players[0]) {
         room.players[0].accountId = accountId;
-        const acc = UserDB.getSafeUser(UserDB.loadUsers()[accountId.toLowerCase()]);
-        if (acc) {
-          room.players[0].level = acc.level || 1;
-          room.players[0].elo = acc.elo || 1200;
-          room.players[0].battleCard = acc.battleCard || { theme: 'default', option: 1, showcasedBadges: [] };
-        }
-        // Grant Party Host achievement for hosting a game
-        UserDB.grantAchievement(accountId, 'party_host', true, io, socket.id);
+        // Fire-and-forget achievement grant (don't block room creation)
+        UserDB.grantAchievement(accountId, 'party_host', true, io, socket.id).catch(() => {});
       }
       socket.join(room.code);
       console.log(`Room created: ${room.code} by ${playerName} (Account: ${accountId || 'Guest'})`);
@@ -2022,19 +2025,22 @@ const actType = (actionStr || typeStr || '').toUpperCase();
   });
 
   // 13. Room Chat Message (With Fuzzy AI Dialog Parser)
-  socket.on('sendMessage', ({ roomCode, text }) => {
+  socket.on('sendMessage', ({ roomCode, text, chatType }) => {
     const room = RoomManager.getRoom(roomCode);
     if (!room) return;
 
     const player = room.players.find(p => p.id === socket.id);
     const senderName = player ? player.name : 'Unknown';
     const senderColor = player ? player.color : '#ffffff';
+    const isTeamChat = chatType === 'team' && room.gameState && room.gameState.teamMode && player && player.teamId;
 
     const chatMsg = {
       senderName,
       senderColor,
       text,
-      timestamp: new Date().toLocaleTimeString()
+      timestamp: new Date().toLocaleTimeString(),
+      chatType: isTeamChat ? 'team' : 'global',
+      teamOnly: isTeamChat
     };
 
     // Save chat to log history archive
@@ -2043,7 +2049,18 @@ const actType = (actionStr || typeStr || '').toUpperCase();
       room.gameState.chatArchive.push(chatMsg);
     }
 
-    io.to(roomCode).emit('chatMessage', chatMsg);
+    if (isTeamChat) {
+      // Team chat: only send to teammates
+      const teammateSockets = room.players
+        .filter(p => p.teamId === player.teamId)
+        .map(p => p.id);
+      teammateSockets.forEach(teammateId => {
+        io.to(teammateId).emit('chatMessage', chatMsg);
+      });
+    } else {
+      // Global chat: send to everyone
+      io.to(roomCode).emit('chatMessage', chatMsg);
+    }
 
     // LLM Generative AI Chat Response
           if (room.gameState && (room.generativeAIMode || room.gameState.generativeAIMode) && room.llmProviderConfig && room.llmProviderConfig.provider !== 'clipboard') {
@@ -2503,36 +2520,36 @@ Reply in 1 short, punchy paragraph (1 to 3 sentences max). Maintain your charact
     }
   });
 // Account System Events
-  socket.on('accountRegister', ({ username, password }, callback) => {
-    const res = UserDB.register(username, password);
+  socket.on('accountRegister', async ({ username, password }, callback) => {
+    const res = await UserDB.register(username, password);
     if (callback) callback(res);
   });
 
-  socket.on('accountLogin', ({ username, password }, callback) => {
-    const res = UserDB.login(username, password);
+  socket.on('accountLogin', async ({ username, password }, callback) => {
+    const res = await UserDB.login(username, password);
     if (callback) callback(res);
   });
 
-  socket.on('accountAutoLogin', ({ username, token }, callback) => {
-    const res = UserDB.autoLogin(username, token);
+  socket.on('accountAutoLogin', async ({ username, token }, callback) => {
+    const res = await UserDB.autoLogin(username, token);
     if (callback) callback(res);
   });
 
-  socket.on('getAccountStats', ({ username }, callback) => {
-    const res = UserDB.getAccountStats(username);
+  socket.on('getAccountStats', async ({ username }, callback) => {
+    const res = await UserDB.getAccountStats(username);
     if (callback) callback(res);
   });
 
-  socket.on('updateBattleCard', ({ username, battleCard }, callback) => {
-    const res = UserDB.updateBattleCard(username, battleCard);
+  socket.on('updateBattleCard', async ({ username, battleCard }, callback) => {
+    const res = await UserDB.updateBattleCard(username, battleCard);
     if (callback) callback(res);
   });
 
-  socket.on('updateBio', ({ username, bio }, callback) => {
-    const res = UserDB.updateBio(username, bio);
+  socket.on('updateBio', async ({ username, bio }, callback) => {
+    const res = await UserDB.updateBio(username, bio);
     if (callback) callback(res);
   });
-  socket.on('triggerSecretAchievement', ({ username, achId, roomCode, proof }, callback) => {
+  socket.on('triggerSecretAchievement', async ({ username, achId, roomCode, proof }, callback) => {
     const room = roomCode ? RoomManager.getRoom(roomCode) : null;
     const SECRET_ACHIEVEMENT_ACTIONS = {
       secret_anime_scroll: (g, p) => !!p,
@@ -2549,7 +2566,7 @@ Reply in 1 short, punchy paragraph (1 to 3 sentences max). Maintain your charact
       if (callback) callback({ error: 'Not eligible' });
       return;
     }
-    const res = UserDB.grantAchievement(username, achId, true, io, socket.id);
+    const res = await UserDB.grantAchievement(username, achId, true, io, socket.id);
     if (callback) callback(res || { success: false });
   });
 
@@ -2569,9 +2586,9 @@ Reply in 1 short, punchy paragraph (1 to 3 sentences max). Maintain your charact
     }
   });
 
-  socket.on('getFriends', ({ username }, callback) => {
+  socket.on('getFriends', async ({ username }, callback) => {
     if (!username) return callback && callback({ error: 'Not logged in' });
-    const res = UserDB.getFriendsData(username);
+    const res = await UserDB.getFriendsData(username);
     if (res.error) return callback && callback(res);
 
     // Annotate friends with real-time online status
@@ -2586,8 +2603,8 @@ Reply in 1 short, punchy paragraph (1 to 3 sentences max). Maintain your charact
     if (callback) callback(res);
   });
 
-  socket.on('friendSendRequest', ({ username, toUsername }, callback) => {
-    const res = UserDB.sendFriendRequest(username, toUsername);
+  socket.on('friendSendRequest', async ({ username, toUsername }, callback) => {
+    const res = await UserDB.sendFriendRequest(username, toUsername);
     if (res.error) return callback && callback(res);
 
     // If accepted immediately or pending, notify recipient's active socket(s)
@@ -2601,8 +2618,8 @@ Reply in 1 short, punchy paragraph (1 to 3 sentences max). Maintain your charact
     if (callback) callback(res);
   });
 
-  socket.on('friendRespond', ({ username, fromUsername, accept }, callback) => {
-    const res = UserDB.respondFriendRequest(username, fromUsername, accept);
+  socket.on('friendRespond', async ({ username, fromUsername, accept }, callback) => {
+    const res = await UserDB.respondFriendRequest(username, fromUsername, accept);
     if (res.error) return callback && callback(res);
 
     // Notify the other user that their request was accepted or declined
@@ -2622,8 +2639,8 @@ Reply in 1 short, punchy paragraph (1 to 3 sentences max). Maintain your charact
     if (callback) callback(res);
   });
 
-  socket.on('friendRemove', ({ username, friendUsername }, callback) => {
-    const res = UserDB.removeFriend(username, friendUsername);
+  socket.on('friendRemove', async ({ username, friendUsername }, callback) => {
+    const res = await UserDB.removeFriend(username, friendUsername);
     if (res.error) return callback && callback(res);
 
     const friendSockets = getSocketIdsForUser(friendUsername);
@@ -2636,8 +2653,8 @@ Reply in 1 short, punchy paragraph (1 to 3 sentences max). Maintain your charact
     if (callback) callback(res);
   });
 
-  socket.on('sendDirectMessage', ({ username, toUsername, text }, callback) => {
-    const res = UserDB.saveDirectMessage(username, toUsername, text);
+  socket.on('sendDirectMessage', async ({ username, toUsername, text }, callback) => {
+    const res = await UserDB.saveDirectMessage(username, toUsername, text);
     if (res.error) return callback && callback(res);
 
     // Push live to target user
@@ -2649,8 +2666,8 @@ Reply in 1 short, punchy paragraph (1 to 3 sentences max). Maintain your charact
     if (callback) callback(res);
   });
 
-  socket.on('getDirectMessages', ({ username, toUsername }, callback) => {
-    const res = UserDB.getDirectMessages(username, toUsername);
+  socket.on('getDirectMessages', async ({ username, toUsername }, callback) => {
+    const res = await UserDB.getDirectMessages(username, toUsername);
     if (callback) callback(res);
   });
 
@@ -2669,6 +2686,155 @@ Reply in 1 short, punchy paragraph (1 to 3 sentences max). Maintain your charact
     });
 
     if (callback) callback({ success: true, message: `Lobby invite sent to ${toUsername}!` });
+  });
+
+  // 13b. Group Chat System - Create
+  socket.on('createGroupChat', ({ groupName }, callback) => {
+    try {
+      const username = window?.SocketClient?.currentAccount?.username || 'Anonymous';
+      const groupId = 'gc_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
+      groupChats.set(groupId, {
+        id: groupId,
+        name: groupName && groupName.trim() ? groupName.trim() : 'Unnamed Group',
+        createdBy: username,
+        members: new Set([username]),
+        messages: [],
+        createdAt: Date.now()
+      });
+      if (callback) callback({ success: true, groupId, name: groupName, members: [username] });
+    } catch (err) {
+      console.error('[GroupChat] Error creating group:', err);
+      if (callback) callback({ error: 'Failed to create group chat' });
+    }
+  });
+
+  socket.on('joinGroupChat', ({ groupId, username }, callback) => {
+    try {
+      const group = groupChats.get(groupId);
+      if (!group) return callback && callback({ error: 'Group not found' });
+      const joinUser = username || window?.SocketClient?.currentAccount?.username || 'Anonymous';
+      group.members.add(joinUser);
+      const memberArray = Array.from(group.members);
+      memberArray.forEach(member => {
+        const memberSockets = getSocketIdsForUser(member);
+        memberSockets.forEach(sId => {
+          io.to(sId).emit('groupChatJoined', { groupId, name: group.name, members: memberArray });
+        });
+      });
+      if (callback) callback({ success: true, members: memberArray });
+    } catch (err) {
+      console.error('[GroupChat] Error joining group:', err);
+      if (callback) callback({ error: 'Failed to join group chat' });
+    }
+  });
+
+  socket.on('leaveGroupChat', ({ groupId, username }, callback) => {
+    try {
+      const group = groupChats.get(groupId);
+      if (!group) return callback && callback({ error: 'Group not found' });
+      const leaveUser = username || window?.SocketClient?.currentAccount?.username || 'Anonymous';
+      group.members.delete(leaveUser);
+      const memberArray = Array.from(group.members);
+      memberArray.forEach(member => {
+        const memberSockets = getSocketIdsForUser(member);
+        memberSockets.forEach(sId => {
+          io.to(sId).emit('groupChatMemberLeft', { groupId, username: leaveUser, members: memberArray });
+        });
+      });
+      if (group.members.size === 0) {
+        groupChats.delete(groupId);
+      }
+      if (callback) callback({ success: true });
+    } catch (err) {
+      console.error('[GroupChat] Error leaving group:', err);
+      if (callback) callback({ error: 'Failed to leave group chat' });
+    }
+  });
+
+  socket.on('sendGroupMessage', ({ groupId, username, text }, callback) => {
+    try {
+      const group = groupChats.get(groupId);
+      if (!group) return callback && callback({ error: 'Group not found' });
+      const sender = username || window?.SocketClient?.currentAccount?.username || 'Anonymous';
+      if (!group.members.has(sender)) {
+        return callback && callback({ error: 'You are not a member of this group' });
+      }
+      const trimmedText = (text || '').trim();
+      if (!trimmedText) return callback && callback({ error: 'Message cannot be empty' });
+      const msg = {
+        senderName: sender,
+        text: trimmedText,
+        timestamp: new Date().toLocaleTimeString(),
+        groupId
+      };
+      group.messages.push(msg);
+      if (group.messages.length > 100) {
+        group.messages = group.messages.slice(-100);
+      }
+      const memberArray = Array.from(group.members);
+      memberArray.forEach(member => {
+        const memberSockets = getSocketIdsForUser(member);
+        memberSockets.forEach(sId => {
+          io.to(sId).emit('groupChatMessage', msg);
+        });
+      });
+      if (callback) callback({ success: true });
+    } catch (err) {
+      console.error('[GroupChat] Error sending message:', err);
+      if (callback) callback({ error: 'Failed to send group message' });
+    }
+  });
+
+  socket.on('getGroupChats', ({ username }, callback) => {
+    try {
+      const queryUser = username || window?.SocketClient?.currentAccount?.username;
+      if (!queryUser) return callback && callback({ error: 'Not logged in' });
+      const userGroups = [];
+      groupChats.forEach((group, groupId) => {
+        if (group.members.has(queryUser)) {
+          userGroups.push({
+            id: groupId,
+            name: group.name,
+            createdBy: group.createdBy,
+            members: Array.from(group.members),
+            messages: group.messages.slice(-50),
+            memberCount: group.members.size,
+            createdAt: group.createdAt,
+            lastMessage: group.messages.length > 0 ? group.messages[group.messages.length - 1] : null
+          });
+        }
+      });
+      if (callback) callback({ success: true, groupChats: userGroups });
+    } catch (err) {
+      console.error('[GroupChat] Error getting groups:', err);
+      if (callback) callback({ error: 'Failed to get group chats' });
+    }
+  });
+
+  socket.on('addMemberToGroup', ({ groupId, username, newMember }, callback) => {
+    try {
+      const group = groupChats.get(groupId);
+      if (!group) return callback && callback({ error: 'Group not found' });
+      const requester = username || window?.SocketClient?.currentAccount?.username || 'Anonymous';
+      if (!group.members.has(requester)) {
+        return callback && callback({ error: 'You are not a member of this group' });
+      }
+      if (group.members.has(newMember)) {
+        return callback && callback({ error: newMember + ' is already in the group' });
+      }
+      group.members.add(newMember);
+      const memberArray = Array.from(group.members);
+      memberArray.forEach(member => {
+        const memberSockets = getSocketIdsForUser(member);
+        memberSockets.forEach(sId => {
+          io.to(sId).emit('groupChatMemberJoined', { groupId, newMember, members: memberArray });
+        });
+      });
+      if (callback) callback({ success: true, members: memberArray });
+    } catch (err) {
+      console.error('[GroupChat] Error adding member:', err);
+      if (callback) callback({ error: 'Failed to add member to group' });
+    }
   });
 
   // 14. Disconnect
@@ -2714,6 +2880,17 @@ Reply in 1 short, punchy paragraph (1 to 3 sentences max). Maintain your charact
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`Factional Risk Server is running on port ${PORT}`);
+
+// Initialize database before starting server
+async function startServer() {
+  await DB.initDB();
+  server.listen(PORT, () => {
+    console.log(`Factional Risk Server is running on port ${PORT}`);
+    console.log(`[DB] Storage: ${DB.isMongoEnabled() ? 'MongoDB Atlas' : 'JSON File'}`);
+  });
+}
+
+startServer().catch(err => {
+  console.error('Failed to start server:', err);
+  process.exit(1);
 });

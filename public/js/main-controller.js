@@ -2599,6 +2599,25 @@
       const inputDmText = document.getElementById('input-dm-text');
       const btnSendDm = document.getElementById('btn-send-dm');
 
+      // Group Chat elements
+      const tabGroupChats = document.getElementById('tab-group-chats');
+      const paneGroupChats = document.getElementById('pane-group-chats');
+      const viewGroupChat = document.getElementById('view-group-chat');
+      const inputCreateGroupName = document.getElementById('input-create-group-name');
+      const btnCreateGroup = document.getElementById('btn-create-group');
+      const groupChatsList = document.getElementById('group-chats-list');
+      const groupChatName = document.getElementById('group-chat-name');
+      const btnLeaveGroup = document.getElementById('btn-leave-group');
+      const inputAddMember = document.getElementById('input-add-member');
+      const btnAddMember = document.getElementById('btn-add-member');
+      const inputGroupChatText = document.getElementById('input-group-chat-text');
+      const btnSendGroupChat = document.getElementById('btn-send-group-chat');
+      const groupChatMessages = document.getElementById('group-chat-messages');
+      const btnBackToGroupChats = document.getElementById('btn-back-to-group-chats');
+
+      let currentGroupId = null;
+      let cachedGroupChats = [];
+
       let currentDmFriend = null;
       let cachedFriendsData = null;
       let incomingRequestsCount = 0;
@@ -2986,16 +3005,118 @@
         tabFriends.onclick = () => {
           tabFriends.className = 'btn primary-btn btn-sm w-full active';
           tabRequests.className = 'btn outline-btn btn-sm w-full';
+          tabGroupChats.className = 'btn outline-btn btn-sm w-full';
           if (paneFriends) paneFriends.style.display = 'block';
           if (paneRequests) paneRequests.style.display = 'none';
+          if (paneGroupChats) paneGroupChats.style.display = 'none';
+          if (viewGroupChat) viewGroupChat.style.display = 'none';
+          if (viewDm) viewDm.style.display = 'none';
+          if (viewMain) viewMain.style.display = 'block';
         };
         tabRequests.onclick = () => {
           tabRequests.className = 'btn primary-btn btn-sm w-full active';
           tabFriends.className = 'btn outline-btn btn-sm w-full';
+          tabGroupChats.className = 'btn outline-btn btn-sm w-full';
           if (paneFriends) paneFriends.style.display = 'none';
           if (paneRequests) paneRequests.style.display = 'block';
+          if (paneGroupChats) paneGroupChats.style.display = 'none';
+          if (viewGroupChat) viewGroupChat.style.display = 'none';
+          if (viewDm) viewDm.style.display = 'none';
+          if (viewMain) viewMain.style.display = 'block';
+        };
+        tabGroupChats.onclick = () => {
+          tabGroupChats.className = 'btn primary-btn btn-sm w-full active';
+          tabFriends.className = 'btn outline-btn btn-sm w-full';
+          tabRequests.className = 'btn outline-btn btn-sm w-full';
+          if (paneFriends) paneFriends.style.display = 'none';
+          if (paneRequests) paneRequests.style.display = 'none';
+          if (paneGroupChats) paneGroupChats.style.display = 'block';
+          if (viewGroupChat) viewGroupChat.style.display = 'none';
+          if (viewDm) viewDm.style.display = 'none';
+          if (viewMain) viewMain.style.display = 'block';
+          loadGroupChatsList();
         };
       }
+
+      // Group Chat Functions
+      const loadGroupChatsList = () => {
+        if (!groupChatsList) return;
+        groupChatsList.innerHTML = '<div style="text-align: center; color: var(--text-muted); font-size: 11px; padding: 10px;">Loading groups...</div>';
+        window.SocketClient.getGroupChats((res) => {
+          if (res.error) {
+            groupChatsList.innerHTML = `<div style="color: #ef4444; font-size: 11px; padding: 10px;">${res.error}</div>`;
+            return;
+          }
+          cachedGroupChats = res.groupChats || [];
+          if (cachedGroupChats.length === 0) {
+            groupChatsList.innerHTML = '<div style="text-align: center; color: var(--text-muted); font-size: 11px; padding: 20px;">No group chats yet.<br>Create one above!</div>';
+            return;
+          }
+          groupChatsList.innerHTML = cachedGroupChats.map(gc => {
+            const lastMsg = gc.lastMessage ? `<div style="font-size: 10px; color: var(--text-muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${gc.lastMessage.senderName}: ${gc.lastMessage.text}</div>` : '';
+            return `
+              <div class="glass" style="padding: 10px 12px; border-radius: 8px; cursor: pointer; border: 1px solid var(--border-glass); background: rgba(0,0,0,0.2);" data-group-id="${gc.id}">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <div>
+                    <div style="font-weight: 600; color: #fff; font-size: 13px;"><i class="fa-solid fa-comments" style="color: var(--primary); margin-right: 4px;"></i>${gc.name}</div>
+                    <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">${gc.memberCount} member(s)</div>
+                    ${lastMsg}
+                  </div>
+                  <button class="btn primary-btn btn-sm btn-open-group" data-group-id="${gc.id}" style="font-size: 10px; padding: 3px 10px;">
+                    <i class="fa-solid fa-comment"></i> Open
+                  </button>
+                </div>
+              </div>
+            `;
+          }).join('');
+
+          groupChatsList.querySelectorAll('.btn-open-group').forEach(btn => {
+            btn.onclick = (e) => {
+              e.stopPropagation();
+              const groupId = btn.dataset.groupId;
+              openGroupChat(groupId);
+            };
+          });
+        });
+      };
+
+      const openGroupChat = (groupId) => {
+        currentGroupId = groupId;
+        const group = cachedGroupChats.find(g => g.id === groupId);
+        if (group && groupChatName) {
+          groupChatName.textContent = group.name;
+        }
+        if (paneGroupChats) paneGroupChats.style.display = 'none';
+        if (viewGroupChat) viewGroupChat.style.display = 'flex';
+        renderGroupChatMessages(groupId);
+      };
+
+      const renderGroupChatMessages = (groupId) => {
+        if (!groupChatMessages) return;
+        const group = cachedGroupChats.find(g => g.id === groupId);
+        if (!group || !group.messages || group.messages.length === 0) {
+          groupChatMessages.innerHTML = '<div style="text-align: center; color: var(--text-muted); font-size: 11px; padding: 20px;">No messages yet. Start the conversation!</div>';
+          return;
+        }
+        const myUsername = (window.SocketClient?.currentAccount?.username || '').toLowerCase();
+        groupChatMessages.innerHTML = group.messages.map(m => {
+          const isMe = m.senderName.toLowerCase() === myUsername;
+          const align = isMe ? 'flex-end' : 'flex-start';
+          const bubbleBg = isMe ? 'rgba(0, 229, 255, 0.15)' : 'rgba(255, 255, 255, 0.07)';
+          const borderCol = isMe ? 'rgba(0, 229, 255, 0.4)' : 'var(--border-glass)';
+          return `
+            <div style="display: flex; flex-direction: column; align-items: ${align}; max-width: 80%;">
+              <div style="font-size: 9.5px; color: var(--text-muted); margin-bottom: 2px; padding: 0 4px;">
+                <span style="color: ${isMe ? 'var(--primary)' : '#38bdf8'}; font-weight: 700;">${isMe ? 'You' : m.senderName}</span> • ${m.timestamp}
+              </div>
+              <div style="padding: 7px 11px; border-radius: 8px; background: ${bubbleBg}; border: 1px solid ${borderCol}; font-size: 12px; color: #fff; word-break: break-word;">
+                ${m.text}
+              </div>
+            </div>
+          `;
+        }).join('');
+        groupChatMessages.scrollTop = groupChatMessages.scrollHeight;
+      };
 
       if (btnSendFriendReq && inputAddFriend) {
         btnSendFriendReq.onclick = () => {
@@ -3041,6 +3162,137 @@
           if (e.key === 'Enter') executeSendDm();
         });
       }
+
+      // Group Chat Event Handlers
+      if (btnCreateGroup && inputCreateGroupName) {
+        btnCreateGroup.onclick = () => {
+          const name = inputCreateGroupName.value.trim();
+          if (!name) {
+            showToast('Please enter a group name', 'warning');
+            return;
+          }
+          btnCreateGroup.disabled = true;
+          window.SocketClient.createGroupChat(name, (res) => {
+            btnCreateGroup.disabled = false;
+            if (res.error) {
+              showToast(res.error, 'error');
+            } else {
+              showToast(`Group "${name}" created!`, 'success');
+              inputCreateGroupName.value = '';
+              loadGroupChatsList();
+            }
+          });
+        };
+        inputCreateGroupName.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') btnCreateGroup.click();
+        });
+      }
+
+      if (btnSendGroupChat && inputGroupChatText) {
+        btnSendGroupChat.onclick = () => {
+          const text = inputGroupChatText.value.trim();
+          if (!text || !currentGroupId) return;
+          btnSendGroupChat.disabled = true;
+          window.SocketClient.sendGroupMessage(currentGroupId, text, (res) => {
+            btnSendGroupChat.disabled = false;
+            if (res.error) {
+              showToast(res.error, 'error');
+            } else {
+              inputGroupChatText.value = '';
+              // Refresh messages
+              window.SocketClient.getGroupChats((gcRes) => {
+                if (gcRes.success && gcRes.groupChats) {
+                  cachedGroupChats = gcRes.groupChats;
+                  renderGroupChatMessages(currentGroupId);
+                }
+              });
+            }
+          });
+        };
+        inputGroupChatText.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') btnSendGroupChat.click();
+        });
+      }
+
+      if (btnLeaveGroup) {
+        btnLeaveGroup.onclick = () => {
+          if (!currentGroupId) return;
+          window.SocketClient.leaveGroupChat(currentGroupId, (res) => {
+            if (res.error) {
+              showToast(res.error, 'error');
+            } else {
+              showToast('Left group chat', 'info');
+              currentGroupId = null;
+              if (viewGroupChat) viewGroupChat.style.display = 'none';
+              if (paneGroupChats) paneGroupChats.style.display = 'block';
+              loadGroupChatsList();
+            }
+          });
+        };
+      }
+
+      if (btnAddMember && inputAddMember) {
+        btnAddMember.onclick = () => {
+          const username = inputAddMember.value.trim();
+          if (!username || !currentGroupId) {
+            showToast('Please enter a username to add', 'warning');
+            return;
+          }
+          btnAddMember.disabled = true;
+          window.SocketClient.addMemberToGroup(currentGroupId, username, (res) => {
+            btnAddMember.disabled = false;
+            if (res.error) {
+              showToast(res.error, 'error');
+            } else {
+              showToast(`${username} added to the group!`, 'success');
+              inputAddMember.value = '';
+              // Refresh group data
+              window.SocketClient.getGroupChats((gcRes) => {
+                if (gcRes.success && gcRes.groupChats) {
+                  cachedGroupChats = gcRes.groupChats;
+                  const group = cachedGroupChats.find(g => g.id === currentGroupId);
+                  if (group && groupChatName) {
+                    groupChatName.textContent = group.name;
+                  }
+                }
+              });
+            }
+          });
+        };
+        inputAddMember.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') btnAddMember.click();
+        });
+      }
+
+      if (btnBackToGroupChats) {
+        btnBackToGroupChats.onclick = () => {
+          currentGroupId = null;
+          if (viewGroupChat) viewGroupChat.style.display = 'none';
+          if (paneGroupChats) paneGroupChats.style.display = 'block';
+          if (viewMain) viewMain.style.display = 'block';
+          loadGroupChatsList();
+        };
+      }
+
+      // Live Group Chat Message Listener
+      window.SocketClient.onGroupChatMessage((msg) => {
+        if (currentGroupId === msg.groupId && viewGroupChat && viewGroupChat.style.display !== 'none') {
+          window.SocketClient.getGroupChats((res) => {
+            if (res.success && res.groupChats) {
+              cachedGroupChats = res.groupChats;
+              renderGroupChatMessages(currentGroupId);
+            }
+          });
+        }
+        // If in groups list, refresh to show updated last message
+        if (paneGroupChats && paneGroupChats.style.display !== 'none') {
+          window.SocketClient.getGroupChats((res) => {
+            if (res.success) {
+              cachedGroupChats = res.groupChats || [];
+            }
+          });
+        }
+      });
 
       // Live Server Push Notifications
       window.SocketClient.onFriendRequestReceived((data) => {
