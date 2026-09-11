@@ -409,6 +409,7 @@ function initializeGame(room, mapData, gameMode = 'auto') {
         disableNations: true,
         players: players.map(p => ({
           ...p,
+          battleCard: p.battleCard || { 'theme': 'default', 'option': 1, 'showcasedBadges': [] },
           cards: [],
           cardsTradedCount: 0,
           startingArmiesPool: 0,
@@ -516,6 +517,7 @@ function initializeGame(room, mapData, gameMode = 'auto') {
       turnStage: isScenario ? 'DRAFT' : 'SETUP_CLAIM',
       players: players.map(p => ({
         ...p,
+        battleCard: p.battleCard || { 'theme': 'default', 'option': 1, 'showcasedBadges': [] },
         cards: [],
         nukes: parseInt(room.startingNukes) || 0,
         thermonukes: parseInt(room.startingThermonukes) || 0,
@@ -718,6 +720,7 @@ function initializeGame(room, mapData, gameMode = 'auto') {
     turnStage: 'SETUP_CLAIM',
     players: players.map(p => ({
       ...p,
+      battleCard: p.battleCard || { 'theme': 'default', 'option': 1, 'showcasedBadges': [] },
       cards: [],
       nukes: parseInt(room.startingNukes) || 0,
       thermonukes: parseInt(room.startingThermonukes) || 0,

@@ -1033,6 +1033,86 @@ body.dark-mode {
   display: none;
 }
 
+/* ==================== ACTIVE TURN BATTLE CARD CONTAINER (FIXED VISIBILITY) ==================== */
+#game-active-turn-card-container {
+  flex: 1 1 180px;
+  min-width: 120px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+}
+/* Compact inline rendering of the battle card inside the viewport header: */
+#game-active-turn-card-container .player-battlecard {
+  width: 100%;
+  min-height: 40px;
+  max-height: 56px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.5);
+}
+#game-active-turn-card-container .player-battlecard .bcard-art-overlay {
+  display: none;
+}
+#game-active-turn-card-container .player-battlecard .bcard-content-layer {
+  flex-direction: row !important;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+#game-active-turn-card-container .bcard-content-layer > div:first-child {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+#game-active-turn-card-container .rank-insignia-icon {
+  width: 24px !important;
+  height: 24px !important;
+  font-size: 12px !important;
+  flex-shrink: 0;
+  margin-right: 8px;
+}
+/* Compact + truncate the name inside the header card */
+#game-active-turn-card-container .bcard-content-layer > div:first-child > div:last-child {
+  flex-direction: column !important;
+  gap: 1px;
+  min-width: 0;
+}
+#game-active-turn-card-container .bcard-content-layer > div:first-child > div:last-child > div {
+  font-size: 10px !important;
+  color: rgba(255,255,255,0.6);
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#game-active-turn-card-container .bcard-content-layer > div:first-child > div:last-child > div:first-child {
+  font-size: 12px !important;
+  color: #fff;
+  max-width: 96px;
+}
+#game-active-turn-card-container .bcard-equipped-title,
+#game-active-turn-card-container .bcard-achievement-slot {
+  display: none;
+}
+/* Level / ELO pill */
+#game-active-turn-card-container .bcard-content-layer > div:first-child > span:last-child {
+  font-size: 9.5px !important;
+  padding: 2px 6px !important;
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-left: 6px;
+}
+/* Bottom tag row on compact header cards */
+#game-active-turn-card-container .bcard-content-layer > div:last-child {
+  display: none;
+}
+
 /* Tab selectors inside left sidebar */
 .sidebar-tabs {
   display: flex;
@@ -2934,6 +3014,45 @@ svg.editor-canvas {
 .pulsing-glow {
   animation: pulsingBorder 1.5s infinite alternate;
 }
+/* ==================== MOBILE FLOATING ACTION STRIP ==================== */
+/* Hidden by default (desktop). Shown on small landscape screens via media query. */
+.mobile-action-strip {
+  display: none;
+  position: fixed;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  flex-direction: row;
+  gap: 8px;
+  padding: 6px 10px;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-glass);
+  border-radius: 30px;
+  z-index: 999;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.45);
+}
+.mobile-action-strip .action-chip {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.07);
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 15px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.2s ease, transform 0.12s ease;
+}
+.mobile-action-strip .action-chip:active {
+  transform: scale(0.9);
+  background: rgba(0, 229, 255, 0.28);
+  color: #fff;
+}
 
 @keyframes pulsingBorder {
   0% { stroke-opacity: 0.3; }
@@ -3939,6 +4058,36 @@ svg.editor-canvas {
     line-height: 1.35;
   }
 
+  /* Active Turn Battle Card on Mobile — compact, always visible */
+  #game-active-turn-card-container {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    min-height: 40px !important;
+  }
+  #game-active-turn-card-container .player-battlecard {
+    min-height: 36px !important;
+    padding: 5px 8px !important;
+    border-radius: 8px !important;
+  }
+  #game-active-turn-card-container .rank-insignia-icon {
+    width: 20px !important;
+    height: 20px !important;
+    font-size: 10px !important;
+    margin-right: 5px;
+  }
+  #game-active-turn-card-container .bcard-content-layer > div:first-child > div:last-child > div:first-child {
+    font-size: 11px !important;
+    max-width: 72px;
+  }
+  #game-active-turn-card-container .bcard-content-layer > div:first-child > span:last-child {
+    font-size: 8.5px !important;
+    padding: 1px 5px !important;
+  }
+  .btn-toggle-battlecard {
+    width: 30px !important;
+    height: 30px !important;
+  }
+
   /* Draft batch toolbar compact sizing */
   .draft-batch-toolbar {
     padding: 2px 6px !important;
@@ -4044,5 +4193,24 @@ svg.editor-canvas {
     width: calc(100vw - 32px) !important;
     right: 16px !important;
     top: 70px !important;
+  }
+
+  /* Mobile floating action strip — visible on small screens (landscape phones) */
+  .mobile-action-strip {
+    display: flex !important;
+  }
+  /* Hide zoom buttons + dominance collapse extra chrome on very small screens
+     since pinch/zoom and the chips now cover those actions. */
+  .zoom-controls {
+    right: 10px !important;
+    bottom: 70px !important;
+  }
+  .zoom-controls button {
+    width: 34px !important;
+    height: 34px !important;
+  }
+  /* Keep dominance bar above the action strip */
+  .dominance-bar-container {
+    bottom: 76px !important;
   }
 }

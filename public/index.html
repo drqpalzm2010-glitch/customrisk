@@ -835,6 +835,14 @@
           <button id="btn-zoom-reset" title="Reset Viewport"><i class="fa-solid fa-arrows-to-eye"></i></button>
         </div>
 
+        <!-- Minimal floating action strip (mobile landscape only, toggled in CSS) -->
+        <div class="mobile-action-strip">
+          <button class="action-chip" id="chip-toggle-left" title="Toggle Left Sidebar"><i class="fa-solid fa-layer-group"></i></button>
+          <button class="action-chip" id="chip-toggle-battlecard" title="Toggle Battle Card"><i class="fa-solid fa-chevron-up"></i></button>
+          <button class="action-chip" id="chip-end-turn" title="End Phase"><i class="fa-solid fa-forward"></i></button>
+          <button class="action-chip" id="chip-toggle-right" title="Toggle Chat & Log"><i class="fa-solid fa-comment-dots"></i></button>
+        </div>
+
         <!-- Timelapse Scrubber Panel -->
         <div id="timelapse-controls" class="glass" style="display: none; position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); padding: 12px 24px; border-radius: 12px; border: 1px solid var(--border-glass); align-items: center; gap: 15px; z-index: 999; width: 80%; max-width: 600px; backdrop-filter: blur(10px); background: rgba(0,0,0,0.6);">
           <button id="btn-time-play" class="btn primary-btn" style="padding: 8px 12px; width: 40px; height: 35px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;"><i class="fa-solid fa-play"></i></button>
@@ -1661,16 +1669,16 @@
         <div style="display: flex; gap: 8px; flex-wrap: wrap; background: rgba(0,0,0,0.3); padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border-glass);">
           <div style="flex: 1; min-width: 140px;">
             <select id="select-ach-category-filter" style="width: 100%; background: #000; border: 1px solid var(--border-glass); color: #fff; padding: 4px 8px; border-radius: 6px; font-size: 11px;">
-              <option value="all">All Categories (60)</option>
-              <option value="combat">Combat & Conquest (11)</option>
-              <option value="nuclear">Nuclear Warfare (8)</option>
-              <option value="diplomacy">Diplomacy & Treaties (9)</option>
+              <option value="all">All Categories (96)</option>
+              <option value="combat">Combat & Conquest (15)</option>
+              <option value="nuclear">Nuclear Warfare (9)</option>
+              <option value="diplomacy">Diplomacy & Treaties (10)</option>
               <option value="capital">Capital Rush (4)</option>
               <option value="fow">Fog of War (2)</option>
-              <option value="dice">Dice Luck & RNG (4)</option>
-              <option value="cards">Cards & Logistics (5)</option>
-              <option value="tactics">Tactics & Mastery (14)</option>
-              <option value="secret">Secret Feats (3)</option>
+              <option value="dice">Dice Luck & RNG (5)</option>
+              <option value="cards">Cards & Logistics (8)</option>
+              <option value="tactics">Tactics & Mastery (31)</option>
+              <option value="secret">Secret Feats (12)</option>
             </select>
           </div>
           <div style="flex: 1; min-width: 140px;">

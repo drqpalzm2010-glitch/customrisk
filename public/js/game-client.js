@@ -426,6 +426,18 @@ hasFullVisionOfPlayer(playerId) {
         });
       }
 
+      // Mobile floating action strip chips — forward clicks to the existing controls
+      const chipToggleLeft = document.getElementById('chip-toggle-left');
+      if (chipToggleLeft) chipToggleLeft.addEventListener('click', () => btnToggleLeft && btnToggleLeft.click());
+      const chipToggleBattleCard = document.getElementById('chip-toggle-battlecard');
+      if (chipToggleBattleCard) chipToggleBattleCard.addEventListener('click', () => btnToggleBattleCard && btnToggleBattleCard.click());
+      const chipEndTurn = document.getElementById('chip-end-turn');
+      if (chipEndTurn) chipEndTurn.addEventListener('click', () => {
+        if (this.btnEndPhase && this.btnEndPhase.style.display !== 'none') this.btnEndPhase.click();
+      });
+      const chipToggleRight = document.getElementById('chip-toggle-right');
+      if (chipToggleRight) chipToggleRight.addEventListener('click', () => btnToggleRight && btnToggleRight.click());
+
             // Dominance bar collapse toggle (remembers state across reloads)
       const btnDominanceCollapse = document.getElementById('btn-dominance-collapse');
       const dominanceContainer = document.getElementById('game-dominance-bar-container');
@@ -830,20 +842,20 @@ hasFullVisionOfPlayer(playerId) {
       if (this.btnDefendDice1) this.btnDefendDice1.addEventListener('click', () => selectDefendDice(1));
       if (this.btnDefendDice2) this.btnDefendDice2.addEventListener('click', () => selectDefendDice(2));
 
-      // Post-Attack Move Slider update
+      // Post-Attack Move Slider update (slider represents TOTAL armies to transfer)
       if (this.sliderPostAttack) {
         this.sliderPostAttack.addEventListener('input', (e) => {
           if (this.gameState && this.gameState.postAttackContext) {
-            const min = this.gameState.postAttackContext.minMove;
-            this.lblPostAttackCount.textContent = min + parseInt(e.target.value);
+            this.lblPostAttackCount.textContent = e.target.value;
           }
         });
       }
 
       // Shared submit path for the slider and the quick-transfer buttons.
-      const submitPostAttackMove = (amount) => {
-        amount = parseInt(amount) || 0;
-        window.SocketClient.postAttackMove(amount, (res) => {
+      // Sends the ADDITIONAL amount (total minus the mandatory minMove), as the server expects.
+      const submitPostAttackMove = (additional) => {
+        additional = parseInt(additional) || 0;
+        window.SocketClient.postAttackMove(additional, (res) => {
           if (this.postAttackModal) this.postAttackModal.classList.remove('active');
           if (res && res.error) {
             // Auto-heal fallback to release player from stuck state
@@ -852,10 +864,13 @@ hasFullVisionOfPlayer(playerId) {
         });
       };
 
-      // Submit Post-Attack Move (slider)
+      // Submit Post-Attack Move (slider): convert total → additional
       if (this.btnSubmitPostAttack) {
         this.btnSubmitPostAttack.addEventListener('click', () => {
-          submitPostAttackMove(this.sliderPostAttack ? this.sliderPostAttack.value : 0);
+          const ctx = this.gameState && this.gameState.postAttackContext;
+          const minMove = ctx ? (parseInt(ctx.minMove) || 0) : 0;
+          const total = this.sliderPostAttack ? (parseInt(this.sliderPostAttack.value) || 0) : 0;
+          submitPostAttackMove(total - minMove);
         });
       }
 
@@ -871,16 +886,28 @@ hasFullVisionOfPlayer(playerId) {
         const half = Math.max(minMove, Math.round(totalArmies / 2));
         return Math.min(additionalMax, Math.max(0, half - minMove));
       };
+      // Keep the slider visual in sync with quick-transfer choices
+      const syncSliderVisual = (additional) => {
+        const ctx = this.gameState && this.gameState.postAttackContext;
+        if (!ctx || !this.sliderPostAttack) return;
+        const minMove = parseInt(ctx.minMove) || 0;
+        this.sliderPostAttack.value = minMove + additional;
+        this.lblPostAttackCount.textContent = minMove + additional;
+      };
       const btnPostAttackHalf = document.getElementById('btn-post-attack-half');
       if (btnPostAttackHalf) {
         btnPostAttackHalf.addEventListener('click', () => {
-          submitPostAttackMove(computePostAttackAdditional('half'));
+          const additional = computePostAttackAdditional('half');
+          syncSliderVisual(additional);
+          submitPostAttackMove(additional);
         });
       }
       const btnPostAttackMax = document.getElementById('btn-post-attack-max');
       if (btnPostAttackMax) {
         btnPostAttackMax.addEventListener('click', () => {
-          submitPostAttackMove(computePostAttackAdditional('max'));
+          const additional = computePostAttackAdditional('max');
+          syncSliderVisual(additional);
+          submitPostAttackMove(additional);
         });
       }
 
@@ -1349,13 +1376,28 @@ hasFullVisionOfPlayer(playerId) {
       this.lblPhaseName.textContent = this.gameState.turnStage.replace('_', ' ');
 
       const activeCardBox = document.getElementById('game-active-turn-card-container');
-      if (activeCardBox && window.MainController && window.MainController.renderBattleCardHTML) {
-        activeCardBox.innerHTML = window.MainController.renderBattleCardHTML(currentPlayer, currentPlayer.id === window.SocketClient.socket.id, currentPlayer.isHost);
-        activeCardBox.onclick = () => {
-          if (window.MainController.openPlayerInspectorModal) {
-            window.MainController.openPlayerInspectorModal(currentPlayer);
-          }
+      if (activeCardBox) {
+        // Ensure battleCard data is present so renderers never fall back to a blank card
+        const playerForCard = {
+          ...currentPlayer,
+          battleCard: currentPlayer.battleCard || { theme: 'default', option: 1, showcasedBadges: [], equippedTitle: '' }
         };
+        if (window.MainController && window.MainController.renderBattleCardHTML) {
+          activeCardBox.innerHTML = window.MainController.renderBattleCardHTML(playerForCard, playerForCard.id === window.SocketClient.socket.id, playerForCard.isHost);
+          activeCardBox.onclick = () => {
+            if (window.MainController.openPlayerInspectorModal) {
+              window.MainController.openPlayerInspectorModal(currentPlayer);
+            }
+          };
+        } else {
+          // Fallback if MainController isn't ready yet (e.g. early state sync)
+          activeCardBox.innerHTML = this.getFallbackBattleCardHTML(playerForCard);
+          activeCardBox.onclick = null;
+        }
+        // Ensure the battle card is always visible & vertically centered in the header
+        // (Note: inline display is intentionally NOT set so the CSS collapsed state
+        //  `.viewport-header.battlecard-collapsed` can still hide it via display:none.)
+        activeCardBox.style.minHeight = '40px';
       }
 
       // 2. Hide / Show Phase buttons
@@ -1492,13 +1534,18 @@ hasFullVisionOfPlayer(playerId) {
           const tgtName = this.getTerritoryName(context.targetId);
           document.getElementById('post-attack-title').innerHTML = `${srcName} <i class="fa-solid fa-arrow-right"></i> ${tgtName}`;
           
-          this.sliderPostAttack.min = 0;
-          this.sliderPostAttack.max = context.additionalMax;
-          this.sliderPostAttack.value = 0;
+          const minMove = parseInt(context.minMove) || 0;
+          const totalMax = minMove + (parseInt(context.additionalMax) || 0);
+          // Slider represents TOTAL armies: min = mandatory minMove, max = minMove + additionalMax.
+          // This way the slider visually reaches the true maximum (e.g. 7) instead of the
+          // additional-only maximum (e.g. 6), matching the "Minimum/Maximum" labels.
+          this.sliderPostAttack.min = minMove;
+          this.sliderPostAttack.max = totalMax;
+          this.sliderPostAttack.value = minMove;
           
-          this.lblPostAttackCount.textContent = context.minMove;
-          this.lblPostAttackMin.textContent = context.minMove;
-          this.lblPostAttackMax.textContent = context.minMove + context.additionalMax;
+          this.lblPostAttackCount.textContent = minMove;
+          this.lblPostAttackMin.textContent = minMove;
+          this.lblPostAttackMax.textContent = totalMax;
           
           this.postAttackModal.classList.add('active');
         } else {
@@ -1963,6 +2010,26 @@ hasFullVisionOfPlayer(playerId) {
           window.SocketClient.sendMessage(selectedTemplate);
         };
       }
+    }
+
+    // Minimal battle card fallback used when MainController is not available yet
+    getFallbackBattleCardHTML(player) {
+      const card = player.battleCard || { theme: 'default', option: 1 };
+      const color = player.color || '#00e5ff';
+      const lvlStr = player.isAI ? 'AI' : `Lvl ${player.level || 1}`;
+      return `
+        <div class="player-battlecard bcard-theme-${card.theme}-${card.option}"
+             style="background: ${color}22; border-left: 3px solid ${color}; min-width: 140px; padding: 6px 10px; border-radius: 8px;"
+             title="Click to inspect ${player.name}">
+          <div style="display: flex; align-items: center; gap: 6px; justify-content: space-between;">
+            <span style="display:inline-flex; align-items:center; gap:6px;">
+              <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:${color}; box-shadow:0 0 6px ${color};"></span>
+              <strong style="font-size:12px; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:90px;">${player.name}</strong>
+            </span>
+            <span style="font-size:10px; font-weight:800; padding:2px 6px; border-radius:5px; background:rgba(0,0,0,0.55); color:${color}; flex-shrink:0;">${lvlStr}</span>
+          </div>
+        </div>
+      `;
     }
 
     applyAnimeFilter(text) {
