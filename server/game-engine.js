@@ -1726,13 +1726,31 @@ function resolveCombatRolls(room, sourceId, targetId, attackerDiceCount, defende
     }
     } // end real-player-only achievement block (zombies skip player achievements)
 
-    // Move-in: at least attackerDiceCount armies, clamped so source keeps at least 1
-    const minMove = Math.min(attackerDiceCount, source.armies - 1);
-    const safeMinMove = Math.max(1, minMove); // always move at least 1 army in
-    
-    // If source doesn't even have 2 armies left (edge case after casualties), move 1
-    const actualMove = source.armies > 1 ? safeMinMove : 1;
-    
+    // Move-in: standard logic for human players (at least attackerDiceCount armies, source keeps >= 1)
+    // For zombies: send ~80% of available troops to the conquered territory (source keeps >= 1)
+    let actualMove;
+    if (isZombieAttacker) {
+      // Zombie logic: move closest to 80% as possible, but source must keep at least 1
+      const maxMoveable = source.armies - 1; // keep at least 1 behind
+      if (maxMoveable <= 0) {
+        // Edge case: source has only 1 army, move 0 (can't leave source empty)
+        actualMove = 0;
+      } else {
+        // Aim for 80% of total source armies, clamped to maxMoveable
+        const target80Percent = Math.round(source.armies * 0.8);
+        actualMove = Math.min(maxMoveable, target80Percent);
+        // Ensure at least 1 moves in if we conquered (unless source has only 1)
+        if (actualMove < 1 && source.armies > 1) {
+          actualMove = 1;
+        }
+      }
+    } else {
+      // Human player logic: move at least attackerDiceCount armies
+      const minMove = Math.min(attackerDiceCount, source.armies - 1);
+      const safeMinMove = Math.max(1, minMove); // always move at least 1 army in
+      actualMove = source.armies > 1 ? safeMinMove : 1;
+    }
+
     if (source.armies <= 1) {
       // Extremely edge case: attacker lost everything but still won
       // Move 1 army, source gets 0 (it's now empty — but still owned by attacker)

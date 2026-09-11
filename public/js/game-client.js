@@ -4239,7 +4239,14 @@ hasFullVisionOfPlayer(playerId) {
         if (frame.territories) {
           Object.keys(frame.territories).forEach(tid => {
             const t = frame.territories[tid];
-            const ownerIdx = t && t.ownerId && playerMap.has(t.ownerId) ? playerMap.get(t.ownerId) : -1;
+            let ownerIdx;
+            if (t && t.ownerId && t.ownerId === 'zombie') {
+              ownerIdx = -2; // Special index for zombie territories
+            } else if (t && t.ownerId && playerMap.has(t.ownerId)) {
+              ownerIdx = playerMap.get(t.ownerId);
+            } else {
+              ownerIdx = -1; // No owner (neutral/unowned)
+            }
             const isCap = t && t.isCapital ? 1 : 0;
             const armies = t ? (t.armies || 0) : 0;
             const isNuked = t && t.nuked ? 1 : 0; // Capture nuked flag
@@ -4319,9 +4326,17 @@ hasFullVisionOfPlayer(playerId) {
         if (frame.t) {
           Object.keys(frame.t).forEach(tid => {
             const tuple = frame.t[tid];
-            const ownerPlayer = tuple[0] >= 0 ? playersHeader[tuple[0]] : null;
+            let ownerId;
+            if (tuple[0] === -2) {
+              ownerId = 'zombie'; // Zombie territory
+            } else if (tuple[0] >= 0) {
+              const ownerPlayer = playersHeader[tuple[0]];
+              ownerId = ownerPlayer ? ownerPlayer.id : null;
+            } else {
+              ownerId = null;
+            }
             currentTerritories[tid] = {
-              ownerId: ownerPlayer ? ownerPlayer.id : null,
+              ownerId: ownerId,
               armies: tuple[1],
               isCapital: !!tuple[2],
               nuked: !!tuple[3] // Decode ash ruins marker
