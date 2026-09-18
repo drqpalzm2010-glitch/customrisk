@@ -107,6 +107,8 @@
       this.teamChatToggle = document.getElementById('team-chat-toggle');
       this.btnChatGlobal = document.getElementById('btn-chat-global');
       this.btnChatTeam = document.getElementById('btn-chat-team');
+      this.btnChatPrivate = document.getElementById('btn-chat-private');
+      this.privateTargetSelect = document.getElementById('select-chat-private-target');
 
       // Diplomacy Modal elements
       this.diplomacyModal = document.getElementById('diplomacy-modal');
@@ -1132,6 +1134,7 @@ hasFullVisionOfPlayer(playerId) {
         // Force refresh state or popup
         this.appendLog({
           timestamp: new Date().toLocaleTimeString(),
+          cat: 'personal',
           message: `<i class="fa-solid fa-envelope"></i> New treaty proposal received from ${proposal.senderName}!`
         });
         if (this.diplomacyModal.classList.contains('active')) {
@@ -2763,6 +2766,12 @@ hasFullVisionOfPlayer(playerId) {
       }
 
       container.innerHTML = '';
+      // Fog of War: a continent's bonus (and its controller) is only revealed
+      // once the local player can see the ENTIRE continent
+      const fogMyId = window.SocketClient && window.SocketClient.socket ? window.SocketClient.socket.id : null;
+      const fogVisibleSet = (this.gameState && this.gameState.fogOfWar && this.renderer && fogMyId)
+        ? this.renderer.getVisibleTerritories(this.gameState, mapData, fogMyId)
+        : null;
       mapData.continents.forEach(c => {
         const item = document.createElement('div');
         item.className = 'continent-legend-item';
@@ -2785,6 +2794,8 @@ hasFullVisionOfPlayer(playerId) {
           }
         }
 
+        const fogRevealed = !fogVisibleSet || c.territoryIds.every(tid => fogVisibleSet.has(tid));
+        if (!fogRevealed) controllerName = null;
         const controlText = controllerName ? ` (${controllerName})` : '';
 
         item.innerHTML = `
@@ -2792,7 +2803,7 @@ hasFullVisionOfPlayer(playerId) {
             <div class="continent-color-indicator" style="background-color: ${c.color || '#a855f7'}"></div>
             <span class="continent-legend-name" style="${controllerName ? `color: ${controllerColor}; text-shadow: 0 0 4px ${controllerColor}66` : ''}">${c.name}${controlText}</span>
           </div>
-          <span class="continent-legend-bonus" style="${controllerName ? 'background: rgba(34,197,94,0.18); border-color: #22c55e; color: #22c55e;' : ''}">+${c.bonus}${controllerName ? ' *' : ''}</span>
+          <span class="continent-legend-bonus" style="${controllerName ? 'background: rgba(34,197,94,0.18); border-color: #22c55e; color: #22c55e;' : (fogRevealed ? '' : 'color: #64748b; opacity: 0.75;')}">${fogRevealed ? `+${c.bonus}` : '+?'}${controllerName ? ' *' : ''}</span>
         `;
 
         // Highlight territories on map when hovering over the continent legend item
@@ -3117,11 +3128,16 @@ hasFullVisionOfPlayer(playerId) {
 
     renderLogs() {
       this.logMessages.innerHTML = '';
+      // Fog of War: only turn changes and battles are shown, and battle
+      // entries use their redacted fogMsg (no exact troop counts)
+      const fogActive = !!(this.gameState && this.gameState.fogOfWar);
       if (this.gameState.logs) {
         this.gameState.logs.forEach(log => {
+          if (fogActive && log.cat !== 'battle' && log.cat !== 'turn') return;
+          const message = (fogActive && log.fogMsg) ? log.fogMsg : log.message;
           const div = document.createElement('div');
           div.setAttribute('class', 'log-entry');
-          div.innerHTML = `<span class="time">${log.timestamp}</span>${log.message}`;
+          div.innerHTML = `<span class="time">${log.timestamp}</span>${message}`;
           this.logMessages.appendChild(div);
         });
         this.logMessages.scrollTop = this.logMessages.scrollHeight;
@@ -3132,37 +3148,45 @@ hasFullVisionOfPlayer(playerId) {
     sendChatMessage() {
       const text = this.chatInput.value.trim();
       if (text) {
+        if (this.chatMode === 'private' && (!this.privateTargetSelect || !this.privateTargetSelect.value)) {
+          showToast('Select a commander in the dropdown before sending a private message.', 'warning');
+          return;
+        }
         this.sentChatCount = (this.sentChatCount || 0) + 1;
         if (this.sentChatCount >= 15 && window.SocketClient && window.SocketClient.triggerSecretAchievement) {
           window.SocketClient.triggerSecretAchievement('drama_queen', this.sentChatCount, () => {});
         }
-        window.SocketClient.sendMessage(text, this.chatMode);
+        window.SocketClient.sendMessage(text, this.chatMode, this.chatMode === 'private' ? this.privateTargetSelect.value : undefined);
         this.chatInput.value = '';
       }
     }
 
     setChatMode(mode) {
       this.chatMode = mode;
-      if (this.btnChatGlobal && this.btnChatTeam) {
-        if (mode === 'global') {
-          this.btnChatGlobal.style.background = 'var(--primary)';
-          this.btnChatGlobal.style.color = '#fff';
-          this.btnChatGlobal.style.borderColor = 'var(--primary)';
-          this.btnChatTeam.style.background = 'transparent';
-          this.btnChatTeam.style.color = '#facc15';
-          this.btnChatTeam.style.borderColor = '#facc15';
+      const applyBtnStyle = (btn, isActive, bg, fg, border) => {
+        if (!btn) return;
+        if (isActive) {
+          btn.style.background = bg;
+          btn.style.color = fg;
+          btn.style.borderColor = border;
         } else {
-          this.btnChatGlobal.style.background = 'transparent';
-          this.btnChatGlobal.style.color = 'var(--primary)';
-          this.btnChatGlobal.style.borderColor = 'var(--primary)';
-          this.btnChatTeam.style.background = '#facc15';
-          this.btnChatTeam.style.color = '#000';
-          this.btnChatTeam.style.borderColor = '#facc15';
+          btn.style.background = 'transparent';
+          btn.style.color = border;
+          btn.style.borderColor = border;
         }
+      };
+      applyBtnStyle(this.btnChatGlobal, mode === 'global', 'var(--primary)', '#fff', 'var(--primary)');
+      applyBtnStyle(this.btnChatTeam, mode === 'team', '#facc15', '#000', '#facc15');
+      applyBtnStyle(this.btnChatPrivate, mode === 'private', '#a855f7', '#fff', '#a855f7');
+      if (this.privateTargetSelect) {
+        this.privateTargetSelect.style.display = (mode === 'private' && this.privateTargetSelect.options.length > 0) ? 'inline-block' : 'none';
       }
       // Update placeholder
       if (this.chatInput) {
-        this.chatInput.placeholder = mode === 'team' ? 'Type team message (only teammates see this)...' : 'Type normal message or @Name...';
+        this.chatInput.placeholder =
+          mode === 'team' ? 'Type team message (only teammates see this)...' :
+          mode === 'private' ? 'Type private message (only the selected commander sees this)...' :
+          'Type normal message or @Name...';
       }
     }
 
@@ -3196,6 +3220,23 @@ hasFullVisionOfPlayer(playerId) {
         } else if (msg.text.includes('reconnected')) {
           showToast(safeText, 'success');
         }
+      } else if (msg.chatType === 'private') {
+        // Private 1-on-1 message: highlighted, and the recipient gets an alert
+        const iAmSender = window.SocketClient && window.SocketClient.socket && msg.senderId === window.SocketClient.socket.id;
+        div.style.background = 'rgba(168, 85, 247, 0.12)';
+        div.style.padding = '4px 8px';
+        div.style.borderRadius = '4px';
+        div.style.margin = '4px 0';
+        div.style.borderLeft = '3px solid #a855f7';
+        div.innerHTML = `
+          <span class="time">${escapeHTML(msg.timestamp)}</span>
+          <strong style="color: ${msg.senderColor}">${safeName}:</strong>
+          <span>${displaySafeText}</span>
+          <i class="fa-solid fa-lock" style="font-size: 9px; color: #a855f7;" title="Private message"></i>
+        `;
+        if (!iAmSender) {
+          showToast(`<i class="fa-solid fa-lock" style="color: #a855f7;"></i> <strong>${safeName}</strong> sent you a PRIVATE message!`, 'info');
+        }
       } else {
         div.innerHTML = `
           <span class="time">${escapeHTML(msg.timestamp)}</span>
@@ -3209,20 +3250,61 @@ hasFullVisionOfPlayer(playerId) {
     }
 
     appendLog(log) {
+      // Fog of War: only turn changes and battles are shown (personal
+      // notifications and redacted battle entries stay visible)
+      const fogActive = !!(this.gameState && this.gameState.fogOfWar);
+      const cat = log.cat || (fogActive ? 'system' : 'public');
+      if (fogActive && cat !== 'battle' && cat !== 'turn' && cat !== 'personal') return;
+      const message = (fogActive && log.fogMsg) ? log.fogMsg : log.message;
       const div = document.createElement('div');
       div.setAttribute('class', 'log-entry');
-      div.innerHTML = `<span class="time">${log.timestamp}</span>${log.message}`;
+      div.innerHTML = `<span class="time">${log.timestamp}</span>${message}`;
       this.logMessages.appendChild(div);
       this.logMessages.scrollTop = this.logMessages.scrollHeight;
     }
 
     updateTeamChatToggle() {
-      // Show team chat toggle only when team mode is active and player is on a team
+      // Shows the chat-mode toggle when team chat and/or private chat is usable
       if (!this.teamChatToggle) return;
+      const myId = window.SocketClient && window.SocketClient.socket ? window.SocketClient.socket.id : null;
       const isTeamMode = this.gameState && this.gameState.teamMode && this.gameState.players.some(p => p.teamId);
-      const myPlayer = this.gameState && this.gameState.players.find(p => p.id === window.SocketClient.socket.id);
+      const myPlayer = this.gameState && this.gameState.players.find(p => p.id === myId);
       const iAmOnTeam = !!(isTeamMode && myPlayer && myPlayer.teamId);
-      this.teamChatToggle.style.display = iAmOnTeam ? 'block' : 'none';
+
+      // Private chat is available whenever at least one other HUMAN commander
+      // is in the match (AI commanders do not read private messages).
+      const otherHumans = ((this.gameState && this.gameState.players) || []).filter(p =>
+        p.id !== myId && !p.isAI && !p.eliminated && p.id !== 'zombie' && p.id !== 'dummy'
+      );
+
+      const teamAvailable = !!iAmOnTeam;
+      const privateAvailable = otherHumans.length > 0;
+
+      if (this.btnChatTeam) this.btnChatTeam.style.display = teamAvailable ? '' : 'none';
+      if (this.btnChatPrivate) this.btnChatPrivate.style.display = privateAvailable ? '' : 'none';
+
+      if (this.privateTargetSelect) {
+        // Repopulate the private target dropdown
+        const prev = this.privateTargetSelect.value;
+        this.privateTargetSelect.innerHTML = '';
+        otherHumans.forEach(p => {
+          const opt = document.createElement('option');
+          opt.value = p.id;
+          opt.textContent = p.name;
+          opt.style.color = p.color;
+          this.privateTargetSelect.appendChild(opt);
+        });
+        if ([...this.privateTargetSelect.options].some(o => o.value === prev)) {
+          this.privateTargetSelect.value = prev;
+        }
+        this.privateTargetSelect.style.display = (this.chatMode === 'private' && privateAvailable) ? 'inline-block' : 'none';
+      }
+
+      this.teamChatToggle.style.display = (teamAvailable || privateAvailable) ? 'block' : 'none';
+
+      // Fall back to global if the active mode is no longer available
+      if (this.chatMode === 'team' && !teamAvailable) this.setChatMode('global');
+      if (this.chatMode === 'private' && !privateAvailable) this.setChatMode('global');
     }
 
     getMyTeamId() {
@@ -3253,7 +3335,7 @@ hasFullVisionOfPlayer(playerId) {
       this.renderTerritoryIntelList();
     }
 
-    renderTerritoryIntelList() {
+﻿    renderTerritoryIntelList() {
       if (!this.gameState || !this.gameState.territories || !this.intelTerritoryList) return;
 
       // Territory display names come from the map data (SocketClient wins if
@@ -3272,10 +3354,21 @@ hasFullVisionOfPlayer(playerId) {
         return;
       }
 
-      const owned = Object.entries(this.gameState.territories)
+      // Fog of War: intel only covers territories the local player has
+      // actually revealed (owned/allied, bordering them, or watchtower-lit)
+      const myId = window.SocketClient && window.SocketClient.socket ? window.SocketClient.socket.id : null;
+      const visibleSet = (this.renderer && myId)
+        ? this.renderer.getVisibleTerritories(this.gameState, mapData, myId)
+        : null;
+      const fogActive = visibleSet !== null;
+
+      const allOwned = Object.entries(this.gameState.territories)
         .filter(([tid, t]) => t && t.ownerId === selectedId)
         .map(([tid, t]) => ({ id: tid, name: territoryNames[tid] || tid, armies: t.armies || 0 }))
         .sort((a, b) => b.armies - a.armies || a.name.localeCompare(b.name));
+
+      const owned = fogActive ? allOwned.filter(t => visibleSet.has(t.id)) : allOwned;
+      const shroudedCount = allOwned.length - owned.length;
 
       const headerColor = selectedPlayer.color || '#00e5ff';
       let html = `
@@ -3284,12 +3377,14 @@ hasFullVisionOfPlayer(playerId) {
             <span style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: ${headerColor}; border: 1px solid #fff; box-shadow: 0 0 6px ${headerColor};"></span>
             ${selectedPlayer.name}
           </span>
-          <span style="font-size: 11px; color: #9ca3af;">${owned.length} territor${owned.length === 1 ? 'y' : 'ies'} • ${owned.reduce((s, t) => s + t.armies, 0)} armies</span>
+          <span style="font-size: 11px; color: #9ca3af;">${owned.length} revealed territor${owned.length === 1 ? 'y' : 'ies'} \u2022 ${owned.reduce((s, t) => s + t.armies, 0)} armies</span>
         </div>
       `;
 
-      if (owned.length === 0) {
+      if (allOwned.length === 0) {
         html += '<p class="empty-state">This commander holds no territories.</p>';
+      } else if (owned.length === 0) {
+        html += '<p class="empty-state">None of this commander\'s territories have been revealed yet.</p>';
       } else {
         html += owned.map(t => `
           <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; margin-bottom: 4px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-glass); border-radius: 6px; font-size: 12px;">
@@ -3297,6 +3392,9 @@ hasFullVisionOfPlayer(playerId) {
             <span style="color: var(--primary); font-weight: 700;">${t.armies} <i class="fa-solid fa-shield-halved" style="font-size: 10px;"></i></span>
           </div>
         `).join('');
+        if (fogActive && shroudedCount > 0) {
+          html += `<p style="font-size: 10.5px; color: #64748b; font-style: italic; margin-top: 6px;">+${shroudedCount} more territor${shroudedCount === 1 ? 'y' : 'ies'} still shrouded in fog</p>`;
+        }
       }
 
       this.intelTerritoryList.innerHTML = html;

@@ -412,14 +412,14 @@ changePlayerColor: (targetPlayerId, newColor, callback) => {
       socket.emit('breakPact', { roomCode: window.SocketClient.roomCode, opponentId }, callback);
     },
 
-    sendMessage: (text, chatType) => {
+    sendMessage: (text, chatType, targetId) => {
       if (!window.SocketClient.roomCode) return;
-      socket.emit('sendMessage', { roomCode: window.SocketClient.roomCode, text, chatType: chatType || 'global' });
+      socket.emit('sendMessage', { roomCode: window.SocketClient.roomCode, text, chatType: chatType || 'global', targetId });
     },
 
     // Group Chat Methods
     createGroupChat: (groupName, callback) => {
-      socket.emit('createGroupChat', { groupName }, callback);
+      socket.emit('createGroupChat', { groupName, username: window.SocketClient.currentAccount?.username }, callback);
     },
 
     joinGroupChat: (groupId, callback) => {

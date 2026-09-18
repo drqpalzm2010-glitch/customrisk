@@ -3294,6 +3294,30 @@
         }
       });
 
+      // Live Group Chat Membership Updates (invited members see the group instantly)
+      window.SocketClient.onGroupChatJoined((data) => {
+        const me = window.SocketClient.currentAccount ? window.SocketClient.currentAccount.username.toLowerCase() : null;
+        if (me && Array.isArray(data.members) && data.members.some(m => String(m).toLowerCase() === me)) {
+          loadGroupChatsList();
+          showToast(`You were added to group "${data.name}"!`, 'success');
+        }
+      });
+
+      window.SocketClient.onGroupChatMemberJoined((data) => {
+        if (paneGroupChats && paneGroupChats.style.display !== 'none') loadGroupChatsList();
+        if (currentGroupId === data.groupId) {
+          window.SocketClient.getGroupChats((res) => {
+            if (res.success) cachedGroupChats = res.groupChats || [];
+          });
+        }
+        showToast(`${data.newMember} joined one of your groups.`, 'info');
+      });
+
+      window.SocketClient.onGroupChatMemberLeft((data) => {
+        if (currentGroupId === data.groupId) showToast(`${data.username} left the group.`, 'info');
+        loadGroupChatsList();
+      });
+
       // Live Server Push Notifications
       window.SocketClient.onFriendRequestReceived((data) => {
         showToast(`<i class="fa-solid fa-user-plus" style="color: #38bdf8;"></i> Incoming alliance request from <strong>${data.fromUsername}</strong>!`, 'info');

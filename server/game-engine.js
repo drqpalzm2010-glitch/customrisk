@@ -437,7 +437,7 @@ function initializeGame(room, mapData, gameMode = 'auto') {
 
       if (firstPlayer) {
         room.gameState.draftPool = calculateReinforcements(room.gameState, mapData, firstPlayer.id);
-        addLog(room.gameState, `Scenario initialized with Neutral Defenders! ${firstPlayer.name}'s turn. Draft stage: ${room.gameState.draftPool} armies available.`);
+        addLog(room.gameState, `Scenario initialized with Neutral Defenders! ${firstPlayer.name}'s turn. Draft stage: ${room.gameState.draftPool} armies available.`, { cat: 'turn', fogMsg: `Scenario initialized with Neutral Defenders! ${firstPlayer.name}'s turn.` });
       }
       return;
     }
@@ -638,7 +638,7 @@ function initializeGame(room, mapData, gameMode = 'auto') {
     if (room.gameState.players.length > 0) {
       const firstPlayer = room.gameState.players[0];
       room.gameState.draftPool = calculateReinforcements(room.gameState, mapData, firstPlayer.id);
-      addLog(room.gameState, `Scenario Campaign Initialized! ${firstPlayer.name}'s turn. Draft stage: ${room.gameState.draftPool} armies available.`);
+      addLog(room.gameState, `Scenario Campaign Initialized! ${firstPlayer.name}'s turn. Draft stage: ${room.gameState.draftPool} armies available.`, { cat: 'turn', fogMsg: `Scenario Campaign Initialized! ${firstPlayer.name}'s turn.` });
     }
     return;
   }
@@ -778,12 +778,15 @@ function initializeGame(room, mapData, gameMode = 'auto') {
   addLog(room.gameState, 'Game initialized. Setup phase started: claim territories.');
 }
 
-function addLog(gameState, message) {
+function addLog(gameState, message, meta) {
   if (!gameState) return;
   gameState.logs = gameState.logs || [];
+  const logMeta = meta || {};
   gameState.logs.push({
     timestamp: new Date().toLocaleTimeString(),
-    message
+    message,
+    cat: logMeta.cat || 'system',
+    fogMsg: logMeta.fogMsg || null
   });
   if (gameState.logs.length > 100) {
     gameState.logs.shift();
@@ -920,7 +923,7 @@ function fortifySetup(room, playerId, territoryId, amount = 1) {
         gameState.turnIndex = 0;
         const firstPlayer = gameState.players[0];
         gameState.draftPool = calculateReinforcements(gameState, room.mapData, firstPlayer.id);
-        addLog(gameState, `🌍 All capitals established! ${firstPlayer.name}'s turn. Draft stage: ${gameState.draftPool} armies.`);
+        addLog(gameState, `🌍 All capitals established! ${firstPlayer.name}'s turn. Draft stage: ${gameState.draftPool} armies.`, { cat: 'turn', fogMsg: `\uD83C\uDF0D All capitals established! ${firstPlayer.name}'s turn.` });
       } else {
         addLog(gameState, `Setup complete. Commanders must now select their capital territory!`);
       }
@@ -930,7 +933,7 @@ function fortifySetup(room, playerId, territoryId, amount = 1) {
       // Calculate draft pool for first player
       const firstPlayer = gameState.players[0];
       gameState.draftPool = calculateReinforcements(gameState, room.mapData, firstPlayer.id);
-      addLog(gameState, `Setup complete. ${firstPlayer.name}'s turn. Draft stage: ${gameState.draftPool} armies available.`);
+      addLog(gameState, `Setup complete. ${firstPlayer.name}'s turn. Draft stage: ${gameState.draftPool} armies available.`, { cat: 'turn', fogMsg: `Setup complete. ${firstPlayer.name}'s turn.` });
     }
   } else {
     advanceSetupTurn(gameState);
@@ -1126,7 +1129,7 @@ function executeAttack(room, playerId, sourceId, targetId, diceCount) {
     target.armies = 1;
     source.armies -= 1;
     
-    addLog(gameState, `🚀 ${currentPlayer.name} marched into un-owned ruins to claim ${getTerritoryName(room.mapData, targetId)}!`);
+    addLog(gameState, `🚀 ${currentPlayer.name} marched into un-owned ruins to claim ${getTerritoryName(room.mapData, targetId)}!`, { cat: 'battle' });
     gameState.conqueredThisTurn = true;
     checkWinCondition(room);
 
@@ -1185,7 +1188,7 @@ function executeAttack(room, playerId, sourceId, targetId, diceCount) {
     maxDefDice
   };
 
-  addLog(gameState, `⚔️ ${currentPlayer.name} launched an attack on ${defenderPlayer.name}'s ${getTerritoryName(room.mapData, targetId)}! Awaiting defense decision.`);
+  addLog(gameState, `⚔️ ${currentPlayer.name} launched an attack on ${defenderPlayer.name}'s ${getTerritoryName(room.mapData, targetId)}! Awaiting defense decision.`, { cat: 'battle' });
 
   return { success: true, pendingDefense: true };
 }
@@ -1224,7 +1227,7 @@ function executeBlitzAttack(room, playerId, sourceId, targetId) {
     delete target.nuked;
     target.armies = 1;
     source.armies -= 1;
-    addLog(gameState, `🚀 ${currentPlayer.name} marched into un-owned ruins to claim ${getTerritoryName(room.mapData, targetId)}!`);
+    addLog(gameState, `🚀 ${currentPlayer.name} marched into un-owned ruins to claim ${getTerritoryName(room.mapData, targetId)}!`, { cat: 'battle' });
     gameState.conqueredThisTurn = true;
     checkWinCondition(room);
 
@@ -1285,7 +1288,7 @@ function executeBlitzAttack(room, playerId, sourceId, targetId) {
     checkAndGrantAchievement(room, playerId, 'clean_sweep');
   }
 
-  addLog(gameState, `⚔️ BLITZ CAMPAIGN: ${currentPlayer.name} fought ${roundsFought} rounds against ${getTerritoryName(room.mapData, targetId)}. Attacker lost ${totalAttackerLosses}, Defender lost ${totalDefenderLosses}. ${conquered ? 'CONQUERED!' : 'Halted.'}`);
+  addLog(gameState, `⚔️ BLITZ CAMPAIGN: ${currentPlayer.name} fought ${roundsFought} rounds against ${getTerritoryName(room.mapData, targetId)}. Attacker lost ${totalAttackerLosses}, Defender lost ${totalDefenderLosses}. ${conquered ? 'CONQUERED!' : 'Halted.'}`, { cat: 'battle', fogMsg: `\u2694\uFE0F ${currentPlayer.name} attacked ${getTerritoryName(room.mapData, targetId)}${conquered ? ' and captured it!' : '.'}` });
 
   return {
     success: true,
@@ -1625,7 +1628,7 @@ function resolveCombatRolls(room, sourceId, targetId, attackerDiceCount, defende
     // Destroy existing building on conquered territory
     if (gameState.buildings && gameState.buildings[targetId]) {
       delete gameState.buildings[targetId];
-      addLog(gameState, `💥 Structure on ${getTerritoryName(room.mapData, targetId)} was demolished in combat!`);
+      addLog(gameState, `💥 Structure on ${getTerritoryName(room.mapData, targetId)} was demolished in combat!`, { cat: 'battle' });
     }
 
     // Zombie Combat Trait: Zombies gain +1 army per defender killed in the attacking territory
@@ -1792,7 +1795,7 @@ function resolveCombatRolls(room, sourceId, targetId, attackerDiceCount, defende
         recordElimination(gameState, defenderPlayer);
         eliminatedPlayerId = defenderPlayer.id;
         killerPlayerId = isZombieAttacker ? 'zombie' : currentPlayer.id;
-        addLog(gameState, `💀 ${defenderPlayer.name} has been eliminated!`);
+        addLog(gameState, `💀 ${defenderPlayer.name} has been eliminated!`, { cat: 'battle' });
 
         // Achievement: No Way Home (Be eliminated)
         checkAndGrantAchievement(room, defenderPlayer.id, 'no_way_home');
@@ -1863,7 +1866,7 @@ function resolveCombatRolls(room, sourceId, targetId, attackerDiceCount, defende
     }
   } else {
     gameState.turnStage = 'ATTACK'; // stay in attack stage after failed attack
-    addLog(gameState, `${attackerName} attacked ${getTerritoryName(room.mapData, targetId)}. Rolls — Attacker: [${attackerRolls.join(', ')}], Defender: [${defenderRolls.join(', ')}]. Attacker lost ${attackerLosses}, Defender lost ${defenderLosses}.`);
+    addLog(gameState, `${attackerName} attacked ${getTerritoryName(room.mapData, targetId)}. Rolls — Attacker: [${attackerRolls.join(', ')}], Defender: [${defenderRolls.join(', ')}]. Attacker lost ${attackerLosses}, Defender lost ${defenderLosses}.`, { cat: 'battle', fogMsg: `\u2694\uFE0F ${attackerName} attacked ${getTerritoryName(room.mapData, targetId)}.` });
   }
 
   // Track territory casualties with timestamps (for battlescarred 2-turn expiry)
@@ -2295,7 +2298,7 @@ function endTurn(room) {
     }
 
     gameState.draftPool = calculateReinforcements(gameState, room.mapData, nextPlayer.id);
-    addLog(gameState, `It is now ${nextPlayer.name}'s turn. Draft stage: ${gameState.draftPool} armies available.`);
+    addLog(gameState, `It is now ${nextPlayer.name}'s turn. Draft stage: ${gameState.draftPool} armies available.`, { cat: 'turn', fogMsg: `It is now ${nextPlayer.name}'s turn.` });
   }
 }
 
@@ -2496,7 +2499,7 @@ function selectCapital(room, playerId, territoryId) {
     gameState.turnIndex = 0;
     const firstPlayer = gameState.players[0];
     gameState.draftPool = calculateReinforcements(gameState, room.mapData, firstPlayer.id);
-    addLog(gameState, `🌍 All capitals have been established! Let the campaign begin. ${firstPlayer.name}'s turn. Draft stage: ${gameState.draftPool} armies.`);
+    addLog(gameState, `🌍 All capitals have been established! Let the campaign begin. ${firstPlayer.name}'s turn. Draft stage: ${gameState.draftPool} armies.`, { cat: 'turn', fogMsg: `\uD83C\uDF0D All capitals have been established! Let the campaign begin. ${firstPlayer.name}'s turn.` });
   }
 
   return { success: true };
@@ -2521,10 +2524,10 @@ function declareFactionVictory(room, factionKey, mode) {
     const teamName = team ? team.name : winnerPlayer.teamId;
     const membersText = factionPlayers.map(p => p.name).join(', ');
     const actionText = mode === 'capital_rush' ? 'captured all capital cities' : 'conquered the world';
-    addLog(gameState, `🏆 GAME OVER! Team ${teamName} (${membersText}) has ${actionText}!`);
+    addLog(gameState, `🏆 GAME OVER! Team ${teamName} (${membersText}) has ${actionText}!`, { cat: 'turn' });
   } else {
     const actionText = mode === 'capital_rush' ? 'captured all capital cities' : 'conquered the world';
-    addLog(gameState, `🏆 GAME OVER! ${winnerPlayer.name} has ${actionText}!`);
+    addLog(gameState, `🏆 GAME OVER! ${winnerPlayer.name} has ${actionText}!`, { cat: 'turn' });
   }
 }
 
@@ -2942,7 +2945,7 @@ function fireNuke(room, playerId, sourceId, targetId, isThermo) {
     );
     if (activePactIndex !== -1) {
       gameState.pacts.splice(activePactIndex, 1);
-      addLog(gameState, `💔 TREATER BREACH: ${player.name} broke all treaties and fired a nuke on allied ${defenderPlayer ? defenderPlayer.name : defenderId}!`);
+      addLog(gameState, `💔 TREATER BREACH: ${player.name} broke all treaties and fired a nuke on allied ${defenderPlayer ? defenderPlayer.name : defenderId}!`, { cat: 'battle' });
     }
 
     // Distrust penalties
@@ -3013,7 +3016,7 @@ function fireNuke(room, playerId, sourceId, targetId, isThermo) {
     // Bunker absorbs 50% damage and prevents radioactive ash state
     target.armies = Math.max(1, Math.floor(target.armies / 2));
     totalNukeCasualties = target.armies;
-    addLog(gameState, `🛡️ BUNKER DEFENSE: The underground Bunker at ${getTerritoryName(room.mapData, targetId)} absorbed the nuclear blast, saving half the garrison and shielding the soil from radiation!`);
+    addLog(gameState, `🛡️ BUNKER DEFENSE: The underground Bunker at ${getTerritoryName(room.mapData, targetId)} absorbed the nuclear blast, saving half the garrison and shielding the soil from radiation!`, { cat: 'battle' });
   } else {
     target.armies = 0;
     target.ownerId = null; // Unclaimed
@@ -3045,12 +3048,12 @@ function fireNuke(room, playerId, sourceId, targetId, isThermo) {
       }
     });
 
-    addLog(gameState, `🚀 THERMONUCLEAR DETONATION! ${player.name} fired a thermonuclear missile from ${getTerritoryName(room.mapData, sourceId)} onto ${getTerritoryName(room.mapData, targetId)}! Splash damage applied to adjacent borders.`);
+    addLog(gameState, `🚀 THERMONUCLEAR DETONATION! ${player.name} fired a thermonuclear missile from ${getTerritoryName(room.mapData, sourceId)} onto ${getTerritoryName(room.mapData, targetId)}! Splash damage applied to adjacent borders.`, { cat: 'battle' });
   } else {
     if (!isBunkerEpicenter) {
       gameState.radiation[targetId] = 1; // Radioactive for 1 FULL turn (round)
     }
-    addLog(gameState, `☢️ DETONATION: ${player.name} fired a tactical nuke from ${getTerritoryName(room.mapData, sourceId)} onto ${getTerritoryName(room.mapData, targetId)}!`);
+    addLog(gameState, `☢️ DETONATION: ${player.name} fired a tactical nuke from ${getTerritoryName(room.mapData, sourceId)} onto ${getTerritoryName(room.mapData, targetId)}!`, { cat: 'battle' });
   }
   if (totalNukeCasualties >= 40) {
     checkAndGrantAchievement(room, playerId, 'total_scorched_earth');
@@ -3065,7 +3068,7 @@ function fireNuke(room, playerId, sourceId, targetId, isThermo) {
       recordElimination(gameState, defenderPlayer);
       checkAndGrantAchievement(room, playerId, 'extinction_protocol');
       checkAndGrantAchievement(room, defenderPlayer.id, 'no_way_home');
-      addLog(gameState, `💀 ${defenderPlayer.name} has been eliminated by a nuclear strike from ${player.name}!`);
+      addLog(gameState, `💀 ${defenderPlayer.name} has been eliminated by a nuclear strike from ${player.name}!`, { cat: 'battle' });
       if (gameState.pacts) {
         gameState.pacts = gameState.pacts.filter(p => p.playerA !== defenderId && p.playerB !== defenderId);
       }
@@ -3159,7 +3162,7 @@ function runZombieTurn(room, io) {
   }
   const attackCount = Math.max(1, continentsWithZombies.size);
 
-  addLog(gameState, `🧟 ZOMBIE OUTBREAK: The undead are attacking ${attackCount} frontline(s)!`);
+  addLog(gameState, `🧟 ZOMBIE OUTBREAK: The undead are attacking ${attackCount} frontline(s)!`, { cat: 'battle', fogMsg: `\uD83E\uDDDF ZOMBIE OUTBREAK: The undead are attacking frontline territories!` });
 
   let executed = 0;
   for (const zTid of zombieTerritories) {
@@ -3197,7 +3200,7 @@ function runZombieTurn(room, io) {
   if (nonZombieTerritories === 0) {
     gameState.turnStage = 'GAME_OVER';
     gameState.winner = null; // No winner!
-    addLog(gameState, `💀 EXTINCTION: The Zombie Horde has consumed all human civilization. The world is dead.`);
+    addLog(gameState, `💀 EXTINCTION: The Zombie Horde has consumed all human civilization. The world is dead.`, { cat: 'battle' });
   }
 
   checkWinCondition(room);
@@ -3254,7 +3257,7 @@ function executeZombieAttack(room, zTid, targetId) {
   }
 
   const captured = gameState.territories[targetId].ownerId === 'zombie';
-  addLog(gameState, `🧟 Zombie Blitz: the horde fought ${roundsFought} round(s) over ${getTerritoryName(room.mapData, targetId)} and ${captured ? 'OVERRAN it!' : 'was repelled.'}`);
+  addLog(gameState, `🧟 Zombie Blitz: the horde fought ${roundsFought} round(s) over ${getTerritoryName(room.mapData, targetId)} and ${captured ? 'OVERRAN it!' : 'was repelled.'}`, { cat: 'battle', fogMsg: `\uD83E\uDDDF The Zombie Horde attacked ${getTerritoryName(room.mapData, targetId)}${captured ? ' and overran it!' : '.'}` });
 }
 
 module.exports = {

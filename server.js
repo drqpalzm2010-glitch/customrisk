@@ -74,6 +74,10 @@ RoomManager.startRoomCleanup();
 // Online Presence Tracking: username(lowercase) -> Set of socketIds (supports multiple tabs)
 const onlineUsers = new Map();
 
+// Reverse lookup: socketId -> registered username (for resolving the authenticated
+// user server-side; NEVER touch browser globals like window on the server!)
+const socketUsernames = new Map();
+
 // Group Chat System Storage (persists across socket connections)
 // groupId -> { id, name, createdBy, members: Set<username>, messages: [{senderName, text, timestamp}] }
 const groupChats = new Map();
@@ -85,6 +89,7 @@ function registerUserSocket(username, socketId) {
     onlineUsers.set(key, new Set());
   }
   onlineUsers.get(key).add(socketId);
+  socketUsernames.set(socketId, username.trim());
 }
 
 function unregisterUserSocket(socketId) {
@@ -92,6 +97,7 @@ function unregisterUserSocket(socketId) {
   for (const [userKey, socketSet] of onlineUsers.entries()) {
     if (socketSet.has(socketId)) {
       socketSet.delete(socketId);
+        socketUsernames.delete(socketId);
       if (socketSet.size === 0) {
         onlineUsers.delete(userKey);
         foundUsername = userKey;
@@ -107,6 +113,12 @@ function getSocketIdsForUser(username) {
   const key = username.trim().toLowerCase();
   const set = onlineUsers.get(key);
   return set ? Array.from(set) : [];
+}
+
+// Resolve the username registered from this socket (null if guest/unknown)
+function getUsernameForSocket(socketId) {
+  if (!socketId) return null;
+  return socketUsernames.get(socketId) || null;
 }
 
 function notifyFriendsPresence(username, isOnline) {
@@ -2025,7 +2037,7 @@ const actType = (actionStr || typeStr || '').toUpperCase();
   });
 
   // 13. Room Chat Message (With Fuzzy AI Dialog Parser)
-  socket.on('sendMessage', ({ roomCode, text, chatType }) => {
+  socket.on('sendMessage', ({ roomCode, text, chatType, targetId }) => {
     const room = RoomManager.getRoom(roomCode);
     if (!room) return;
 
@@ -2034,14 +2046,26 @@ const actType = (actionStr || typeStr || '').toUpperCase();
     const senderColor = player ? player.color : '#ffffff';
     const isTeamChat = chatType === 'team' && room.gameState && room.gameState.teamMode && player && player.teamId;
 
+    // Private (1-on-1) chat: only the sender and the targeted commander ever see it
+    const isPrivateChat = chatType === 'private' && targetId && targetId !== socket.id &&
+      room.players.some(p => p.id === targetId && !p.isAI);
+
     const chatMsg = {
+      senderId: socket.id,
       senderName,
       senderColor,
       text,
       timestamp: new Date().toLocaleTimeString(),
-      chatType: isTeamChat ? 'team' : 'global',
+      chatType: isPrivateChat ? 'private' : (isTeamChat ? 'team' : 'global'),
       teamOnly: isTeamChat
     };
+
+    if (isPrivateChat) {
+      // Private messages are intentionally NOT saved to the chat archive so
+      // they can never leak through replays or spectate views.
+      [targetId, socket.id].forEach(sid => io.to(sid).emit('chatMessage', chatMsg));
+      return;
+    }
 
     // Save chat to log history archive
     if (room.gameState) {
@@ -2691,7 +2715,7 @@ Reply in 1 short, punchy paragraph (1 to 3 sentences max). Maintain your charact
   // 13b. Group Chat System - Create
   socket.on('createGroupChat', ({ groupName }, callback) => {
     try {
-      const username = window?.SocketClient?.currentAccount?.username || 'Anonymous';
+      const username = getUsernameForSocket(socket.id) || 'Anonymous';
       const groupId = 'gc_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
       groupChats.set(groupId, {
         id: groupId,
@@ -2712,7 +2736,7 @@ Reply in 1 short, punchy paragraph (1 to 3 sentences max). Maintain your charact
     try {
       const group = groupChats.get(groupId);
       if (!group) return callback && callback({ error: 'Group not found' });
-      const joinUser = username || window?.SocketClient?.currentAccount?.username || 'Anonymous';
+      const joinUser = username || getUsernameForSocket(socket.id) || 'Anonymous';
       group.members.add(joinUser);
       const memberArray = Array.from(group.members);
       memberArray.forEach(member => {
@@ -2732,7 +2756,7 @@ Reply in 1 short, punchy paragraph (1 to 3 sentences max). Maintain your charact
     try {
       const group = groupChats.get(groupId);
       if (!group) return callback && callback({ error: 'Group not found' });
-      const leaveUser = username || window?.SocketClient?.currentAccount?.username || 'Anonymous';
+      const leaveUser = username || getUsernameForSocket(socket.id) || 'Anonymous';
       group.members.delete(leaveUser);
       const memberArray = Array.from(group.members);
       memberArray.forEach(member => {
@@ -2755,7 +2779,7 @@ Reply in 1 short, punchy paragraph (1 to 3 sentences max). Maintain your charact
     try {
       const group = groupChats.get(groupId);
       if (!group) return callback && callback({ error: 'Group not found' });
-      const sender = username || window?.SocketClient?.currentAccount?.username || 'Anonymous';
+      const sender = username || getUsernameForSocket(socket.id) || 'Anonymous';
       if (!group.members.has(sender)) {
         return callback && callback({ error: 'You are not a member of this group' });
       }
@@ -2787,7 +2811,7 @@ Reply in 1 short, punchy paragraph (1 to 3 sentences max). Maintain your charact
 
   socket.on('getGroupChats', ({ username }, callback) => {
     try {
-      const queryUser = username || window?.SocketClient?.currentAccount?.username;
+      const queryUser = username || getUsernameForSocket(socket.id);
       if (!queryUser) return callback && callback({ error: 'Not logged in' });
       const userGroups = [];
       groupChats.forEach((group, groupId) => {
@@ -2815,7 +2839,7 @@ Reply in 1 short, punchy paragraph (1 to 3 sentences max). Maintain your charact
     try {
       const group = groupChats.get(groupId);
       if (!group) return callback && callback({ error: 'Group not found' });
-      const requester = username || window?.SocketClient?.currentAccount?.username || 'Anonymous';
+      const requester = username || getUsernameForSocket(socket.id) || 'Anonymous';
       if (!group.members.has(requester)) {
         return callback && callback({ error: 'You are not a member of this group' });
       }
